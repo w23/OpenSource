@@ -2,7 +2,8 @@
 
 
 namespace kapusha {
-class StreamSeekable;
+  class StreamSeekable;
+  class Camera;
 }
 
 using kapusha::StreamSeekable;
@@ -15,7 +16,7 @@ public:
 
   bool load(StreamSeekable *stream);
 
-  void draw() const;
+  void draw(const kapusha::Camera&) const;
 
 private:
   class Impl;

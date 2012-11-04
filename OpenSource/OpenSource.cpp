@@ -1,3 +1,4 @@
+#include <Kapusha/sys/Log.h>
 #include <Kapusha/math/types.h>
 #include <Kapusha/gl/OpenGL.h>
 #include <Kapusha/gl/Buffer.h>
@@ -8,6 +9,8 @@
 #include "OpenSource.h"
 
 OpenSource::OpenSource(void)
+: camera_(math::vec3f(0,0,10))
+, forward_speed_(0), right_speed_(0), pitch_speed_(0), yaw_speed_(0)
 {
 }
 
@@ -17,55 +20,75 @@ OpenSource::~OpenSource(void)
 
 void OpenSource::init(kapusha::ISystem* system)
 {
+  system_ = system;
+  
   BSP *bsp = new BSP;
   kapusha::StreamFile *stream = new kapusha::StreamFile;
-  stream->open("c1a1c.bsp");
+  KP_ASSERT(stream->open("c1a1c.bsp") == kapusha::Stream::ErrorNone);
   bsp->load(stream);
 
   levels_.push_back(bsp);
-
-  overlay_ = new kapusha::Object();
-
-  const char* svtx =
-    "attribute vec4 vtx;\n"
-    "void main(){\n"
-    "gl_Position = vtx;\n"
-    "}"
-  ;
-  const char* sfrg =
-    "void main(){\n"
-    "gl_FragColor = vec4(1.,0.,0.,0.);\n"
-    "}"
-  ;
-  kapusha::Program *prog = new kapusha::Program(svtx, sfrg);
-  overlay_->setProgram(prog);
-
-  math::vec2f rect[4] = {
-    math::vec2f(-1.f, -1.f),
-    math::vec2f(-1.f,  1.f),
-    math::vec2f( 1.f,  1.f),
-    math::vec2f( 1.f, -1.f)
-  };
-  kapusha::Buffer *fsrect = new kapusha::Buffer();
-  fsrect->load(rect, sizeof rect);
-  overlay_->setAttribSource("vtx", fsrect, 2);
-
-  overlay_->setGeometry(0, 0, 4, kapusha::Object::GeometryTriangleFan);
-
-  //glClearColor(0.f, 0.f, 0.f, 0.f);
 }
 
 void OpenSource::resize(int width, int height)
 {
   glViewport(0, 0, width, height);
+  viewport_ = math::rect2f(0, height, width, 0);
+  camera_.setAspect((float)width / (float)height);
 }
 
-void OpenSource::draw(int ms)
+void OpenSource::draw(int ms, float dt)
 {
-  glClear(GL_COLOR_BUFFER_BIT);
+  camera_.moveForward(forward_speed_ * dt);
+  camera_.moveRigth(right_speed_ * dt);
+  camera_.rotatePitch(pitch_speed_ * dt);
+  camera_.rotateYaw(yaw_speed_ * dt);
+  camera_.update();
+
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   for (auto it = levels_.begin(); it != levels_.end(); ++it)
-    (*it)->draw();
+    (*it)->draw(camera_);
+  
+  system_->redraw();
+}
 
-  //overlay_->draw();
+void OpenSource::keyEvent(const kapusha::IViewport::KeyEvent &event)
+{
+  switch (event.key()) {
+    case 'w':
+      forward_speed_ += event.isPressed() ? 1.f : -1.f;
+      break;
+    case 's':
+      forward_speed_ += event.isPressed() ? -1.f : 1.f;
+      break;
+    case 'a':
+      right_speed_ += event.isPressed() ? -1.f : 1.f;
+      break;
+    case 'd':
+      right_speed_ += event.isPressed() ? 1.f : -1.f;
+      break;
+    case KeyEvent::KeyUp:
+      pitch_speed_ += event.isPressed() ? 1.f : -1.f;
+      break;
+    case KeyEvent::KeyDown:
+      pitch_speed_ += event.isPressed() ? -1.f : 1.f;
+      break;
+    case KeyEvent::KeyLeft:
+      yaw_speed_ += event.isPressed() ? 1.f : -1.f;
+      break;
+    case KeyEvent::KeyRight:
+      yaw_speed_ += event.isPressed() ? -1.f : 1.f;
+      break;
+      
+    default:
+      L("key %d is unknown", event.key());
+  }
+}
+
+void OpenSource::pointerEvent(const kapusha::IViewport::PointerEvent &event)
+{
+  math::vec2f rel = viewport_.relative(event.main().point)*2.f - 1.f;
+  yaw_speed_ = -rel.x;
+  pitch_speed_ = rel.y;
 }

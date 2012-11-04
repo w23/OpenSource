@@ -3,7 +3,10 @@
 #include <Kapusha/math/types.h>
 #include <Kapusha/gl/Buffer.h>
 #include <Kapusha/gl/Program.h>
+#include <Kapusha/gl/Material.h>
+#include <Kapusha/gl/Batch.h>
 #include <Kapusha/gl/Object.h>
+#include <Kapusha/gl/Camera.h>
 #include "BSP.h"
 
 using namespace math;
@@ -54,15 +57,16 @@ public:
     stream->seek(lump_vtx->offset, StreamSeekable::ReferenceStart);
     L("Vertices: %d", lump_vtx->length / 12);
 
-    SP_ASSERT(sizeof vec3f == 12);
+    KP_ASSERT(sizeof(vec3f) == 12);
     int bytes_vertices = header_.lumps[LUMP_VERTEXES].length;
-    int num_vertices = bytes_vertices / sizeof vec3f;
+    int num_vertices = bytes_vertices / sizeof(vec3f);
     vec3f *vertices = new vec3f[num_vertices];
     stream->copy(vertices, bytes_vertices);
     for (int i = 0; i < num_vertices; ++i)
       vertices[i] /= 100.f;
     Buffer *vtxb = new Buffer;
     vtxb->load(vertices, bytes_vertices);
+    delete vertices;
 
     // load edges
     const bsp::lump_t *lump_edges = header_.lumps + LUMP_EDGES;
@@ -78,11 +82,13 @@ public:
     }
     Buffer *edgeb = new Buffer();
     edgeb->load(edges, num_edges * sizeof *edges * 2);
-
+    
+    Batch* batch = new Batch();
     const char* svtx =
+      "uniform mat4 mview, mproj;\n"
       "attribute vec4 vtx;\n"
       "void main(){\n"
-      "gl_Position = vtx;\n"
+      "gl_Position = mproj * mview * vtx;\n"
       "}"
     ;
     const char* sfrg =
@@ -90,26 +96,26 @@ public:
       "gl_FragColor = vec4(1.);\n"
       "}"
     ;
-    edges_.setProgram(new Program(svtx, sfrg));
-    edges_.setAttribSource("vtx", vtxb);
-    edges_.setGeometry(edgeb, 0, num_edges * 2, Object::GeometryLineList);
+    batch->setMaterial(new Material(new Program(svtx, sfrg)));
+    batch->setAttribSource("vtx", vtxb);
+    batch->setGeometry(Batch::GeometryLineList, 0, num_edges * 2, edgeb);
     
-    delete vertices;
+    edges_ = new Object(batch);
   }
 
   bool isValid() {
     return stream_.get() != 0;
   }
 
-  void draw() const
+  void draw(const kapusha::Camera& cam) const
   {
-    edges_.draw();
+    edges_->draw(cam.getView(), cam.getProjection());
   }
 
 private:
   std::auto_ptr<StreamSeekable> stream_;
   bsp::header_t header_;
-  Object edges_;
+  Object* edges_;
 };
 
 BSP::BSP(void)
@@ -127,7 +133,7 @@ bool BSP::load(StreamSeekable* stream)
   return pimpl_->isValid();
 }
 
-void BSP::draw() const
+void BSP::draw(const kapusha::Camera& cam) const
 {
-  pimpl_->draw();
+  pimpl_->draw(cam);
 }
