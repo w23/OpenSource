@@ -24,7 +24,8 @@ void OpenSource::init(kapusha::ISystem* system)
   
   BSP *bsp = new BSP;
   kapusha::StreamFile *stream = new kapusha::StreamFile;
-  KP_ASSERT(stream->open("c1a1c.bsp") == kapusha::Stream::ErrorNone);
+  KP_ENSURE(stream->open("c1a1c.bsp") == kapusha::Stream::ErrorNone);
+
   bsp->load(stream);
 
   levels_.push_back(bsp);
@@ -39,10 +40,11 @@ void OpenSource::resize(int width, int height)
 
 void OpenSource::draw(int ms, float dt)
 {
-  camera_.moveForward(forward_speed_ * dt);
-  camera_.moveRigth(right_speed_ * dt);
-  camera_.rotatePitch(pitch_speed_ * dt);
-  camera_.rotateYaw(yaw_speed_ * dt);
+  camera_.moveForward(forward_speed_ * dt * 10.f);
+  camera_.moveRigth(right_speed_ * dt * 10.f);
+//  camera_.rotatePitch(pitch_speed_ * dt);
+  //camera_.rotateYaw(yaw_speed_ * dt);
+//  camera_.rotateAxis(math::vec3f(0.f, 1.f, 0.f), yaw_speed_ * dt);
   camera_.update();
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -80,6 +82,9 @@ void OpenSource::keyEvent(const kapusha::IViewport::KeyEvent &event)
     case KeyEvent::KeyRight:
       yaw_speed_ += event.isPressed() ? -1.f : 1.f;
       break;
+    case KeyEvent::KeyEsc:
+      system_->quit(0);
+	  break;
       
     default:
       L("key %d is unknown", event.key());
@@ -89,6 +94,11 @@ void OpenSource::keyEvent(const kapusha::IViewport::KeyEvent &event)
 void OpenSource::pointerEvent(const kapusha::IViewport::PointerEvent &event)
 {
   math::vec2f rel = viewport_.relative(event.main().point)*2.f - 1.f;
-  yaw_speed_ = -rel.x;
-  pitch_speed_ = rel.y;
+  //yaw_speed_ = -rel.x * 100.f;
+  //pitch_speed_ = rel.y * 100.f;
+  
+  camera_.rotatePitch(rel.y);
+  camera_.rotateAxis(math::vec3f(0.f, 1.f, 0.f), -rel.x);
+  
+  system_->pointerReset();
 }

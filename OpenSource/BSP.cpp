@@ -14,8 +14,6 @@ using namespace kapusha;
 
 namespace bsp {
 
-#define HEADER_LUMPS 64
-
 struct lump_t {
   int offset;
 	int length;
@@ -23,17 +21,22 @@ struct lump_t {
 	int identifier;
 };
 
+enum lumpType {
+  lumpEntities = 0,
+  lumpVertexes = 3,
+  lumpFaces = 7,
+  lumpEdges = 12,
+  lumpSurfedges = 13,
+  _lumpsCount = 64
+};
+
 struct header_t
 {
   char magic[4];
 	int version;
-	lump_t lumps[HEADER_LUMPS];
+	lump_t lumps[_lumpsCount];
 	int	revision;
 };
-
-#define LUMP_VERTEXES 3
-#define LUMP_FACES 7
-#define LUMP_EDGES 12
 
 }
 
@@ -52,24 +55,36 @@ public:
     L("BSP version: %d", header_.version);
     L("BSP revision %d", header_.revision);
 
+    // dump entities
+    /*
+    {
+      const bsp::lump_t *lump_ent = header_.lumps + bsp::lumpEntities;
+      stream->seek(lump_ent->offset, StreamSeekable::ReferenceStart);
+      char* ent_txt = new char[lump_ent->length];
+      stream->copy(ent_txt, lump_ent->length);
+      L("Entities: %s", ent_txt);
+      delete ent_txt;
+    }
+    */
+
     // load vertices
-    const bsp::lump_t *lump_vtx = header_.lumps + LUMP_VERTEXES;
+    const bsp::lump_t *lump_vtx = header_.lumps + bsp::lumpVertexes;
     stream->seek(lump_vtx->offset, StreamSeekable::ReferenceStart);
     L("Vertices: %d", lump_vtx->length / 12);
 
     KP_ASSERT(sizeof(vec3f) == 12);
-    int bytes_vertices = header_.lumps[LUMP_VERTEXES].length;
+    int bytes_vertices = lump_vtx->length;
     int num_vertices = bytes_vertices / sizeof(vec3f);
     vec3f *vertices = new vec3f[num_vertices];
     stream->copy(vertices, bytes_vertices);
     for (int i = 0; i < num_vertices; ++i)
-      vertices[i] /= 100.f;
+      vertices[i] = vertices[i].xzy() * vec3f(1,1,-1) * .01905f;
     Buffer *vtxb = new Buffer;
     vtxb->load(vertices, bytes_vertices);
     delete vertices;
 
     // load edges
-    const bsp::lump_t *lump_edges = header_.lumps + LUMP_EDGES;
+    const bsp::lump_t *lump_edges = header_.lumps + bsp::lumpEdges;
     stream->seek(lump_edges->offset, StreamSeekable::ReferenceStart);
     int num_edges = lump_edges->length / 4; 
     L("Edges: %d", num_edges);
