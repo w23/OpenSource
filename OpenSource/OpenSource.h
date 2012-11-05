@@ -14,7 +14,7 @@ class BSP;
 class OpenSource : public kapusha::IViewport
 {
 public:
-  OpenSource();
+  OpenSource(const char* file);
   virtual ~OpenSource();
 
 public: // IViewport
@@ -25,6 +25,7 @@ public: // IViewport
   void pointerEvent(const kapusha::IViewport::PointerEvent &event);
 
 private:
+  const char* filename_;
   kapusha::ISystem *system_;
   std::vector<BSP*> levels_;
   

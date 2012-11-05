@@ -11,6 +11,6 @@
 
 int main(int argc, const char * argv[])
 {
-  return runGlut(argc, argv, new OpenSource);
+  return runGlut(argc, argv, new OpenSource(argv[1]));
 }
 

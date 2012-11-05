@@ -8,8 +8,9 @@
 #include "BSP.h"
 #include "OpenSource.h"
 
-OpenSource::OpenSource(void)
-: camera_(math::vec3f(0,0,10))
+OpenSource::OpenSource(const char* file)
+: filename_(file)
+, camera_(math::vec3f(0,0,10))
 , forward_speed_(0), right_speed_(0), pitch_speed_(0), yaw_speed_(0)
 {
 }
@@ -24,7 +25,7 @@ void OpenSource::init(kapusha::ISystem* system)
   
   BSP *bsp = new BSP;
   kapusha::StreamFile *stream = new kapusha::StreamFile;
-  KP_ENSURE(stream->open("c1a1c.bsp") == kapusha::Stream::ErrorNone);
+  KP_ENSURE(stream->open(filename_) == kapusha::Stream::ErrorNone);
 
   bsp->load(stream);
 
