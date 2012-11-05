@@ -1,3 +1,4 @@
+#include <map>
 #include <Kapusha/sys/Log.h>
 #include <Kapusha/io/Stream.h>
 #include <Kapusha/math/types.h>
@@ -75,7 +76,7 @@ struct Face {
 
 class BSP::Impl {
 private:
-  
+  std::vector<Object*> objects_;
 
 public:
   Impl(StreamSeekable *stream)
@@ -169,18 +170,20 @@ public:
     int num_faces = lump_faces->length / sizeof(bsp::face_t);
     L("Faces: %d", num_faces);
     stream->seek(lump_faces->offset, StreamSeekable::ReferenceStart);
-    std::vector<int>  face_indices;
+    struct FaceMaterial {
+      std::vector<int>  indices;
+    };
+    typedef std::map<u32, FaceMaterial> FaceMaterialMap;
+    FaceMaterialMap materials;
     for (int i = 0; i < num_faces; ++i)
     {
       bsp::face_t face;
       stream->copy(&face, sizeof(bsp::face_t));
 
-      if (texinfo[face.ref_texinfo].flags & 0x401)//0x400)//0x286)
-      {
-//        L("Drop invisible face %d", i);
-        continue;
-      }
-//        else L("%08x", texinfo[face.ref_texinfo].flags);
+      // drop some weird geometry
+      if (texinfo[face.ref_texinfo].flags & 0x401) continue;
+
+      std::vector<int>& face_indices = materials[texinfo[face.ref_texinfo].ref_texdata].indices;
 
       int first = surfedges[face.ref_surfedge];
       int prev = surfedges[face.ref_surfedge+1];
@@ -195,10 +198,8 @@ public:
     }
     delete texinfo;
     delete surfedges;
-    Buffer *poly_index_buffer = new Buffer();
-    poly_index_buffer->load(&(*face_indices.begin()), face_indices.size() * 4);
-    int poly_indices = face_indices.size();
-    
+    L("Different materials: %d", materials.size());
+        
     const char* svtx =
       "uniform mat4 mview, mproj;\n"
       "attribute vec4 vtx;\n"
@@ -222,13 +223,21 @@ public:
     batch->setGeometry(Batch::GeometryLineList, 0, num_edges * 2, edgeb);  
     edges_ = new Object(batch);
 
-    batch = new Batch();
-    mat = new Material(prg);
-    mat->setUniform("color", vec4f(.5f));
-    batch->setMaterial(mat);
-    batch->setAttribSource("vtx", vertex_buffer);
-    batch->setGeometry(Batch::GeometryTriangleList, 0, poly_indices, poly_index_buffer);
-    polys_ = new Object(batch);
+    for(auto it = materials.begin(); it != materials.end(); ++it)
+    {
+      Buffer *index_buffer = new Buffer();
+      index_buffer->load(&(*it->second.indices.begin()), it->second.indices.size() * 4);
+      int poly_indices = it->second.indices.size();
+
+      batch = new Batch();
+      mat = new Material(prg);
+      mat->setUniform("color", 
+        vec4f(frand(), frand(), frand(), frand()));
+      batch->setMaterial(mat);
+      batch->setAttribSource("vtx", vertex_buffer);
+      batch->setGeometry(Batch::GeometryTriangleList, 0, poly_indices, index_buffer);
+      objects_.push_back(new Object(batch));
+    }
 
   }
 
@@ -238,7 +247,8 @@ public:
 
   void draw(const kapusha::Camera& cam) const
   {
-    polys_->draw(cam.getView(), cam.getProjection());
+    for(auto it = objects_.begin(); it != objects_.end(); ++it)
+      (*it)->draw(cam.getView(), cam.getProjection());
     edges_->draw(cam.getView(), cam.getProjection());
   }
 
@@ -246,7 +256,6 @@ private:
   std::auto_ptr<StreamSeekable> stream_;
   bsp::header_t header_;
   Object* edges_;
-  Object* polys_;
 };
 
 BSP::BSP(void)
