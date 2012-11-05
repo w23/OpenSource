@@ -29,6 +29,10 @@ void OpenSource::init(kapusha::ISystem* system)
   bsp->load(stream);
 
   levels_.push_back(bsp);
+
+  glEnable(GL_CULL_FACE);
+  glEnable(GL_DEPTH_TEST);
+  glFrontFace(GL_CW);
 }
 
 void OpenSource::resize(int width, int height)
