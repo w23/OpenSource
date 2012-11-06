@@ -56,8 +56,9 @@ void OpenSource::draw(int ms, float dt)
 
   for (auto it = levels_.begin(); it != levels_.end(); ++it)
     (*it)->draw(camera_);
-  
-  system_->redraw();
+ 
+  if (forward_speed_ != 0 || right_speed_ != 0)
+    system_->redraw();
 }
 
 void OpenSource::keyEvent(const kapusha::IViewport::KeyEvent &event)
@@ -106,4 +107,5 @@ void OpenSource::pointerEvent(const kapusha::IViewport::PointerEvent &event)
   camera_.rotateAxis(math::vec3f(0.f, 1.f, 0.f), -rel.x);
   
   system_->pointerReset();
+  system_->redraw();
 }

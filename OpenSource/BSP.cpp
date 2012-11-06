@@ -1,3 +1,4 @@
+#include <vector>
 #include <map>
 #include <Kapusha/sys/Log.h>
 #include <Kapusha/io/Stream.h>

@@ -9,10 +9,13 @@
 ///////////////////////////////////////////////////////////////////////////////
 using namespace kapusha;
 
+int w = WIDTH, h = HEIGHT;
+HWND hWnd;
+
 class SystemWin : public ISystem
 {
 public:
-  SystemWin() : need_redraw_(true) {}
+  SystemWin() : need_redraw_(true), ignore_move_(false) {}
 
   virtual void quit(int code)
   {
@@ -24,9 +27,22 @@ public:
     need_redraw_ = true;
   }
 
+  virtual void pointerReset()
+  {
+    POINT pt;
+    pt.x = w / 2;
+    pt.y = h / 2;
+    ClientToScreen(hWnd, &pt);
+    SetCursorPos(pt.x, pt.y);
+    ignore_move_ = true;
+  }
+
 public:
   bool need_redraw_;
+  bool ignore_move_;
 };
+
+static SystemWin system_win;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -40,14 +56,59 @@ public:
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-IApplication *application;
+IViewport *viewport;
+
+int keyTranslate(int key)
+{
+  if (key > 0x29 && key < 0x40)
+    return key;
+
+  if (key > 0x40 && key < 0x5B)
+      return key + 0x20;
+
+  switch (key)
+  {
+  case VK_UP:
+    return IViewport::KeyEvent::KeyUp;
+  case VK_DOWN:
+    return IViewport::KeyEvent::KeyDown;
+  case VK_LEFT:
+    return IViewport::KeyEvent::KeyLeft;
+  case VK_RIGHT:
+    return IViewport::KeyEvent::KeyRight;
+  default:
+    L("Uknown key code %d", key);
+    return key;
+  }
+}
 
 LRESULT CALLBACK windowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
   switch (msg)
   {
   case WM_SIZE:
-    application->resize(lParam & 0xffff, lParam >> 16);
+    {
+      w = lParam & 0xffff;
+      h = lParam >> 16;
+      viewport->resize(lParam & 0xffff, lParam >> 16);
+    }
+    break;
+
+  case WM_KEYDOWN:
+    if (!(lParam & (1<<30))) // ignore repeat
+      viewport->userEvent(IViewport::KeyEvent(keyTranslate(wParam), 0));
+    break;
+  
+  case WM_KEYUP:
+    viewport->userEvent(IViewport::KeyEvent(keyTranslate(wParam), 0, false));
+    break;
+
+  case WM_MOUSEMOVE:
+    {
+      if (system_win.ignore_move_) { system_win.ignore_move_ = false; break; }
+      viewport->userEvent(IViewport::PointerEvent(math::vec2f(lParam&0xffff, lParam >> 16),
+                                                  IViewport::PointerEvent::Pointer::Move));
+    }
     break;
 
   case WM_CLOSE:
@@ -66,11 +127,10 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdS
   UNREFERENCED_PARAMETER(cmdLine);
   UNREFERENCED_PARAMETER(cmdShow);
 
-  SP_LOG_OPEN("OpenSource.log", new OutputDebugLog());
+  KP_LOG_OPEN("OpenSource.log", new OutputDebugLog());
   L("O NOES!!");
 
-  SystemWin system;
-  application = new OpenSource();
+  viewport = new OpenSource(__argv[1]);
 
   L("Creating window");
 
@@ -83,8 +143,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdS
   wndclass.lpszClassName = L"OpenSourceWindowClass";
   RegisterClassEx(&wndclass);
 
-  HWND hWnd = CreateWindow(wndclass.lpszClassName, 0, WS_POPUP|WS_VISIBLE|WS_OVERLAPPEDWINDOW,
-    0, 0, WIDTH, HEIGHT, 0, 0, hInst, 0);
+  hWnd = CreateWindow(wndclass.lpszClassName, 0, WS_POPUP|WS_VISIBLE|WS_OVERLAPPEDWINDOW,
+                      0, 0, WIDTH, HEIGHT, 0, 0, hInst, 0);
 
   L("hWnd = %d", hWnd);
 
@@ -97,22 +157,35 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdS
 
   glewInit();
 
-  application->init(&system);
+  viewport->init(&system_win);
 
   L("will enter message loop");
 
   MSG message;
-  while (GetMessage(&message, NULL, 0, 0))
-	{
-			TranslateMessage(&message);
-			DispatchMessage(&message);
+  int prev = GetTickCount(), now;
+  while (true)
+  {
+    if (system_win.need_redraw_)
+      while (PeekMessage(&message, NULL, 0, 0, PM_REMOVE))
+	    {
+			  TranslateMessage(&message);
+			  DispatchMessage(&message);
+      }
+    else 
+      if (!GetMessage(&message, NULL, 0, 0))
+        break;
 
-      application->draw(GetTickCount());
-      SwapBuffers(hDC);
+    if (message.message == WM_QUIT)
+        break;
+
+    now = GetTickCount();
+    viewport->draw(now, (now - prev) / 1000.f);
+    SwapBuffers(hDC);
+    prev = now;
 	}
 
-  delete application;
-  application = 0;
+  delete viewport;
+  viewport = 0;
 
   L("Exiting");
 

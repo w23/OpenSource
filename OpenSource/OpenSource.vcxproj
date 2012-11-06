@@ -58,7 +58,8 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <PrecompiledHeaderFile />
       <AdditionalOptions>/GR- %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>C:\Users\w23\Documents\Visual Studio 2012\Projects\OpenSource;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir);$(SolutionDir)/Kapusha/glew</AdditionalIncludeDirectories>
+      <SuppressStartupBanner>false</SuppressStartupBanner>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -79,7 +80,8 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <PrecompiledHeaderFile />
       <AdditionalOptions>/GR- %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>C:\Users\w23\Documents\Visual Studio 2012\Projects\OpenSource;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir);$(SolutionDir)/Kapusha/glew</AdditionalIncludeDirectories>
+      <SuppressStartupBanner>false</SuppressStartupBanner>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
