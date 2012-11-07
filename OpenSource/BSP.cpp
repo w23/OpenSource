@@ -9,6 +9,7 @@
 #include <Kapusha/gl/Batch.h>
 #include <Kapusha/gl/Object.h>
 #include <Kapusha/gl/Camera.h>
+#include "Entity.h"
 #include "BSP.h"
 
 using namespace math;
@@ -72,16 +73,17 @@ struct face_t
 
 }
 
-struct Face {
-};
-
 class BSP::Impl {
-private:
+protected:
+  friend class BSP;
   std::vector<Object*> objects_;
+  math::vec3f translation_;
+  MapLink links_;
 
 public:
   Impl(StreamSeekable *stream)
-    : stream_(stream)
+    : translation_(0)
+    , stream_(stream)
   {
     //! \fixme check for errors
     stream->copy(&header_, sizeof header_);
@@ -100,17 +102,46 @@ public:
       return;
     }
 
-    // dump entities
-    /*
+    // find linked maps in entities
     {
       const bsp::lump_t *lump_ent = header_.lumps + bsp::lumpEntities;
       stream->seek(lump_ent->offset, StreamSeekable::ReferenceStart);
       char* ent_txt = new char[lump_ent->length];
-      stream->copy(ent_txt, lump_ent->length);
-      L("Entities: %s", ent_txt);
-      delete ent_txt;
+
+      for(;;)
+      {
+        Entity *ent = Entity::readNextEntity(stream);
+        if (!ent) break;
+
+        const std::string *classname = ent->getParam("classname");
+        if (classname)
+        {
+          if (*classname == "info_landmark")
+          {
+            ent->print();
+            KP_ASSERT(ent->getParam("targetname"));
+            KP_ASSERT(ent->getParam("origin"));
+            links_.landmarks[*ent->getParam("targetname")] = ent->getVec3Param("origin");
+          } else if (*classname == "trigger_changelevel")
+          {
+            ent->print();
+            KP_ASSERT(ent->getParam("landmark"));
+            KP_ASSERT(ent->getParam("map"));
+            links_.maps[*ent->getParam("map")] = *ent->getParam("landmark");
+          }
+        }
+
+        delete ent;
+      }
+
+      for(auto it = links_.maps.begin(); it != links_.maps.end(); ++it)
+      {
+        L("Map \"%s\" references \"%s\" (%f, %f, %f)", it->first.c_str(), it->second.c_str(),
+          links_.landmarks[it->second].x,
+          links_.landmarks[it->second].y,
+          links_.landmarks[it->second].z);
+      }
     }
-    */
 
     // load vertices
     Buffer* vertex_buffer = new Buffer;
@@ -203,9 +234,11 @@ public:
         
     const char* svtx =
       "uniform mat4 mview, mproj;\n"
+      "uniform vec4 trans;\n"
       "attribute vec4 vtx;\n"
       "void main(){\n"
-      "gl_Position = mproj * mview * (vtx.xzyw * vec4(.01905, .01905, -.01905, 1.));\n"
+      //"gl_Position = mproj * mview * (vtx.xzyw * vec4(.01905, .01905, -.01905, 1.));\n"
+      "gl_Position = mproj * mview * ((vtx + trans) * vec4(vec3(.01905), 1.));\n"
       "}"
     ;
     const char* sfrg =
@@ -219,6 +252,7 @@ public:
     Batch* batch = new Batch();
     Material* mat = new Material(prg);
     mat->setUniform("color", vec4f(1.f));
+    mat->setUniform("trans", translation_);
     batch->setMaterial(mat);
     batch->setAttribSource("vtx", vertex_buffer);
     batch->setGeometry(Batch::GeometryLineList, 0, num_edges * 2, edgeb);  
@@ -234,6 +268,7 @@ public:
       mat = new Material(prg);
       mat->setUniform("color", 
         vec4f(frand(), frand(), frand(), frand()));
+      mat->setUniform("trans", translation_);
       batch->setMaterial(mat);
       batch->setAttribSource("vtx", vertex_buffer);
       batch->setGeometry(Batch::GeometryTriangleList, 0, poly_indices, index_buffer);
@@ -249,9 +284,15 @@ public:
   void draw(const kapusha::Camera& cam) const
   {
     for(auto it = objects_.begin(); it != objects_.end(); ++it)
+    {
+      (*it)->getBatch()->getMaterial()->setUniform("trans", translation_);
       (*it)->draw(cam.getView(), cam.getProjection());
-    edges_->draw(cam.getView(), cam.getProjection());
+    }
+    edges_->getBatch()->getMaterial()->setUniform("trans", translation_);
+    //edges_->draw(cam.getView(), cam.getProjection());
   }
+
+  math::vec3f& translation() { return translation_; }
 
 private:
   std::auto_ptr<StreamSeekable> stream_;
@@ -277,4 +318,19 @@ bool BSP::load(StreamSeekable* stream)
 void BSP::draw(const kapusha::Camera& cam) const
 {
   pimpl_->draw(cam);
+}
+
+math::vec3f& BSP::translation()
+{
+  return pimpl_->translation();
+}
+
+const math::vec3f& BSP::translation() const
+{
+  return pimpl_->translation();
+}
+
+const BSP::MapLink& BSP::getMapLinks() const
+{
+  return pimpl_->links_;
 }

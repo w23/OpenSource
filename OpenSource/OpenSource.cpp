@@ -8,11 +8,16 @@
 #include "BSP.h"
 #include "OpenSource.h"
 
-OpenSource::OpenSource(const char* file)
-: filename_(file)
-, camera_(math::vec3f(0,0,10))
+OpenSource::OpenSource(
+  const std::string& path,
+  const std::string& file,
+  int depth)
+: path_(path)
+, depth_(depth)
+, camera_(math::vec3f(0,10,0), math::vec3f(0), math::vec3f(0,0,1), 60.f, 1.7, .01f, 1000.f)
 , forward_speed_(0), right_speed_(0), pitch_speed_(0), yaw_speed_(0)
 {
+  maps_to_load_.push_back(file);
 }
 
 OpenSource::~OpenSource(void)
@@ -22,14 +27,68 @@ OpenSource::~OpenSource(void)
 void OpenSource::init(kapusha::ISystem* system)
 {
   system_ = system;
-  
-  BSP *bsp = new BSP;
-  kapusha::StreamFile *stream = new kapusha::StreamFile;
-  KP_ENSURE(stream->open(filename_) == kapusha::Stream::ErrorNone);
 
-  bsp->load(stream);
+  while (depth_ > 0 && !maps_to_load_.empty())
+  {
+    L("maps to load left %d %d", maps_to_load_.size(), depth_);
 
-  levels_.push_back(bsp);
+    std::string map = maps_to_load_.front();
+    maps_to_load_.pop_front();
+
+    L("Loading map %s", map.c_str());
+
+    BSP *bsp = new BSP;
+    kapusha::StreamFile *stream = new kapusha::StreamFile;
+    KP_ENSURE(stream->open((path_ + map + ".bsp").c_str()) == kapusha::Stream::ErrorNone);
+    if (stream->error_)
+    {
+      L("cannot load map %s", map.c_str());
+      delete stream;
+      delete bsp;
+      continue;
+    }
+    bsp->load(stream);
+
+    const BSP::MapLink& link = bsp->getMapLinks();
+    {
+      bool link_found = false;
+      for(auto ref = link.maps.begin(); ref != link.maps.end(); ++ref)
+      {
+        auto found = levels_.find(ref->first);
+        if (found != levels_.end())
+        {
+          if (!link_found)
+          {
+            auto minemark = link.landmarks.find(ref->second);
+            KP_ASSERT(minemark != link.landmarks.end());
+
+            auto landmark = found->second->getMapLinks().landmarks.find(ref->second);
+            KP_ASSERT(landmark != found->second->getMapLinks().landmarks.end());
+
+            bsp->translation() = landmark->second - minemark->second + found->second->translation();
+            L("%s links to %s", map.c_str(), ref->first.c_str());
+            link_found = true;
+          }
+        } else {
+          if (map != ref->first)
+            maps_to_load_.push_back(ref->first);
+        }
+      }
+
+      if (!link_found)
+        L("%s doesn't link to anything!", map.c_str());
+    }
+
+    levels_[map] = bsp;
+    depth_--;
+  }
+
+  {
+    L("List of all loaded maps:");
+    int i = 0;
+    for (auto it = levels_.begin(); it != levels_.end(); ++it, ++i)
+      L("%d: %s", i, it->first.c_str());
+  }
 
   glEnable(GL_CULL_FACE);
   glEnable(GL_DEPTH_TEST);
@@ -45,8 +104,8 @@ void OpenSource::resize(int width, int height)
 
 void OpenSource::draw(int ms, float dt)
 {
-  camera_.moveForward(forward_speed_ * dt * 10.f);
-  camera_.moveRigth(right_speed_ * dt * 10.f);
+  camera_.moveForward(forward_speed_ * dt * 100.f);
+  camera_.moveRigth(right_speed_ * dt * 100.f);
 //  camera_.rotatePitch(pitch_speed_ * dt);
   //camera_.rotateYaw(yaw_speed_ * dt);
 //  camera_.rotateAxis(math::vec3f(0.f, 1.f, 0.f), yaw_speed_ * dt);
@@ -55,7 +114,7 @@ void OpenSource::draw(int ms, float dt)
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   for (auto it = levels_.begin(); it != levels_.end(); ++it)
-    (*it)->draw(camera_);
+    it->second->draw(camera_);
  
   if (forward_speed_ != 0 || right_speed_ != 0)
     system_->redraw();
@@ -104,7 +163,7 @@ void OpenSource::pointerEvent(const kapusha::IViewport::PointerEvent &event)
   //pitch_speed_ = rel.y * 100.f;
   
   camera_.rotatePitch(rel.y);
-  camera_.rotateAxis(math::vec3f(0.f, 1.f, 0.f), -rel.x);
+  camera_.rotateAxis(math::vec3f(0.f, 0.f, 1.f), -rel.x);
   
   system_->pointerReset();
   system_->redraw();

@@ -130,7 +130,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdS
   KP_LOG_OPEN("OpenSource.log", new OutputDebugLog());
   L("O NOES!!");
 
-  viewport = new OpenSource(__argv[1]);
+  viewport = new OpenSource(__argv[1], __argv[2]);
 
   L("Creating window");
 

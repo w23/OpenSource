@@ -1,6 +1,8 @@
 #pragma once
 
-#include <vector>
+#include <string>
+#include <deque>
+#include <map>
 
 #include <Kapusha/sys/IViewport.h>
 #include <Kapusha/gl/Camera.h>
@@ -14,7 +16,10 @@ class BSP;
 class OpenSource : public kapusha::IViewport
 {
 public:
-  OpenSource(const char* file);
+  OpenSource(
+    const std::string& path,
+    const std::string& file,
+    int depth = 128);
   virtual ~OpenSource();
 
 public: // IViewport
@@ -25,9 +30,11 @@ public: // IViewport
   void pointerEvent(const kapusha::IViewport::PointerEvent &event);
 
 private:
-  const char* filename_;
+  std::string path_;
+  int depth_;
   kapusha::ISystem *system_;
-  std::vector<BSP*> levels_;
+  std::map<std::string, BSP*> levels_;
+  std::deque<std::string> maps_to_load_;
   
   math::rect2f viewport_;
   kapusha::Camera camera_;

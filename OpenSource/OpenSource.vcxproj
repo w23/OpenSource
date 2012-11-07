@@ -59,7 +59,8 @@
       <PrecompiledHeaderFile />
       <AdditionalOptions>/GR- %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(SolutionDir);$(SolutionDir)/Kapusha/glew</AdditionalIncludeDirectories>
-      <SuppressStartupBanner>false</SuppressStartupBanner>
+      <SuppressStartupBanner>
+      </SuppressStartupBanner>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -81,7 +82,8 @@
       <PrecompiledHeaderFile />
       <AdditionalOptions>/GR- %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(SolutionDir);$(SolutionDir)/Kapusha/glew</AdditionalIncludeDirectories>
-      <SuppressStartupBanner>false</SuppressStartupBanner>
+      <SuppressStartupBanner>
+      </SuppressStartupBanner>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -93,6 +95,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="BSP.cpp" />
+    <ClCompile Include="Entity.cpp" />
     <ClCompile Include="main_win.cpp">
       <ExceptionHandling Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExceptionHandling>
       <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</BufferSecurityCheck>
@@ -107,6 +110,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BSP.h" />
+    <ClInclude Include="Entity.h" />
     <ClInclude Include="OpenSource.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

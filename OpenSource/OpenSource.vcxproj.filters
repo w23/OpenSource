@@ -24,12 +24,18 @@
     <ClCompile Include="BSP.cpp">
       <Filter>Файлы исходного кода</Filter>
     </ClCompile>
+    <ClCompile Include="Entity.cpp">
+      <Filter>Файлы исходного кода</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="OpenSource.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
     <ClInclude Include="BSP.h">
+      <Filter>Заголовочные файлы</Filter>
+    </ClInclude>
+    <ClInclude Include="Entity.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
   </ItemGroup>
