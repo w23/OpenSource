@@ -106,11 +106,13 @@
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">/GR- %(AdditionalOptions)</AdditionalOptions>
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">/GR- %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
+    <ClCompile Include="Materializer.cpp" />
     <ClCompile Include="OpenSource.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BSP.h" />
     <ClInclude Include="Entity.h" />
+    <ClInclude Include="Materializer.h" />
     <ClInclude Include="OpenSource.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

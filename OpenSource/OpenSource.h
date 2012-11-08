@@ -19,7 +19,7 @@ public:
   OpenSource(
     const std::string& path,
     const std::string& file,
-    int depth = 128);
+    int depth = 32);
   virtual ~OpenSource();
 
 public: // IViewport

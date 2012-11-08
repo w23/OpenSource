@@ -5,6 +5,7 @@
 #include <Kapusha/gl/Object.h>
 #include <Kapusha/gl/Program.h>
 #include <Kapusha/io/StreamFile.h>
+#include "Materializer.h"
 #include "BSP.h"
 #include "OpenSource.h"
 
@@ -14,7 +15,7 @@ OpenSource::OpenSource(
   int depth)
 : path_(path)
 , depth_(depth)
-, camera_(math::vec3f(0,10,0), math::vec3f(0), math::vec3f(0,0,1), 60.f, 1.7, .01f, 1000.f)
+, camera_(math::vec3f(0,10,0), math::vec3f(0), math::vec3f(0,0,1), 60.f, 1.7, 10.f, 100000.f)
 , forward_speed_(0), right_speed_(0), pitch_speed_(0), yaw_speed_(0)
 {
   maps_to_load_.push_back(file);
@@ -27,6 +28,8 @@ OpenSource::~OpenSource(void)
 void OpenSource::init(kapusha::ISystem* system)
 {
   system_ = system;
+
+  Materializer materializer;
 
   while (depth_ > 0 && !maps_to_load_.empty())
   {
@@ -47,7 +50,7 @@ void OpenSource::init(kapusha::ISystem* system)
       delete bsp;
       continue;
     }
-    bsp->load(stream);
+    bsp->load(stream, &materializer);
 
     const BSP::MapLink& link = bsp->getMapLinks();
     {
@@ -70,8 +73,11 @@ void OpenSource::init(kapusha::ISystem* system)
             link_found = true;
           }
         } else {
-          if (map != ref->first)
+          if (map != ref->first && 
+              std::find(maps_to_load_.begin(),
+                        maps_to_load_.end(), ref->first) == maps_to_load_.end())
             maps_to_load_.push_back(ref->first);
+
         }
       }
 
@@ -81,6 +87,10 @@ void OpenSource::init(kapusha::ISystem* system)
 
     levels_[map] = bsp;
     depth_--;
+  }
+
+  {
+    materializer.print();
   }
 
   {
@@ -104,8 +114,9 @@ void OpenSource::resize(int width, int height)
 
 void OpenSource::draw(int ms, float dt)
 {
-  camera_.moveForward(forward_speed_ * dt * 100.f);
-  camera_.moveRigth(right_speed_ * dt * 100.f);
+  const float speed = 1000.f;
+  camera_.moveForward(forward_speed_ * dt * speed);
+  camera_.moveRigth(right_speed_ * dt * speed);
 //  camera_.rotatePitch(pitch_speed_ * dt);
   //camera_.rotateYaw(yaw_speed_ * dt);
 //  camera_.rotateAxis(math::vec3f(0.f, 1.f, 0.f), yaw_speed_ * dt);

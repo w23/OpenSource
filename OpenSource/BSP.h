@@ -11,13 +11,15 @@ namespace kapusha {
 
 using kapusha::StreamSeekable;
 
+class Materializer;
+
 class BSP
 {
 public:
   BSP(void);
   ~BSP(void);
 
-  bool load(StreamSeekable *stream);
+  bool load(StreamSeekable *stream, Materializer* materializer);
 
   void draw(const kapusha::Camera&) const;
 
