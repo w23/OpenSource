@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <deque>
 #include <map>
 
@@ -34,6 +35,7 @@ private:
   int depth_;
   kapusha::ISystem *system_;
   std::map<std::string, BSP*> levels_;
+  std::vector<BSP*> levelsv_;
   std::deque<std::string> maps_to_load_;
   
   math::rect2f viewport_;
@@ -42,5 +44,6 @@ private:
   float right_speed_;
   float pitch_speed_;
   float yaw_speed_;
-};
 
+  int selection_;
+};

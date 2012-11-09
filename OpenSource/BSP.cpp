@@ -322,5 +322,7 @@ void BSP::setParent(const BSP* parent, math::vec3f relative)
 void BSP::updateShift(math::vec3f shift)
 {
   shift_ = shift;
-  translation_ = relative_ + parent_->translation() + shift_;
+  translation_ = relative_ + shift_;
+  if (parent_)
+    translation_ += parent_->translation();
 }

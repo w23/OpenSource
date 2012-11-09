@@ -46,7 +46,10 @@ kapusha::Material* Materializer::loadMaterial(const char *name_raw)
   }
 
   kapusha::Material* mat = new kapusha::Material(UBER_SHADER1111_);
-  mat->setUniform("color", math::vec4f(math::frand(), math::frand(), math::frand(), 1.f));
+  if (name != "__BSP_edge")
+    mat->setUniform("color", math::vec4f(math::frand(), math::frand(), math::frand(), 1.f));
+  else
+    mat->setUniform("color", math::vec4f(1.f));
 
   cached_materials_[name] = mat;
 
