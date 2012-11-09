@@ -68,7 +68,7 @@ void OpenSource::init(kapusha::ISystem* system)
             auto landmark = found->second->getMapLinks().landmarks.find(ref->second);
             KP_ASSERT(landmark != found->second->getMapLinks().landmarks.end());
 
-            bsp->translation() = landmark->second - minemark->second + found->second->translation();
+            bsp->setParent(found->second, landmark->second - minemark->second);
             L("%s links to %s", map.c_str(), ref->first.c_str());
             link_found = true;
           }
@@ -117,9 +117,6 @@ void OpenSource::draw(int ms, float dt)
   const float speed = 1000.f;
   camera_.moveForward(forward_speed_ * dt * speed);
   camera_.moveRigth(right_speed_ * dt * speed);
-//  camera_.rotatePitch(pitch_speed_ * dt);
-  //camera_.rotateYaw(yaw_speed_ * dt);
-//  camera_.rotateAxis(math::vec3f(0.f, 1.f, 0.f), yaw_speed_ * dt);
   camera_.update();
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
