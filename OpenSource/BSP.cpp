@@ -39,7 +39,7 @@ enum lumpType {
   _lumpsCount = 64
 };
 
-struct headert
+struct header_t
 {
   char magic[4];
   int version;
@@ -108,7 +108,7 @@ BSP::~BSP(void)
 bool BSP::load(StreamSeekable* stream, Materializer* materializer)
 {
   //! \fixme check for errors
-  bsp::headert header;
+  bsp::header_t header;
   stream->copy(&header, sizeof header);
 
   //! \fixme check format
@@ -161,11 +161,16 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
 
   // load vertices
   Buffer* vertex_buffer = new Buffer;
+  math::vec3f *vertices;
+  int num_vertices;
   {
     const bsp::lump_t *lump_vtx = header.lumps + bsp::lumpVertexes;
+    num_vertices = lump_vtx->length / sizeof(math::vec3f);
+    vertices = new math::vec3f[num_vertices];
     //L("Vertices: %d", lump_vtx->length / 12);
     stream->seek(lump_vtx->offset, StreamSeekable::ReferenceStart);
-    vertex_buffer->load(stream, lump_vtx->length);
+    stream->copy(vertices, lump_vtx->length);
+    vertex_buffer->load(vertices, lump_vtx->length);
   }
 
   // preload surfedges
@@ -241,10 +246,12 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   //L("Faces: %d", num_faces);
   stream->seek(lump_faces->offset, StreamSeekable::ReferenceStart);
   struct FaceMaterial {
-    std::vector<int>  indices;
+    math::vec4f texCoord[2];
+    std::vector<int> indices;
   };
   typedef std::map<u32, FaceMaterial> FaceMaterialMap;
   FaceMaterialMap materials;
+  int num_indices = 0;
   for (int i = 0; i < num_faces; ++i)
   {
     bsp::face_t face;
@@ -255,6 +262,8 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     if (texinfo[face.ref_texinfo].ref_texdata == -1) continue;
 
     std::vector<int>& face_indices = materials[texinfo[face.ref_texinfo].ref_texdata].indices;
+    memcpy(&materials[texinfo[face.ref_texinfo].ref_texdata].texCoord,
+           texinfo[face.ref_texinfo].textureVecs, 2 * sizeof(vec4f));
 
     int first = surfedges[face.ref_surfedge];
     int prev = surfedges[face.ref_surfedge+1];
@@ -265,34 +274,57 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
       face_indices.push_back(prev);
       prev = surfedges[face.ref_surfedge + j];
       face_indices.push_back(prev);
+      num_indices += 3;
     }
   }
   delete texinfo;
   delete surfedges;
   L("Different materials: %d", materials.size());
 
+  /*
   Batch* batch = new Batch();
   batch->setMaterial(materializer->loadMaterial("__BSP_edge"));
   batch->setAttribSource("vtx", vertex_buffer);
   batch->setGeometry(Batch::GeometryLineList, 0, num_edges * 2, edgeb);  
   edges_ = new Object(batch);
+  */
 
+  std::vector<int> indices;
+  indices.reserve(num_indices);
+  vec2f *texcoords = new vec2f[num_vertices];
+  Buffer *index_buffer = new Buffer;
   for(auto it = materials.begin(); it != materials.end(); ++it)
   {
-    Buffer *index_buffer = new Buffer();
-    index_buffer->load(&(*it->second.indices.begin()), it->second.indices.size() * 4);
-    int poly_indices = it->second.indices.size();
-
-    batch = new Batch();
+    Batch* batch = new Batch();
     int tex_table_index = texdata[it->first].nameStrtbl;
     KP_ASSERT(tex_table_index < lump_texstrtbl->length / 4);
     int tex_data_index = texstrtbl[tex_table_index];
     KP_ASSERT(tex_data_index < lump_texdata->length);
     batch->setMaterial(materializer->loadMaterial(texstrdata + tex_data_index));
+
+    Buffer *attribs_buffer = new Buffer;
+    int max_param = 0;
+    for (auto jt = it->second.indices.begin();
+         jt != it->second.indices.end(); ++jt)
+    {
+      math::vec3f& v = vertices[*jt];
+      texcoords[*jt] = vec2f(
+        it->second.texCoord[0].xyz() & v + it->second.texCoord[0].w,
+        it->second.texCoord[1].xyz() & v + it->second.texCoord[1].w);
+      if (max_param < *jt)
+        max_param = *jt;
+    }
+    attribs_buffer->load(texcoords, max_param * sizeof(vec2f));
+
     batch->setAttribSource("vtx", vertex_buffer);
-    batch->setGeometry(Batch::GeometryTriangleList, 0, poly_indices, index_buffer);
+    batch->setAttribSource("tex", attribs_buffer, 2);
+    batch->setGeometry(Batch::GeometryTriangleList, indices.size() * sizeof(int), it->second.indices.size(), index_buffer);
+    indices.insert(indices.end(), it->second.indices.begin(), it->second.indices.end());
     objects_.push_back(new Object(batch));
   }
+  index_buffer->load(&indices[0], indices.size() * sizeof(int));
+  delete texcoords;
+  delete vertices;
 
   return true;
 }
@@ -305,7 +337,7 @@ void BSP::draw(const kapusha::Camera& cam) const
     (*it)->draw(cam.getView(), cam.getProjection());
   }
 
-  if (show_bbox_)
+  if (show_bbox_ && edges_)
   {
     edges_->getBatch()->getMaterial()->setUniform("trans", translation_);
     edges_->draw(cam.getView(), cam.getProjection());

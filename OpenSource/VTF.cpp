@@ -210,5 +210,8 @@ bool VTF::load(kapusha::Stream& stream)
 
   average_color_ *= 1.f / (lowres.width * lowres.height);
 
+  size_.x = header.width;
+  size_.y = header.height;
+
   return true;
 }

@@ -10,16 +10,20 @@
 static const char* shader_vertex =
   "uniform mat4 mview, mproj;\n"
   "uniform vec4 trans;\n"
-  "attribute vec4 vtx;\n"
+  "uniform vec2 u_v2_texscale;\n"
+  "attribute vec4 vtx, tex;\n"
+  "varying vec2 v_v2_tex;\n"
   "void main(){\n"
     "gl_Position = mproj * mview * (vtx + trans);\n"
+    "v_v2_tex = tex * u_v2_texscale;\n"
   "}"
 ;
 
 static const char* shader_fragment =
   "uniform vec4 color;\n"
+  "varying vec2 v_v2_tex;\n"
   "void main(){\n"
-    "gl_FragColor = vec4(color);\n"
+    "gl_FragColor = vec4(color) + .1 * vec4(mod(v_v2_tex, 1.), 0., 0.);\n"
   "}"
 ;
 
@@ -47,15 +51,18 @@ kapusha::Material* Materializer::loadMaterial(const char *name_raw)
   // get average color
   math::vec3f color(1, 0, 0);
   kapusha::StreamSeekable* restream = resources_.open(name.c_str(), ResRes::ResourceTexture);
+  kapusha::Material* mat = new kapusha::Material(UBER_SHADER1111_);
   if (restream)
   {
     VTF tex;
     if (tex.load(*restream))
+    {
       color = tex.averageColor();
+      mat->setUniform("u_v2_texscale", math::vec2f(1.f / tex.size().x, 1.f / tex.size().y));
+    }
     delete restream;
   }
   
-  kapusha::Material* mat = new kapusha::Material(UBER_SHADER1111_);
   if (name != "__BSP_edge")
     mat->setUniform("color", math::vec4f(color, 1.f));//math::vec4f(math::frand(), math::frand(), math::frand(), 1.f));
   else
