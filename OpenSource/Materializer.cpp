@@ -1,6 +1,10 @@
 #include <Kapusha/sys/Log.h>
+#include <Kapusha/io/Stream.h>
 #include <Kapusha/gl/Program.h>
 #include <Kapusha/gl/Material.h>
+#include <Kapusha/gl/Texture.h>
+#include "ResRes.h"
+#include "VTF.h"
 #include "Materializer.h"
 
 static const char* shader_vertex =
@@ -19,7 +23,8 @@ static const char* shader_fragment =
   "}"
 ;
 
-Materializer::Materializer(void)
+Materializer::Materializer(const ResRes& resources)
+  : resources_(resources)
 {
   UBER_SHADER1111_ = new kapusha::Program(shader_vertex,
                                           shader_fragment);
@@ -31,23 +36,28 @@ Materializer::~Materializer(void)
 
 kapusha::Material* Materializer::loadMaterial(const char *name_raw)
 {
-  // trim trailing numbers and shit -- no need in them anyway
   std::string name(name_raw);
-  while (!name.empty())
-  {
-    if (!isalpha(name[name.length()-1]))
-      name.resize(name.length()-1);
-    else break;
-  }
+
   auto fm = cached_materials_.find(name);
   if (fm != cached_materials_.end())
   {
     return fm->second;
   }
 
+  // get average color
+  math::vec3f color(1, 0, 0);
+  kapusha::StreamSeekable* restream = resources_.open(name.c_str(), ResRes::ResourceTexture);
+  if (restream)
+  {
+    VTF tex;
+    if (tex.load(*restream))
+      color = tex.averageColor();
+    delete restream;
+  }
+  
   kapusha::Material* mat = new kapusha::Material(UBER_SHADER1111_);
   if (name != "__BSP_edge")
-    mat->setUniform("color", math::vec4f(math::frand(), math::frand(), math::frand(), 1.f));
+    mat->setUniform("color", math::vec4f(color, 1.f));//math::vec4f(math::frand(), math::frand(), math::frand(), 1.f));
   else
     mat->setUniform("color", math::vec4f(1.f));
 

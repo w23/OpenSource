@@ -7,10 +7,12 @@ namespace kapusha {
   class Material;
 }
 
+class ResRes;
+
 class Materializer
 {
 public:
-  Materializer(void);
+  Materializer(const ResRes& resources);
   ~Materializer(void);
 
   kapusha::Material* loadMaterial(const char* name);
@@ -18,6 +20,7 @@ public:
   void print() const;
 
 private:
+  const ResRes& resources_;
   kapusha::Program *UBER_SHADER1111_;
   std::map<std::string, kapusha::Material*> cached_materials_;
 };

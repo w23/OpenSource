@@ -8,6 +8,8 @@
 #include <Kapusha/sys/IViewport.h>
 #include <Kapusha/gl/Camera.h>
 
+#include "ResRes.h"
+
 namespace kapusha {
   class Object;
 }
@@ -18,8 +20,8 @@ class OpenSource : public kapusha::IViewport
 {
 public:
   OpenSource(
-    const std::string& path,
-    const std::string& file,
+    const char *path,
+    const char *file,
     int depth = 32);
   virtual ~OpenSource();
 
@@ -31,7 +33,7 @@ public: // IViewport
   void pointerEvent(const kapusha::IViewport::PointerEvent &event);
 
 private:
-  std::string path_;
+  ResRes resources_;
   int depth_;
   kapusha::ISystem *system_;
   std::map<std::string, BSP*> levels_;

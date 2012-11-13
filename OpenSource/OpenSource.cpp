@@ -10,10 +10,10 @@
 #include "OpenSource.h"
 
 OpenSource::OpenSource(
-  const std::string& path,
-  const std::string& file,
+  const char *path,
+  const char *file,
   int depth)
-: path_(path)
+: resources_(path)
 , depth_(depth)
 , camera_(math::vec3f(0,10,0), math::vec3f(0), math::vec3f(0,0,1), 60.f, 1.7, 10.f, 100000.f)
 , forward_speed_(0), right_speed_(0), pitch_speed_(0), yaw_speed_(0)
@@ -30,7 +30,7 @@ void OpenSource::init(kapusha::ISystem* system)
 {
   system_ = system;
 
-  Materializer materializer;
+  Materializer materializer(resources_);
 
   while (depth_ > 0 && !maps_to_load_.empty())
   {
@@ -41,17 +41,15 @@ void OpenSource::init(kapusha::ISystem* system)
 
     L("Loading map %s", map.c_str());
 
-    BSP *bsp = new BSP;
-    kapusha::StreamFile *stream = new kapusha::StreamFile;
-    KP_ENSURE(stream->open((path_ + map + ".bsp").c_str()) == kapusha::Stream::ErrorNone);
-    if (stream->error_)
+    kapusha::StreamSeekable *stream = resources_.open(map.c_str(), ResRes::ResourceMap);
+    if (!stream)
     {
       L("cannot load map %s", map.c_str());
-      delete stream;
-      delete bsp;
       continue;
     }
-    bsp->load(stream, &materializer);
+    BSP *bsp = new BSP;
+    KP_ENSURE(bsp->load(stream, &materializer));
+    delete stream;
 
     const BSP::MapLink& link = bsp->getMapLinks();
     {

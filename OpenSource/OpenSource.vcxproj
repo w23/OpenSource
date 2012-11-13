@@ -108,12 +108,16 @@
     </ClCompile>
     <ClCompile Include="Materializer.cpp" />
     <ClCompile Include="OpenSource.cpp" />
+    <ClCompile Include="ResRes.cpp" />
+    <ClCompile Include="VTF.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BSP.h" />
     <ClInclude Include="Entity.h" />
     <ClInclude Include="Materializer.h" />
     <ClInclude Include="OpenSource.h" />
+    <ClInclude Include="ResRes.h" />
+    <ClInclude Include="VTF.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
