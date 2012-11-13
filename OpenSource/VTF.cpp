@@ -1,7 +1,8 @@
 #include "VTF.h"
 #include <Kapusha/sys/System.h>
-#include <Kapusha/io/Stream.h>
 #include <Kapusha/sys/Log.h>
+#include <Kapusha/io/Stream.h>
+#include <Kapusha/gl/Texture.h>
 
 using namespace kapusha;
 
@@ -29,6 +30,7 @@ struct vtf_70_header_t {
   u32 lowresFormat;
   u8 lowresWidth;
   u8 lowresHeight;
+  u8 pad2;
 
   enum Format
   {
@@ -65,37 +67,14 @@ struct vtf_70_header_t {
 
 #pragma pack(pop)
 
-struct Image {
-  struct ColorRGB565 {
-    u16 c;
-
-    math::vec4f asRGBAf() const
-    {
-      return math::vec4f((c >> 11) / 31.f,
-                         (((c >> 5)) & 63) / 63.f,
-                         (c & 31) / 31.f,
-                         1.f);
-    }
-  };
-
-  const int width, height;
-  enum Format {
-    FormatNone = 0,
-    FormatBGRA8888,
-    FormatRGB565,
-    FormatRGBAf
-  };
-  const Format format;
+struct Image : public kapusha::Texture::ImageDesc {
   u8 *pixels;
 
-  const static int formatSize[];
-
   //Image() : width(0), height(0), format(FormatNone), pixels(0) {}
-  Image(int _width, int _height, Format _format = FormatBGRA8888)
-    : width(_width), height(_height), format(_format)
+  Image(int _width, int _height)
+    : ImageDesc(_width, _height, Format_BGRA32)
   {
-    KP_ASSERT(format != FormatNone);
-    pixels = new u8[width * height * formatSize[format]];
+    pixels = new u8[size.x * size.y * 4];
   }
 
   ~Image()
@@ -103,48 +82,84 @@ struct Image {
     delete pixels;
   }
 
+  struct ColorRGB565 {
+    u16 c;
+    static const int maskRed = 0xf800;
+    static const int maskGreen = 0x07e0;
+    static const int maskBlue = 0x001f;
+    math::vec4f asRGBAf() const
+    {
+      return math::vec4f((c >> 11) / 31.f,
+                         (((c >> 5)) & 63) / 63.f,
+                         (c & 31) / 31.f,
+                         1.f);
+    }
+    u32 asBGRA32() const {
+      u32 c32 = c;
+      //return 0xff | (c32 & 0xf8) | ((c32 << 13) & 0xfc) | ((c32 << 27) & 0xf8);
+      return 0xff000000 | ((c32 & maskRed) << 8) | ((c32 & maskGreen) << 5) | ((c32 & maskBlue) << 3);
+    }
+    static ColorRGB565 weightedSum(ColorRGB565 a, ColorRGB565 b,
+                                   int A, int B, int D)
+    {
+      u32 
+        aRB = a.c & (maskRed | maskBlue),
+        aG = a.c & maskGreen,
+        bRB = b.c & (maskRed | maskBlue),
+        bG = b.c & maskGreen;
+      //! \todo overflow check? shouldn't happen with A,B,D used here
+      aRB = ((A * aRB + B * bRB) / D) & (maskRed | maskBlue);
+      aG = ((A * aG + B * bG) / D) & maskGreen;
+
+      ColorRGB565 ret;
+      ret.c = aRB | aG;
+      return ret;
+    }
+  };
+
+
   bool readFromDXT1(kapusha::Stream& stream)
   {
-    KP_ASSERT(width > 0);
-    KP_ASSERT(height > 0);
-    KP_ASSERT(width%4 == 0 || width < 4);
-    KP_ASSERT(height%4 == 0 || height < 4);
-    KP_ASSERT(format == FormatRGBAf);
+    KP_ASSERT(size.x > 0);
+    KP_ASSERT(size.y > 0);
+    KP_ASSERT(format == Format_BGRA32);
 
-    for (int y = 0; y < height; y += 4)
+    for (int y = 0; y < size.y; y += 4)
     {
-      math::vec4f *p = reinterpret_cast<math::vec4f*>(pixels) + y * width;
-      for (int x = 0; x < width; x += 4, p += 4)
+      u32 *p = reinterpret_cast<u32*>(pixels) + y * size.x;
+      for (int x = 0; x < size.x; x += 4, p += 4)
       {
         struct {
           ColorRGB565 c[2];
           u8 map[4];
         } chunk;
-        //! \fixme this floatness is retarded
-        math::vec4f c[4];
+        u32 c[4];
         if (Stream::ErrorNone != stream.copy(&chunk, 8))
           return false;
-        c[0] = chunk.c[0].asRGBAf();
-        c[1] = chunk.c[1].asRGBAf();
+        c[0] = chunk.c[0].asBGRA32();
+        c[1] = chunk.c[1].asBGRA32();
 
         if (chunk.c[0].c > chunk.c[1].c)
         {
-          c[2] = (c[0] * 2.f + c[1]) * (1.f / 3.f);
-          c[3] = (c[0] + c[1] * 2.f) * (1.f / 3.f);
+          c[2] = ColorRGB565::weightedSum(chunk.c[0], chunk.c[1], 
+                                          2, 1, 3).asBGRA32();
+          c[3] = ColorRGB565::weightedSum(chunk.c[0], chunk.c[1],
+                                          1, 2, 3).asBGRA32();
         } else {
-          c[2] = (c[0] + c[1]) * .5f;
-          c[3] = math::vec4f(0);
+          c[2] = ColorRGB565::weightedSum(chunk.c[0], chunk.c[1],
+                                          1, 1, 2).asBGRA32();
+          c[3] = 0;
         }
 
-        math::vec4f* pp = p;
-        for(int row = 0; row < 4 && ((row+y) < height); ++row, pp += width-4)
+        u32* pp = p;
+        for(int row = 0; row < 4 && ((row+y) < size.y); ++row, pp += size.x-4)
         {
           *pp++ = c[chunk.map[row] >> 6];
-          if(x+1 < width) *pp = c[(chunk.map[row] >> 4) & 3];
+          if(x+1 < size.x) *pp = c[(chunk.map[row] >> 4) & 3];
           ++pp;
-          if(x+2 < width) *pp = c[(chunk.map[row] >> 2) & 3];
+          if(x+2 < size.x) *pp = c[(chunk.map[row] >> 2) & 3];
           ++pp;
-          if(x+3 < width) *pp = c[chunk.map[row] & 3];
+          if(x+3 < size.x) *pp = c[chunk.map[row] & 3];
           ++pp;
         }
       }
@@ -152,10 +167,6 @@ struct Image {
 
     return true;
   }
-};
-
-const int Image::formatSize[] = {
-  0, 4, 2, 16
 };
 
 VTF::VTF(void)
@@ -166,27 +177,30 @@ VTF::~VTF(void)
 {
 }
 
-bool VTF::load(kapusha::Stream& stream)
+kapusha::Texture *VTF::load(kapusha::Stream& stream)
 {
   vtf_file_header_t file_header;
   if(Stream::ErrorNone != stream.copy(&file_header, sizeof file_header))
   {
-    return false;
+    return 0;
   }
   
   if (file_header.magic[0] != 'V' || file_header.magic[1] != 'T' || 
       file_header.magic[2] != 'F' || file_header.magic[3] != 0)
-      return false;
+      return 0;
 
   L("vtf image ver %d.%d", file_header.version[0], file_header.version[1]);
   if (!(file_header.version[0] == 7 && (file_header.version[1] == 0 || file_header.version[1] == 1)))
   {
     L("versions other than 7.0, 7.1 are not supported");
-    return false;
+    return 0;
   }
 
   vtf_70_header_t header;
+  int szh = sizeof(header), szfh = sizeof(file_header);
+  L("%d %d", szh, szfh);
   KP_ENSURE(Stream::ErrorNone == stream.copy(&header, sizeof header));
+  KP_ASSERT(file_header.headerSize == (sizeof(header) + sizeof(file_header)));
 
   L("\timage format %d size %dx%d",
     header.format, header.width, header.height);
@@ -198,20 +212,15 @@ bool VTF::load(kapusha::Stream& stream)
 
   L("\tlowres image format %d size %dx%d",
     header.lowresFormat, header.lowresWidth, header.lowresHeight);
-  Image lowres(header.lowresWidth, header.lowresHeight, Image::FormatRGBAf);
+  KP_ASSERT(header.lowresFormat == vtf_70_header_t::FormatDXT1);
+  Image lowres(header.lowresWidth, header.lowresHeight);
   KP_ENSURE(lowres.readFromDXT1(stream));
-
-  average_color_ = math::vec3f(0);
-  math::vec4f 
-    *p = reinterpret_cast<math::vec4f*>(lowres.pixels),
-    *end = p + lowres.width * lowres.height;
-  for(; p < end; ++p)
-    average_color_ += p->xyz();
-
-  average_color_ *= 1.f / (lowres.width * lowres.height);
 
   size_.x = header.width;
   size_.y = header.height;
 
-  return true;
+  kapusha::Texture *ret = new kapusha::Texture();
+  ret->upload(lowres, lowres.pixels);
+
+  return ret;
 }

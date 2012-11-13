@@ -316,8 +316,8 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     }
     attribs_buffer->load(texcoords, max_param * sizeof(vec2f));
 
-    batch->setAttribSource("vtx", vertex_buffer);
-    batch->setAttribSource("tex", attribs_buffer, 2);
+    batch->setAttribSource("av4_vtx", vertex_buffer);
+    batch->setAttribSource("av4_tex", attribs_buffer, 2);
     batch->setGeometry(Batch::GeometryTriangleList, indices.size() * sizeof(int), it->second.indices.size(), index_buffer);
     indices.insert(indices.end(), it->second.indices.begin(), it->second.indices.end());
     objects_.push_back(new Object(batch));
@@ -333,13 +333,13 @@ void BSP::draw(const kapusha::Camera& cam) const
 {
   for(auto it = objects_.begin(); it != objects_.end(); ++it)
   {
-    (*it)->getBatch()->getMaterial()->setUniform("trans", translation_);
+    (*it)->getBatch()->getMaterial()->setUniform("uv4_trans", translation_);
     (*it)->draw(cam.getView(), cam.getProjection());
   }
 
   if (show_bbox_ && edges_)
   {
-    edges_->getBatch()->getMaterial()->setUniform("trans", translation_);
+    edges_->getBatch()->getMaterial()->setUniform("uv4_trans", translation_);
     edges_->draw(cam.getView(), cam.getProjection());
   }
 }
