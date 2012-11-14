@@ -2,7 +2,7 @@
 #include <Kapusha/math/types.h>
 
 namespace kapusha {
-  class Stream;
+  class StreamSeekable;
   class Texture;
 }
 
@@ -12,7 +12,7 @@ public:
   VTF(void);
   ~VTF(void);
 
-  kapusha::Texture *load(kapusha::Stream& stream);
+  kapusha::Texture *load(kapusha::StreamSeekable& stream);
   math::vec2i size() const { return size_; }
 
 private:

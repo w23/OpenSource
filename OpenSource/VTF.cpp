@@ -67,6 +67,46 @@ struct vtf_70_header_t {
 
 #pragma pack(pop)
 
+unsigned imageSize(u32 format, int width, int height)
+{
+  int pixels = width * height;
+  int pixelsize = 0;
+  switch(format)
+  {
+    case vtf_70_header_t::FormatDXT3:
+    case vtf_70_header_t::FormatDXT5:
+      pixelsize += 8;
+    case vtf_70_header_t::FormatDXT1Alpha:
+    case vtf_70_header_t::FormatDXT1:
+      pixelsize += 8;
+      pixels = (width / 4 + ((width % 4) ? 1 : 0))
+        * (height / 4 + ((height % 4) ? 1 : 0));
+      break;
+
+    case vtf_70_header_t::FormatABGR8888:
+    case vtf_70_header_t::FormatRGBA8888:
+    case vtf_70_header_t::FormatARGB8888:
+    case vtf_70_header_t::FormatBGRA8888:
+    case vtf_70_header_t::FormatBGRX8888:
+    case vtf_70_header_t::FormatUVWQ8888:
+    case vtf_70_header_t::FormatUVLX8888:
+      pixelsize = 4;
+      break;
+
+    case vtf_70_header_t::FormatRGB888:
+	  case vtf_70_header_t::FormatBGR888:
+    case vtf_70_header_t::FormatRGB888Blue:
+    case vtf_70_header_t::FormatBGR888Blue:
+      pixelsize = 3;
+      break;
+
+    default:
+      KP_ASSERT(!"Unsupported format");
+  }
+
+  return pixels * pixelsize;
+}
+
 struct Image : public kapusha::Texture::ImageDesc {
   u8 *pixels;
 
@@ -177,7 +217,7 @@ VTF::~VTF(void)
 {
 }
 
-kapusha::Texture *VTF::load(kapusha::Stream& stream)
+kapusha::Texture *VTF::load(kapusha::StreamSeekable& stream)
 {
   vtf_file_header_t file_header;
   if(Stream::ErrorNone != stream.copy(&file_header, sizeof file_header))
@@ -215,12 +255,39 @@ kapusha::Texture *VTF::load(kapusha::Stream& stream)
   KP_ASSERT(header.lowresFormat == vtf_70_header_t::FormatDXT1);
   Image lowres(header.lowresWidth, header.lowresHeight);
   KP_ENSURE(lowres.readFromDXT1(stream));
+  kapusha::Texture *ret = new kapusha::Texture();
+
+  // skip everything until last one
+  KP_ASSERT((header.flags & 0x4000) == 0); //! \todo envmap support
+  for (int mipmap = header.mipmaps; mipmap > 0; --mipmap)
+    for (int frame = header.firstFrame; frame <= header.frames; ++frame)
+      for (int face = 0; face < 1; ++face)
+        for (int depth = 0; depth < 1; ++depth) //! \todo layers support
+        {
+          stream.read(imageSize(header.format,
+                      header.width >> mipmap, header.height >> mipmap));
+          KP_ASSERT(kapusha::Stream::ErrorNone == stream.error_);
+        }
+
+  if (header.format == vtf_70_header_t::FormatDXT1)
+  {
+    Image image(header.width, header.height);
+    KP_ENSURE(image.readFromDXT1(stream));
+    ret->upload(image, image.pixels);
+  } else if (header.format == vtf_70_header_t::FormatBGRX8888)
+  {
+    Image image(header.width, header.height);
+    KP_ENSURE(kapusha::Stream::ErrorNone == 
+      stream.copy(image.pixels,
+                  imageSize(header.width, header.height, header.format)));
+    ret->upload(image, image.pixels);
+  } else
+  {
+    L("Unsupported image format %d, using dxt1 thumbnail", header.format);
+    ret->upload(lowres, lowres.pixels);
+  }
 
   size_.x = header.width;
   size_.y = header.height;
-
-  kapusha::Texture *ret = new kapusha::Texture();
-  ret->upload(lowres, lowres.pixels);
-
   return ret;
 }

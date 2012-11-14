@@ -18,6 +18,9 @@ using namespace kapusha;
 
 namespace bsp {
 
+#pragma pack(push)
+#pragma pack(1)
+
 struct lump_t {
   int offset;
   int length;
@@ -84,7 +87,15 @@ struct face_t
   u32 lightmap_smoothing_group; // ??
 };
 
-}
+struct luxel_t
+{
+   u8 r, g, b;
+   s8 exp;
+};
+
+#pragma pack(pop)
+
+} // namespace bsp
 
 BSP::BSP(void)
   : parent_(0)
@@ -124,9 +135,13 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   }
 
   // show lightmap info
+  bsp::luxel_t* lightmap;
   {
     const bsp::lump_t *lump_lmap = header.lumps + bsp::lumpLightmap;
     L("Lmap size: %d (%08x)", lump_lmap->length, lump_lmap->length);
+    stream->seek(lump_lmap->offset, StreamSeekable::ReferenceStart);
+    lightmap = new bsp::luxel_t[lump_lmap->length / sizeof(bsp::luxel_t)];
+    stream->copy(lightmap, lump_lmap->length);
   }
 
   // find linked maps in entities
@@ -258,8 +273,8 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     stream->copy(&face, sizeof(bsp::face_t));
 
     //! \fixme drop some weird geometry
-    if (texinfo[face.ref_texinfo].flags & 0x401) continue;
-    if (texinfo[face.ref_texinfo].ref_texdata == -1) continue;
+    //if (texinfo[face.ref_texinfo].flags & 0x401) continue;
+    //if (texinfo[face.ref_texinfo].ref_texdata == -1) continue;
 
     std::vector<int>& face_indices = materials[texinfo[face.ref_texinfo].ref_texdata].indices;
     memcpy(&materials[texinfo[face.ref_texinfo].ref_texdata].texCoord,
