@@ -95,6 +95,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="BSP.cpp" />
+    <ClCompile Include="CloudAtlas.cpp" />
     <ClCompile Include="Entity.cpp" />
     <ClCompile Include="main_win.cpp">
       <ExceptionHandling Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExceptionHandling>
@@ -113,6 +114,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BSP.h" />
+    <ClInclude Include="CloudAtlas.h" />
     <ClInclude Include="Entity.h" />
     <ClInclude Include="Materializer.h" />
     <ClInclude Include="OpenSource.h" />

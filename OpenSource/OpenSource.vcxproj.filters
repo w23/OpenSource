@@ -36,6 +36,9 @@
     <ClCompile Include="ResRes.cpp">
       <Filter>Файлы исходного кода</Filter>
     </ClCompile>
+    <ClCompile Include="CloudAtlas.cpp">
+      <Filter>Файлы исходного кода</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="OpenSource.h">
@@ -54,6 +57,9 @@
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
     <ClInclude Include="ResRes.h">
+      <Filter>Заголовочные файлы</Filter>
+    </ClInclude>
+    <ClInclude Include="CloudAtlas.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
   </ItemGroup>

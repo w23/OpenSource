@@ -27,6 +27,31 @@ static const char* shader_fragment =
   "}"
 ;
 
+static const char* shader_vertex_colored =
+  "uniform mat4 um4_view, um4_proj;\n"
+  "uniform vec4 uv4_trans;\n"
+  "attribute vec4 av4_vertex;\n" //, av4_color;\n"
+  "attribute vec2 av2_lightmap;\n"
+  //"uniform vec2 uv2_texscale;\n"
+  //"varying vec4 vv4_color;\n"
+  "varying vec2 vv2_lightmap;\n"
+  "void main(){\n"
+    "gl_Position = um4_proj * um4_view * (av4_vertex + uv4_trans);\n"
+    //"vv4_color = av4_color;\n"
+    "vv2_lightmap = av2_lightmap;\n"
+  "}"
+;
+
+static const char* shader_fragment_colored =
+  //"varying vec4 vv4_color;\n"
+  "uniform sampler2D us2_lightmap;\n"
+  "varying vec2 vv2_lightmap;\n"
+  "void main(){\n"
+    "gl_FragColor = texture2D(us2_lightmap, vv2_lightmap);\n"
+    //"gl_FragColor = vv4_color;\n"
+  "}"
+;
+
 Materializer::Materializer(const ResRes& resources)
   : resources_(resources)
 {
@@ -48,6 +73,15 @@ kapusha::Material* Materializer::loadMaterial(const char *name_raw)
   auto fm = cached_materials_.find(name);
   if (fm != cached_materials_.end())
     return fm->second;
+
+  if (name == "__colored_vertex")
+  {
+    kapusha::Program *prog = new kapusha::Program(shader_vertex_colored,
+                                                  shader_fragment_colored);
+    kapusha::Material* mat = new kapusha::Material(prog);
+    cached_materials_[name] = mat;
+    return mat;
+  }
 
   kapusha::StreamSeekable* restream = resources_.open(name.c_str(), ResRes::ResourceTexture);
   kapusha::Material* mat = new kapusha::Material(UBER_SHADER1111_);

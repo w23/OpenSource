@@ -11,6 +11,7 @@
 #include <Kapusha/gl/Camera.h>
 #include "Materializer.h"
 #include "Entity.h"
+#include "CloudAtlas.h"
 #include "BSP.h"
 
 using namespace math;
@@ -79,8 +80,8 @@ struct face_t
   u8 lightstyles[4]; // ??
   u32 ref_lightmap_offset;
   float area;
-  u32 lightmapTextureMinsInLuxels[2]; // ??
-  u32 lightmapTexturesizeInLuxels[2]; // ??
+  s32 lightmapMins[2]; // ??
+  u32 lightmapSize[2]; // ??
   u32 ref_original_face;
   u16 primitives_count;
   u16 ref_primitive;
@@ -94,6 +95,21 @@ struct luxel_t
 };
 
 #pragma pack(pop)
+
+vec2f lightmapTexelAtVertex(vec3f v, const face_t &face,
+                            const texinfo_t* texinfo,
+                            rect2f atlas)
+{
+  vec2f lmap_size = vec2f(face.lightmapSize[0] + 1.f, face.lightmapSize[1] + 1.f);
+  const texinfo_t *t = &texinfo[face.ref_texinfo];
+  vec2f l(
+    (t->lightmapVecs[0][0]*v.x + t->lightmapVecs[0][1] * v.y + 
+     t->lightmapVecs[0][2]*v.z + t->lightmapVecs[0][3] - (float)face.lightmapMins[0]) / lmap_size.x,
+    1.f-(t->lightmapVecs[1][0]*v.x + t->lightmapVecs[1][1] * v.y + 
+         t->lightmapVecs[1][2]*v.z + t->lightmapVecs[1][3] - (float)face.lightmapMins[1]) / lmap_size.y);
+
+  return l * atlas.size() + atlas.bottomLeft();
+}
 
 } // namespace bsp
 
@@ -136,13 +152,37 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
 
   // show lightmap info
   bsp::luxel_t* lightmap;
+  int lmap_luxels;
   {
     const bsp::lump_t *lump_lmap = header.lumps + bsp::lumpLightmap;
-    L("Lmap size: %d (%08x)", lump_lmap->length, lump_lmap->length);
+    lmap_luxels = lump_lmap->length / sizeof(bsp::luxel_t);
+    //L("Lmap size: %d (%08x)", lump_lmap->length, lump_lmap->length);
     stream->seek(lump_lmap->offset, StreamSeekable::ReferenceStart);
-    lightmap = new bsp::luxel_t[lump_lmap->length / sizeof(bsp::luxel_t)];
+    lightmap = new bsp::luxel_t[lmap_luxels];
     stream->copy(lightmap, lump_lmap->length);
+
+    // pre-compute colors
+    for (int i = 0; i < lmap_luxels; ++i)
+    {
+      float k = powf(2.f, lightmap[i].exp);
+      vec3f c = vec3f(lightmap[i].r, lightmap[i].g, lightmap[i].b) * k;
+#define CLAMP(f,min,max) (((f)<(min))?(min):((f)>(max)?(max):(f)))
+      u32 r = CLAMP(c.x, 0, 255);
+      u32 g = CLAMP(c.y, 0, 255);
+      u32 b = CLAMP(c.z, 0, 255);
+#undef CLAMP
+      *reinterpret_cast<u32*>(&lightmap[i]) = 0xff000000 | r << 16 | g << 8 | b;
+    }
   }
+
+  // guess combined lightmap size
+  vec2i lmap_atlas_size(1);
+  for (;lmap_atlas_size.x * lmap_atlas_size.x < lmap_luxels; lmap_atlas_size.x <<= 1);
+  {
+    int lmap_min_height = lmap_luxels / lmap_atlas_size.x;
+    for (;lmap_atlas_size.y < lmap_min_height; lmap_atlas_size.y <<= 1);
+  }
+  CloudAtlas lmap_atlas(lmap_atlas_size);
 
   // find linked maps in entities
   {
@@ -182,7 +222,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     const bsp::lump_t *lump_vtx = header.lumps + bsp::lumpVertexes;
     num_vertices = lump_vtx->length / sizeof(math::vec3f);
     vertices = new math::vec3f[num_vertices];
-    //L("Vertices: %d", lump_vtx->length / 12);
+    L("Vertices: %d", lump_vtx->length / 12);
     stream->seek(lump_vtx->offset, StreamSeekable::ReferenceStart);
     stream->copy(vertices, lump_vtx->length);
     vertex_buffer->load(vertices, lump_vtx->length);
@@ -233,6 +273,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   bsp::texinfo_t *texinfo = new bsp::texinfo_t[num_texinfo];
   stream->copy(texinfo, lump_texinfo->length);
 
+  /*
   // load texdata
   const bsp::lump_t *lump_texdata = header.lumps + bsp::lumpTexdata;
   int num_texdata = lump_texdata->length / sizeof(bsp::texdata_t);
@@ -254,12 +295,119 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   stream->seek(lump_texstrtbl->offset, StreamSeekable::ReferenceStart);
   int* texstrtbl = new int[lump_texstrtbl->length / 4];
   stream->copy(texstrtbl, lump_texstrtbl->length);
+  */
 
   // load faces
   const bsp::lump_t *lump_faces = header.lumps + bsp::lumpFaces;
   int num_faces = lump_faces->length / sizeof(bsp::face_t);
   //L("Faces: %d", num_faces);
   stream->seek(lump_faces->offset, StreamSeekable::ReferenceStart);
+
+#if !OLD_FACE_LOADING
+  struct MapVertex {
+    math::vec3f vertex;
+    math::vec2f tc_lightmap;
+
+    MapVertex() {}
+    MapVertex(math::vec3f _vertex, math::vec2f _lightmap)
+      : vertex(_vertex), tc_lightmap(_lightmap) {}
+  };
+  std::vector<MapVertex> tmp_vtx;
+  std::vector<int> tmp_idx;
+  for (int i = 0; i < num_faces; ++i)
+  {
+    bsp::face_t face;
+    stream->copy(&face, sizeof(bsp::face_t));
+
+    /*L("Face %d", i);
+    L("\tedges: %d->%d", face.ref_surfedge, face.ref_surfedge+face.surfedges_count);
+    L("\tlightmap: %d", face.ref_lightmap_offset);
+    L("\tstyles: %d %d %d %d",
+      face.lightstyles[0], face.lightstyles[1],
+      face.lightstyles[2], face.lightstyles[3]);
+    L("\tluxels: %d x %d", face.lightmapSize[0], face.lightmapSize[1]);
+    L("\tluxels (mins ??): %d x %d", face.lightmapMins[0], face.lightmapMins[1]);
+    */
+
+    //if (face.ref_lightmap_offset < 4)
+    //  continue;
+
+    if (face.ref_texinfo <= 0)
+      continue;
+
+    if (texinfo[face.ref_texinfo].flags & 0x401) continue;
+    if (texinfo[face.ref_texinfo].ref_texdata == -1) continue;
+
+    vec2i lmap_size = vec2i(face.lightmapSize[0] + 1, face.lightmapSize[1] + 1);
+    rect2f lmap_region = lmap_atlas.addImage(lmap_size, &lightmap[face.ref_lightmap_offset / 4]);
+    KP_ASSERT(lmap_region.bottom() >= 0.f);
+
+    int index_shift = tmp_vtx.size();
+
+    vec3f vtx = vertices[surfedges[face.ref_surfedge]];
+    tmp_vtx.push_back(MapVertex(vtx, bsp::lightmapTexelAtVertex(vtx, face, texinfo, lmap_region)));
+    
+    vtx = vertices[surfedges[face.ref_surfedge+1]];
+    tmp_vtx.push_back(MapVertex(vtx, bsp::lightmapTexelAtVertex(vtx, face, texinfo, lmap_region)));
+    
+    for (int j = 2; j < face.surfedges_count; ++j)
+    {
+      vtx = vertices[surfedges[face.ref_surfedge + j]];
+      tmp_vtx.push_back(MapVertex(vtx, bsp::lightmapTexelAtVertex(vtx, face, texinfo, lmap_region)));
+
+      tmp_idx.push_back(index_shift + 0);
+      tmp_idx.push_back(index_shift + j-1);
+      tmp_idx.push_back(index_shift + j);
+    }
+  }
+  //L("Total: vertices %d, indices %d", tmp_vtx.size(), tmp_idx.size());
+  if (tmp_vtx.size() > 65535)
+    L("WARNING: total vertices size exceeds 64k: %d", tmp_vtx.size());
+
+  Buffer *attribs_buffer = new Buffer;
+  attribs_buffer->load(&tmp_vtx[0], tmp_vtx.size() * sizeof(MapVertex));
+
+  Buffer *index_buffer = new Buffer;
+  index_buffer->load(&tmp_idx[0], tmp_idx.size() * sizeof(int));
+
+  Batch* batch = new Batch();
+  batch->setMaterial(materializer->loadMaterial("__colored_vertex"));
+  batch->setAttribSource("av4_vertex", attribs_buffer, 3, 0, sizeof(MapVertex));
+  batch->setAttribSource("av2_lightmap", attribs_buffer, 2, offsetof(MapVertex, tc_lightmap), sizeof(MapVertex));
+  batch->setGeometry(Batch::GeometryTriangleList, 0, tmp_idx.size(), index_buffer);
+  objects_.push_back(new Object(batch));
+
+  lightmap_ = lmap_atlas.texture();
+
+  {
+    const char *vtx =
+      "attribute vec4 pos;\n"
+      "varying vec2 p;\n"
+      "void main(){\n"
+        "gl_Position = pos;\n"
+        "p = pos.xy * .5f + .5f;\n"
+      "}";
+    const char *frg =
+      "uniform sampler2D tex;\n"
+      "varying vec2 p;\n"
+      "void main(){\n"
+        "gl_FragColor = texture2D(tex, p);\n"
+      "}";
+    Material *mat = new Material(new Program(vtx, frg));
+    mat->setTexture("tex", lightmap_);
+    
+    vec2f qd[] = {
+      vec2f(-1, -1), vec2f(-1, 1), vec2f(1, 1), vec2f(1, -1)
+    };
+    Buffer *buf = new Buffer;
+    buf->load(qd, sizeof qd);
+
+    tstmp = new Batch();
+    tstmp->setMaterial(mat);
+    tstmp->setAttribSource("pos", buf, 2);
+    tstmp->setGeometry(Batch::GeometryTriangleFan, 0, 4);
+  }
+#else
   struct FaceMaterial {
     math::vec4f texCoord[2];
     std::vector<int> indices;
@@ -340,7 +488,10 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   index_buffer->load(&indices[0], indices.size() * sizeof(int));
   delete texcoords;
   delete vertices;
-
+#endif
+  delete texinfo;
+  delete surfedges;
+  delete lightmap;
   return true;
 }
 
@@ -349,6 +500,7 @@ void BSP::draw(const kapusha::Camera& cam) const
   for(auto it = objects_.begin(); it != objects_.end(); ++it)
   {
     (*it)->getBatch()->getMaterial()->setUniform("uv4_trans", translation_);
+    (*it)->getBatch()->getMaterial()->setTexture("us2_lightmap", lightmap_);
     (*it)->draw(cam.getView(), cam.getProjection());
   }
 
@@ -357,6 +509,9 @@ void BSP::draw(const kapusha::Camera& cam) const
     edges_->getBatch()->getMaterial()->setUniform("uv4_trans", translation_);
     edges_->draw(cam.getView(), cam.getProjection());
   }
+
+  //tstmp->prepare();
+  //tstmp->draw();
 }
 
 void BSP::setParent(const BSP* parent, math::vec3f relative)

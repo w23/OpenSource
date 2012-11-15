@@ -9,10 +9,13 @@ namespace kapusha {
   class StreamSeekable;
   class Camera;
   class Object;
+  class Texture;
+  class Batch;
 }
 
 using kapusha::StreamSeekable;
 using kapusha::Object;
+using kapusha::Texture;
 
 class Materializer;
 
@@ -49,4 +52,7 @@ private:
   bool show_bbox_;
   Object *edges_;
   Object *bbox_; //! \todo
+  Texture *lightmap_;
+
+  kapusha::Batch *tstmp;
 };
