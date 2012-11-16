@@ -18,6 +18,7 @@ OpenSource::OpenSource(
 , camera_(math::vec3f(0,10,0), math::vec3f(0), math::vec3f(0,0,1), 60.f, 1.7, 10.f, 100000.f)
 , forward_speed_(0), right_speed_(0), pitch_speed_(0), yaw_speed_(0)
 , selection_(0)
+, show_selection_(false)
 {
   maps_to_load_.push_back(file);
 }
@@ -123,6 +124,9 @@ void OpenSource::draw(int ms, float dt)
 
   for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
     (*it)->draw(camera_);
+
+  if (show_selection_)
+    levelsv_[selection_]->drawContours(camera_);
  
   if (forward_speed_ != 0 || right_speed_ != 0)
     system_->redraw();
@@ -143,22 +147,21 @@ void OpenSource::keyEvent(const kapusha::IViewport::KeyEvent &event)
     case 'd':
       right_speed_ += event.isPressed() ? 1.f : -1.f;
       break;
-    case 'q':
-      {
-        if (!event.isPressed()) break;
-        levelsv_[selection_]->setShowBounds(false);
-        ++selection_;
-        selection_ %= levelsv_.size();
-        levelsv_[selection_]->setShowBounds(true);
-      }
+    case 'z':
+      if (event.isPressed()) show_selection_ = !show_selection_;
       break;
     case 'e':
       {
         if (!event.isPressed()) break;
-        levelsv_[selection_]->setShowBounds(false);
+        ++selection_;
+        selection_ %= levelsv_.size();
+      }
+      break;
+    case 'q':
+      {
+        if (!event.isPressed()) break;
         --selection_;
-        if (selection_ < 0) selection_ = 0;
-        levelsv_[selection_]->setShowBounds(true);
+        if (selection_ < 0) selection_ += levelsv_.size();
       }
       break;
     case 'y':

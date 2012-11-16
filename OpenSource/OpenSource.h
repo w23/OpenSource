@@ -48,4 +48,5 @@ private:
   float yaw_speed_;
 
   int selection_;
+  bool show_selection_;
 };

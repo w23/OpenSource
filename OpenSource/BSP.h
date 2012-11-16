@@ -32,8 +32,8 @@ public:
   const math::vec3f& shift() const { return shift_; }
   const math::vec3f& translation() const { return translation_; }
   
-  void setShowBounds(bool show) { show_bbox_ = show; }
   void draw(const kapusha::Camera&) const;
+  void drawContours(const kapusha::Camera&) const;
 
 public:
   struct MapLink {
@@ -48,11 +48,11 @@ private:
   math::vec3f translation_;
   math::vec3f shift_;
   MapLink links_;
-  std::vector<Object*> objects_;
-  bool show_bbox_;
-  Object *edges_;
-  Object *bbox_; //! \todo
-  Texture *lightmap_;
 
-  kapusha::Batch *tstmp;
+  std::vector<Object*> objects_;
+  Texture *lightmap_;
+  
+  Object *contours_;
+
+  //kapusha::Batch *tstmp;
 };

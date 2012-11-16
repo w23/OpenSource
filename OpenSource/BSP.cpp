@@ -3,6 +3,7 @@
 #include <Kapusha/sys/Log.h>
 #include <Kapusha/io/Stream.h>
 #include <Kapusha/math/types.h>
+#include <Kapusha/gl/OpenGL.h>
 #include <Kapusha/gl/Buffer.h>
 #include <Kapusha/gl/Program.h>
 #include <Kapusha/gl/Material.h>
@@ -119,9 +120,7 @@ BSP::BSP(void)
   , relative_(0)
   , translation_(0)
   , shift_(0)
-  , show_bbox_(false)
-  , edges_(0)
-  , bbox_(0)
+  , contours_(0)
 {
 }
 
@@ -129,8 +128,7 @@ BSP::~BSP(void)
 {
   for(auto it = objects_.begin(); it != objects_.end(); ++it)
     delete *it;
-  delete edges_;
-  delete bbox_;
+  delete contours_;
 }
 
 bool BSP::load(StreamSeekable* stream, Materializer* materializer)
@@ -228,7 +226,6 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   }
 
   // load vertices
-  Buffer* vertex_buffer = new Buffer;
   math::vec3f *vertices;
   int num_vertices;
   {
@@ -238,7 +235,6 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     //L("Vertices: %d", lump_vtx->length / 12);
     stream->seek(lump_vtx->offset, StreamSeekable::ReferenceStart);
     stream->copy(vertices, lump_vtx->length);
-    vertex_buffer->load(vertices, lump_vtx->length);
   }
 
   // preload surfedges
@@ -250,7 +246,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   struct edge_t {
     u16 a, b;
   } *edges = new edge_t[num_edges];
-  stream->copy(edges, num_edges * 4);
+  stream->copy(edges, lump_edges->length);
 
   // load surfedges
   const bsp::lump_t *lump_surfedges = header.lumps + bsp::lumpSurfedges;
@@ -265,18 +261,6 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
       surfedges[i] = edges[surfedges_i[i]].a;
     else 
       surfedges[i] = edges[-surfedges_i[i]].b;
-  delete surfedges_i;
-
-  int* buf_edges = new int[num_edges * 2], *p = buf_edges;
-  for (int i = 0; i < num_edges; ++i)
-  {
-    *p++ = edges[i].a;
-    *p++ = edges[i].b;
-  }
-  Buffer *edgeb = new Buffer();
-  edgeb->load(buf_edges, (p - buf_edges) * 4);
-  delete buf_edges;
-  delete edges;
 
   // load texinfo
   const bsp::lump_t *lump_texinfo = header.lumps + bsp::lumpTexinfo;
@@ -324,6 +308,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   };
   std::vector<MapVertex> tmp_vtx;
   std::vector<int> tmp_idx;
+  std::vector<int> tmp_idx_cont;
   for (int i = 0; i < num_faces; ++i)
   {
     bsp::face_t face;
@@ -364,6 +349,14 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     
     vtx = vertices[surfedges[face.ref_surfedge+1]];
     tmp_vtx.push_back(MapVertex(vtx, bsp::lightmapTexelAtVertex(vtx, face, texinfo, lmap_region)));
+
+    edge_t *e = &edges[abs(surfedges_i[face.ref_surfedge])];
+    if (e->a != e->b)
+    {
+      tmp_idx_cont.push_back(index_shift + 0);
+      tmp_idx_cont.push_back(index_shift + 1);
+      e->a = e->b; // mark as drawn
+    }
     
     for (int j = 2; j < face.surfedges_count; ++j)
     {
@@ -373,28 +366,62 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
       tmp_idx.push_back(index_shift + 0);
       tmp_idx.push_back(index_shift + j-1);
       tmp_idx.push_back(index_shift + j);
+
+      // store contours
+      edge_t *e = &edges[abs(surfedges_i[face.ref_surfedge + j])];
+      if (e->a != e->b)
+      {
+        tmp_idx_cont.push_back(index_shift + j-1);
+        tmp_idx_cont.push_back(index_shift + j);
+        e->a = e->b;
+      }
     }
   }
   //L("Total: vertices %d, indices %d", tmp_vtx.size(), tmp_idx.size());
   if (tmp_vtx.size() > 65535)
     L("WARNING: total vertices size exceeds 64k: %d", tmp_vtx.size());
 
+  delete texstrtbl;
+  delete texstrdata;
+  delete texdata;
+  delete texinfo;
+  delete surfedges_i;
+  delete edges;
+  delete vertices;
+  delete surfedges;
+  delete lightmap;
+  
+  // common
   Buffer *attribs_buffer = new Buffer;
   attribs_buffer->load(&tmp_vtx[0], tmp_vtx.size() * sizeof(MapVertex));
 
-  Buffer *index_buffer = new Buffer;
-  index_buffer->load(&tmp_idx[0], tmp_idx.size() * sizeof(int));
+  { // map geometry
+    Buffer *index_buffer = new Buffer;
+    index_buffer->load(&tmp_idx[0], tmp_idx.size() * sizeof(int));
 
-  Batch* batch = new Batch();
-  batch->setMaterial(materializer->loadMaterial("__colored_vertex"));
-  batch->setAttribSource("av4_vertex", attribs_buffer, 3, 0, sizeof(MapVertex));
-  batch->setAttribSource("av2_lightmap", attribs_buffer, 2, offsetof(MapVertex, tc_lightmap), sizeof(MapVertex));
-  batch->setGeometry(Batch::GeometryTriangleList, 0, tmp_idx.size(), index_buffer);
-  objects_.push_back(new Object(batch));
+    Batch* batch = new Batch();
+    batch->setMaterial(materializer->loadMaterial("__lightmap_only"));
+    batch->setAttribSource("av4_vertex", attribs_buffer, 3, 0, sizeof(MapVertex));
+    batch->setAttribSource("av2_lightmap", attribs_buffer, 2, offsetof(MapVertex, tc_lightmap), sizeof(MapVertex));
+    batch->setGeometry(Batch::GeometryTriangleList, 0, tmp_idx.size(), index_buffer);
+    objects_.push_back(new Object(batch));
 
-  lightmap_ = lmap_atlas.texture();
+    lightmap_ = lmap_atlas.texture();
+  }
 
-  {
+  { // contours
+    Buffer *index_buffer = new Buffer;
+    index_buffer->load(&tmp_idx_cont[0], tmp_idx_cont.size() * sizeof(int));
+
+    Batch* batch = new Batch();
+    batch->setMaterial(materializer->loadMaterial("__white"));
+    batch->setAttribSource("av4_vertex", attribs_buffer, 3, 0, sizeof(MapVertex));
+    batch->setGeometry(Batch::GeometryLineList, 0, tmp_idx_cont.size(), index_buffer);
+    contours_ = new Object(batch);
+  }
+
+  /*
+  { // debug lightmap atlas
     const char *vtx =
       "attribute vec4 pos;\n"
       "varying vec2 p;\n"
@@ -422,10 +449,8 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     tstmp->setAttribSource("pos", buf, 2);
     tstmp->setGeometry(Batch::GeometryTriangleFan, 0, 4);
   }
+  */
 
-  delete texinfo;
-  delete surfedges;
-  delete lightmap;
   return true;
 }
 
@@ -437,11 +462,14 @@ void BSP::draw(const kapusha::Camera& cam) const
     (*it)->getBatch()->getMaterial()->setTexture("us2_lightmap", lightmap_);
     (*it)->draw(cam.getView(), cam.getProjection());
   }
+}
 
-  if (show_bbox_ && edges_)
+void BSP::drawContours(const kapusha::Camera& cam) const
+{
+  if (contours_)
   {
-    edges_->getBatch()->getMaterial()->setUniform("uv4_trans", translation_);
-    edges_->draw(cam.getView(), cam.getProjection());
+    contours_->getBatch()->getMaterial()->setUniform("uv4_trans", math::vec4f(translation_));
+    contours_->draw(cam.getView(), cam.getProjection());
   }
 
   //tstmp->prepare();

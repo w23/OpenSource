@@ -27,7 +27,7 @@ static const char* shader_fragment =
   "}"
 ;
 
-static const char* shader_vertex_colored =
+static const char* shader_vertex_lightmap =
   "uniform mat4 um4_view, um4_proj;\n"
   "uniform vec4 uv4_trans;\n"
   "attribute vec4 av4_vertex;\n"
@@ -39,11 +39,26 @@ static const char* shader_vertex_colored =
   "}"
 ;
 
-static const char* shader_fragment_colored =
+static const char* shader_fragment_lightmap =
   "uniform sampler2D us2_lightmap;\n"
   "varying vec2 vv2_lightmap;\n"
   "void main(){\n"
-    "gl_FragColor = texture2D(us2_lightmap, vv2_lightmap) + vec4(.05);\n"
+    "gl_FragColor = texture2D(us2_lightmap, vv2_lightmap) + vec4(.02);\n"
+  "}"
+;
+
+static const char* shader_vertex_white =
+  "uniform mat4 um4_view, um4_proj;\n"
+  "uniform vec4 uv4_trans;\n"
+  "attribute vec4 av4_vertex;\n"
+  "void main(){\n"
+    "gl_Position = um4_proj * um4_view * (av4_vertex + uv4_trans);\n"
+  "}"
+;
+
+static const char* shader_fragment_white =
+  "void main(){\n"
+    "gl_FragColor = vec4(1.);\n"
   "}"
 ;
 
@@ -69,10 +84,17 @@ kapusha::Material* Materializer::loadMaterial(const char *name_raw)
   if (fm != cached_materials_.end())
     return fm->second;
 
-  if (name == "__colored_vertex")
+  if (name == "__lightmap_only")
   {
-    kapusha::Program *prog = new kapusha::Program(shader_vertex_colored,
-                                                  shader_fragment_colored);
+    kapusha::Program *prog = new kapusha::Program(shader_vertex_lightmap,
+                                                  shader_fragment_lightmap);
+    kapusha::Material* mat = new kapusha::Material(prog);
+    cached_materials_[name] = mat;
+    return mat;
+  } else if (name == "__white")
+  {
+    kapusha::Program *prog = new kapusha::Program(shader_vertex_white,
+                                                  shader_fragment_white);
     kapusha::Material* mat = new kapusha::Material(prog);
     cached_materials_[name] = mat;
     return mat;
