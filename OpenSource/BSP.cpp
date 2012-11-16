@@ -40,6 +40,7 @@ enum lumpType {
   lumpSurfedges = 13,
   lumpTexStrdata = 43,
   lumpTexStrtbl = 44,
+  lumpLightmapHDR = 53,
   _lumpsCount = 64
 };
 
@@ -146,15 +147,16 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
 
   if (header.version != 19)
   {
+    L("BSP version: %d", header.version);
     L("Still not sure how to load versions other than 19");
-    return false;
+    //return false;
   }
 
   // show lightmap info
   bsp::luxel_t* lightmap;
   int lmap_luxels;
   {
-    const bsp::lump_t *lump_lmap = header.lumps + bsp::lumpLightmap;
+    const bsp::lump_t *lump_lmap = header.lumps + ((header.version < 20)? bsp::lumpLightmap : bsp::lumpLightmapHDR);
     lmap_luxels = lump_lmap->length / sizeof(bsp::luxel_t);
     //L("Lmap size: %d (%08x)", lump_lmap->length, lump_lmap->length);
     stream->seek(lump_lmap->offset, StreamSeekable::ReferenceStart);
@@ -164,14 +166,25 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     // pre-compute colors
     for (int i = 0; i < lmap_luxels; ++i)
     {
-      float k = powf(2.f, lightmap[i].exp);
-      vec3f c = vec3f(lightmap[i].r, lightmap[i].g, lightmap[i].b) * k;
+      vec3i c = vec3i(lightmap[i].r, lightmap[i].g, lightmap[i].b);
+      if (lightmap[i].exp > 0)
+      {
+        c.x <<= lightmap[i].exp;
+        c.y <<= lightmap[i].exp;
+        c.z <<= lightmap[i].exp;
+      } else {
+        c.x >>= -lightmap[i].exp;
+        c.y >>= -lightmap[i].exp;
+        c.z >>= -lightmap[i].exp;
+      }
+
 #define CLAMP(f,min,max) (((f)<(min))?(min):((f)>(max)?(max):(f)))
-      u32 r = CLAMP(c.x, 0, 255);
-      u32 g = CLAMP(c.y, 0, 255);
-      u32 b = CLAMP(c.z, 0, 255);
+      c.x = CLAMP(c.x, 0, 255);
+      c.y = CLAMP(c.y, 0, 255);
+      c.z = CLAMP(c.z, 0, 255);
 #undef CLAMP
-      *reinterpret_cast<u32*>(&lightmap[i]) = 0xff000000 | r << 16 | g << 8 | b;
+
+      *reinterpret_cast<u32*>(&lightmap[i]) = 0xff000000 | c.x << 16 | c.y << 8 | c.z;
     }
   }
 
@@ -222,7 +235,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     const bsp::lump_t *lump_vtx = header.lumps + bsp::lumpVertexes;
     num_vertices = lump_vtx->length / sizeof(math::vec3f);
     vertices = new math::vec3f[num_vertices];
-    L("Vertices: %d", lump_vtx->length / 12);
+    //L("Vertices: %d", lump_vtx->length / 12);
     stream->seek(lump_vtx->offset, StreamSeekable::ReferenceStart);
     stream->copy(vertices, lump_vtx->length);
     vertex_buffer->load(vertices, lump_vtx->length);
@@ -273,7 +286,6 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   bsp::texinfo_t *texinfo = new bsp::texinfo_t[num_texinfo];
   stream->copy(texinfo, lump_texinfo->length);
 
-  /*
   // load texdata
   const bsp::lump_t *lump_texdata = header.lumps + bsp::lumpTexdata;
   int num_texdata = lump_texdata->length / sizeof(bsp::texdata_t);
@@ -295,7 +307,6 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   stream->seek(lump_texstrtbl->offset, StreamSeekable::ReferenceStart);
   int* texstrtbl = new int[lump_texstrtbl->length / 4];
   stream->copy(texstrtbl, lump_texstrtbl->length);
-  */
 
   // load faces
   const bsp::lump_t *lump_faces = header.lumps + bsp::lumpFaces;
@@ -303,7 +314,6 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   //L("Faces: %d", num_faces);
   stream->seek(lump_faces->offset, StreamSeekable::ReferenceStart);
 
-#if !OLD_FACE_LOADING
   struct MapVertex {
     math::vec3f vertex;
     math::vec2f tc_lightmap;
@@ -329,14 +339,19 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     L("\tluxels (mins ??): %d x %d", face.lightmapMins[0], face.lightmapMins[1]);
     */
 
-    //if (face.ref_lightmap_offset < 4)
-    //  continue;
+    //if (face.ref_lightmap_offset < 4) continue;
+    //if (face.ref_texinfo < 0) continue;
+    //if (texinfo[face.ref_texinfo].ref_texdata == -1) continue;
 
-    if (face.ref_texinfo <= 0)
-      continue;
-
-    if (texinfo[face.ref_texinfo].flags & 0x401) continue;
-    if (texinfo[face.ref_texinfo].ref_texdata == -1) continue;
+    if (texinfo[face.ref_texinfo].flags & 0x401) {
+      int tex_table_index = texdata[texinfo[face.ref_texinfo].ref_texdata].nameStrtbl;
+      KP_ASSERT(tex_table_index < lump_texstrtbl->length / 4);
+      int tex_data_index = texstrtbl[tex_table_index];
+      KP_ASSERT(tex_data_index < lump_texstrdata->length);
+      //L("%d %d %08x %s", i, face.on_node, texinfo[face.ref_texinfo].flags, texstrdata + tex_data_index);
+      if (strstr(texstrdata + tex_data_index, "TOOL"))
+        continue;
+    }
 
     vec2i lmap_size = vec2i(face.lightmapSize[0] + 1, face.lightmapSize[1] + 1);
     rect2f lmap_region = lmap_atlas.addImage(lmap_size, &lightmap[face.ref_lightmap_offset / 4]);
@@ -407,88 +422,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     tstmp->setAttribSource("pos", buf, 2);
     tstmp->setGeometry(Batch::GeometryTriangleFan, 0, 4);
   }
-#else
-  struct FaceMaterial {
-    math::vec4f texCoord[2];
-    std::vector<int> indices;
-  };
-  typedef std::map<u32, FaceMaterial> FaceMaterialMap;
-  FaceMaterialMap materials;
-  int num_indices = 0;
-  for (int i = 0; i < num_faces; ++i)
-  {
-    bsp::face_t face;
-    stream->copy(&face, sizeof(bsp::face_t));
 
-    //! \fixme drop some weird geometry
-    //if (texinfo[face.ref_texinfo].flags & 0x401) continue;
-    //if (texinfo[face.ref_texinfo].ref_texdata == -1) continue;
-
-    std::vector<int>& face_indices = materials[texinfo[face.ref_texinfo].ref_texdata].indices;
-    memcpy(&materials[texinfo[face.ref_texinfo].ref_texdata].texCoord,
-           texinfo[face.ref_texinfo].textureVecs, 2 * sizeof(vec4f));
-
-    int first = surfedges[face.ref_surfedge];
-    int prev = surfedges[face.ref_surfedge+1];
-
-    for (int j = 2; j < face.surfedges_count; ++j)
-    {
-      face_indices.push_back(first);
-      face_indices.push_back(prev);
-      prev = surfedges[face.ref_surfedge + j];
-      face_indices.push_back(prev);
-      num_indices += 3;
-    }
-  }
-  delete texinfo;
-  delete surfedges;
-  L("Different materials: %d", materials.size());
-
-  /*
-  Batch* batch = new Batch();
-  batch->setMaterial(materializer->loadMaterial("__BSP_edge"));
-  batch->setAttribSource("vtx", vertex_buffer);
-  batch->setGeometry(Batch::GeometryLineList, 0, num_edges * 2, edgeb);  
-  edges_ = new Object(batch);
-  */
-
-  std::vector<int> indices;
-  indices.reserve(num_indices);
-  vec2f *texcoords = new vec2f[num_vertices];
-  Buffer *index_buffer = new Buffer;
-  for(auto it = materials.begin(); it != materials.end(); ++it)
-  {
-    Batch* batch = new Batch();
-    int tex_table_index = texdata[it->first].nameStrtbl;
-    KP_ASSERT(tex_table_index < lump_texstrtbl->length / 4);
-    int tex_data_index = texstrtbl[tex_table_index];
-    KP_ASSERT(tex_data_index < lump_texdata->length);
-    batch->setMaterial(materializer->loadMaterial(texstrdata + tex_data_index));
-
-    Buffer *attribs_buffer = new Buffer;
-    int max_param = 0;
-    for (auto jt = it->second.indices.begin();
-         jt != it->second.indices.end(); ++jt)
-    {
-      math::vec3f& v = vertices[*jt];
-      texcoords[*jt] = vec2f(
-        it->second.texCoord[0].xyz() & v + it->second.texCoord[0].w,
-        it->second.texCoord[1].xyz() & v + it->second.texCoord[1].w);
-      if (max_param < *jt)
-        max_param = *jt;
-    }
-    attribs_buffer->load(texcoords, max_param * sizeof(vec2f));
-
-    batch->setAttribSource("av4_vtx", vertex_buffer);
-    batch->setAttribSource("av4_tex", attribs_buffer, 2);
-    batch->setGeometry(Batch::GeometryTriangleList, indices.size() * sizeof(int), it->second.indices.size(), index_buffer);
-    indices.insert(indices.end(), it->second.indices.begin(), it->second.indices.end());
-    objects_.push_back(new Object(batch));
-  }
-  index_buffer->load(&indices[0], indices.size() * sizeof(int));
-  delete texcoords;
-  delete vertices;
-#endif
   delete texinfo;
   delete surfedges;
   delete lightmap;
@@ -499,7 +433,7 @@ void BSP::draw(const kapusha::Camera& cam) const
 {
   for(auto it = objects_.begin(); it != objects_.end(); ++it)
   {
-    (*it)->getBatch()->getMaterial()->setUniform("uv4_trans", translation_);
+    (*it)->getBatch()->getMaterial()->setUniform("uv4_trans", math::vec4f(translation_));
     (*it)->getBatch()->getMaterial()->setTexture("us2_lightmap", lightmap_);
     (*it)->draw(cam.getView(), cam.getProjection());
   }

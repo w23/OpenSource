@@ -34,7 +34,7 @@ void OpenSource::init(kapusha::ISystem* system)
 
   while (depth_ > 0 && !maps_to_load_.empty())
   {
-    L("maps to load left %d %d", maps_to_load_.size(), depth_);
+    //L("maps to load left %d %d", maps_to_load_.size(), depth_);
 
     std::string map = maps_to_load_.front();
     maps_to_load_.pop_front();
@@ -68,7 +68,7 @@ void OpenSource::init(kapusha::ISystem* system)
             KP_ASSERT(landmark != found->second->getMapLinks().landmarks.end());
 
             bsp->setParent(found->second, landmark->second - minemark->second);
-            L("%s links to %s", map.c_str(), ref->first.c_str());
+            //L("%s links to %s", map.c_str(), ref->first.c_str());
             link_found = true;
           }
         } else {

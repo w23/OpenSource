@@ -122,6 +122,22 @@ math::vec3f Entity::getVec3Param(const std::string& name) const
   return value;
 }
 
+math::vec4f Entity::getVec4Param(const std::string& name) const
+{
+  auto entry = params_.find(name);
+  if (entry == params_.end())
+    return math::vec4f();
+
+  math::vec4f value;
+  std::stringstream ss(entry->second);
+  ss >> value.x;
+  ss >> value.y;
+  ss >> value.z;
+  ss >> value.w;
+
+  return value;
+}
+
 void Entity::print() const
 {
   L("Entity {");

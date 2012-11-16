@@ -15,6 +15,7 @@ public:
 
   const std::string* getParam(const std::string& name) const;
   math::vec3f getVec3Param(const std::string& name) const;
+  math::vec4f getVec4Param(const std::string& name) const;
 
   void print() const;
 

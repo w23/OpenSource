@@ -21,16 +21,14 @@ private:
   kapusha::u32 *pixels_;
 
   struct Node {
-    bool occupied;
     math::rect2i rect;
-    Node *child[2];
+    Node *next, *prev;
 
     Node(math::rect2i _rect)
-      : occupied(false), rect(_rect)
-    { child[0] = child[1] = 0; }
-    ~Node();
-    Node *insert(math::vec2i size);
+      : rect(_rect)
+    { next = prev = 0; }
+    bool insert(math::vec2i size);
   };
-  Node root_;
+  Node *root_;
 };
 
