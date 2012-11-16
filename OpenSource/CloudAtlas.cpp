@@ -51,8 +51,8 @@ math::rect2f CloudAtlas::addImage(math::vec2i size, const void *data)
       for (int y = 0; y < size.y; ++y, p_out += size_.x, p_in += size.x)
         memcpy(p_out, p_in, 4 * size.x);
 
-      return math::rect2f(math::vec2f(r.left(), r.top()) * pix2tex_,
-                          math::vec2f(r.right(), r.bottom()) * pix2tex_);
+      return math::rect2f(math::vec2f(r.left()+.5f, r.top()) * pix2tex_,
+                          math::vec2f(r.right(), r.bottom()+.5f) * pix2tex_);
     }
 
     if (!n->next)
