@@ -338,11 +338,19 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
         continue;
     }
 
-    vec2i lmap_size = vec2i(face.lightmapSize[0] + 1, face.lightmapSize[1] + 1);
-    rect2f lmap_region = lmap_atlas.addImage(lmap_size, &lightmap[face.ref_lightmap_offset / 4]);
+    vec2i lmap_size = vec2i(1, 1);
+    static u32 white = 0xffffffff;
+    const void *luxels = &white;
+    if (face.ref_lightmap_offset/4 < lmap_luxels)
+    {
+      lmap_size = vec2i(face.lightmapSize[0] + 1, face.lightmapSize[1] + 1);
+      luxels = &lightmap[face.ref_lightmap_offset / 4];
+    }
+    
+    rect2f lmap_region = lmap_atlas.addImage(lmap_size, luxels);
     KP_ASSERT(lmap_region.bottom() >= 0.f);
 
-    int index_shift = tmp_vtx.size();
+    int index_shift = static_cast<int>(tmp_vtx.size());
 
     vec3f vtx = vertices[surfedges[face.ref_surfedge]];
     tmp_vtx.push_back(MapVertex(vtx, bsp::lightmapTexelAtVertex(vtx, face, texinfo, lmap_region)));

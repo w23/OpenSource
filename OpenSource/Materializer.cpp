@@ -15,7 +15,7 @@ static const char* shader_vertex =
   "varying vec2 vv2_tex;\n"
   "void main(){\n"
     "gl_Position = um4_proj * um4_view * (av4_vtx + uv4_trans);\n"
-    "vv2_tex = av4_tex * uv2_texscale;\n"
+    "vv2_tex = av4_tex.xy * uv2_texscale;\n"
   "}"
 ;
 
