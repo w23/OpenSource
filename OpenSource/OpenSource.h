@@ -5,14 +5,10 @@
 #include <deque>
 #include <map>
 
-#include <Kapusha/sys/IViewport.h>
-#include <Kapusha/gl/Camera.h>
+#include <Kapusha/core/IViewport.h>
+#include <Kapusha/render/Camera.h>
 
 #include "ResRes.h"
-
-namespace kapusha {
-  class Object;
-}
 
 class BSP;
 
@@ -26,21 +22,22 @@ public:
   virtual ~OpenSource();
 
 public: // IViewport
-  virtual void init(kapusha::ISystem* system);
-  virtual void resize(int width, int height);
+  virtual void init(kapusha::IViewportController *viewctrl);
+  virtual void resize(kapusha::vec2i size);
   virtual void draw(int ms, float dt);
-  void keyEvent(const kapusha::IViewport::KeyEvent &event);
-  void pointerEvent(const kapusha::IViewport::PointerEvent &event);
+  virtual void close() {}
+  virtual void inputPointer(const kapusha::PointerState& pointers);
+  virtual void inputKey(const kapusha::KeyState& keys);
 
 private:
   ResRes resources_;
   int depth_;
-  kapusha::ISystem *system_;
+  kapusha::IViewportController *viewctrl_;
   std::map<std::string, BSP*> levels_;
   std::vector<BSP*> levelsv_;
   std::deque<std::string> maps_to_load_;
   
-  math::rect2f viewport_;
+  kapusha::rect2f viewport_;
   kapusha::Camera camera_;
   float forward_speed_;
   float right_speed_;

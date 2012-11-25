@@ -1,8 +1,8 @@
 #include "VTF.h"
-#include <Kapusha/sys/System.h>
-#include <Kapusha/sys/Log.h>
+#include <Kapusha/core/Core.h>
+#include <Kapusha/core/Log.h>
 #include <Kapusha/io/Stream.h>
-#include <Kapusha/gl/Texture.h>
+#include <Kapusha/render/Texture.h>
 
 using namespace kapusha;
 
@@ -127,9 +127,9 @@ struct Image : public kapusha::Texture::ImageDesc {
     static const int maskRed = 0xf800;
     static const int maskGreen = 0x07e0;
     static const int maskBlue = 0x001f;
-    math::vec4f asRGBAf() const
+    kapusha::vec4f asRGBAf() const
     {
-      return math::vec4f((c >> 11) / 31.f,
+      return kapusha::vec4f((c >> 11) / 31.f,
                          (((c >> 5)) & 63) / 63.f,
                          (c & 31) / 31.f,
                          1.f);

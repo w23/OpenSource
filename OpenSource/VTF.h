@@ -1,5 +1,5 @@
 #pragma once
-#include <Kapusha/math/types.h>
+#include <kapusha/math/types.h>
 
 namespace kapusha {
   class StreamSeekable;
@@ -13,9 +13,9 @@ public:
   ~VTF(void);
 
   kapusha::Texture *load(kapusha::StreamSeekable& stream);
-  math::vec2i size() const { return size_; }
+  kapusha::vec2i size() const { return size_; }
 
 private:
-  math::vec2i size_;
+  kapusha::vec2i size_;
 };
 

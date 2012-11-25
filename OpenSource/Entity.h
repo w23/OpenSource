@@ -14,8 +14,8 @@ public:
   const std::map<std::string, std::string>& params() { return params_; }
 
   const std::string* getParam(const std::string& name) const;
-  math::vec3f getVec3Param(const std::string& name) const;
-  math::vec4f getVec4Param(const std::string& name) const;
+  kapusha::vec3f getVec3Param(const std::string& name) const;
+  kapusha::vec4f getVec4Param(const std::string& name) const;
 
   void print() const;
 

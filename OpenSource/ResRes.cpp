@@ -1,6 +1,5 @@
-#include <Kapusha/sys/System.h>
-#include <Kapusha/sys/Log.h>
-#include <Kapusha/io/StreamFile.h>
+#include <kapusha/core/Core.h>
+#include <kapusha/io/StreamFile.h>
 #include "ResRes.h"
 
 ResRes::ResRes(const char* path)

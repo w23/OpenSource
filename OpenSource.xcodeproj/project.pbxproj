@@ -1,0 +1,427 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		E131D4F91661F55C00B0320A /* libkapusha.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E131D4F51661F52E00B0320A /* libkapusha.a */; };
+		E18DDFA4163D8D8200869CF5 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E18DDFA3163D8D8200869CF5 /* Cocoa.framework */; };
+		E18DDFAE163D8D8200869CF5 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = E18DDFAC163D8D8200869CF5 /* InfoPlist.strings */; };
+		E18DDFB0163D8D8200869CF5 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = E18DDFAF163D8D8200869CF5 /* main.m */; };
+		E18DDFB7163D8D8200869CF5 /* BSPAppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = E18DDFB6163D8D8200869CF5 /* BSPAppDelegate.mm */; };
+		E18DDFC0163D8D9000869CF5 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E18DDFBF163D8D9000869CF5 /* OpenGL.framework */; };
+		E18DDFC5163D8EA400869CF5 /* BSP.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E18DDFC1163D8EA400869CF5 /* BSP.cpp */; };
+		E18DDFC6163D8EA400869CF5 /* OpenSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E18DDFC3163D8EA400869CF5 /* OpenSource.cpp */; };
+		E1948120165BD7DB001B0619 /* CloudAtlas.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E1948116165BD7DB001B0619 /* CloudAtlas.cpp */; };
+		E1948122165BD7DB001B0619 /* Entity.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E1948118165BD7DB001B0619 /* Entity.cpp */; };
+		E1948124165BD7DB001B0619 /* Materializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E194811A165BD7DB001B0619 /* Materializer.cpp */; };
+		E1948126165BD7DB001B0619 /* ResRes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E194811C165BD7DB001B0619 /* ResRes.cpp */; };
+		E1948128165BD7DB001B0619 /* VTF.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E194811E165BD7DB001B0619 /* VTF.cpp */; };
+		E1948131165BDEBD001B0619 /* OpenSource.xib in Resources */ = {isa = PBXBuildFile; fileRef = E1948130165BDEBD001B0619 /* OpenSource.xib */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E131D4F41661F52E00B0320A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E13226871646F3D400E16F93 /* Kapusha.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = E1A77CC9165D528A009FF8F3;
+			remoteInfo = "kapusha-osx";
+		};
+		E131D4F61661F52E00B0320A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E13226871646F3D400E16F93 /* Kapusha.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = E1A77CA1165D39F9009FF8F3;
+			remoteInfo = "samples-osx";
+		};
+		E1A77C8E165D16CE009FF8F3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E13226871646F3D400E16F93 /* Kapusha.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = E1993173164E141500E8D9CB;
+			remoteInfo = "kapusha-samples";
+		};
+		E1A77C90165D16CE009FF8F3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E13226871646F3D400E16F93 /* Kapusha.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = E19931A7164E144F00E8D9CB;
+			remoteInfo = kapusha;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		E13226871646F3D400E16F93 /* Kapusha.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = Kapusha.xcodeproj; path = Kapusha/Kapusha.xcodeproj; sourceTree = "<group>"; };
+		E13226A01646F3ED00E16F93 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		E13226A91646F40300E16F93 /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/System/Library/Frameworks/GLUT.framework; sourceTree = DEVELOPER_DIR; };
+		E18DDF9F163D8D8100869CF5 /* OpenSource.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenSource.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E18DDFA3163D8D8200869CF5 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
+		E18DDFA6163D8D8200869CF5 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		E18DDFA7163D8D8200869CF5 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = System/Library/Frameworks/CoreData.framework; sourceTree = SDKROOT; };
+		E18DDFA8163D8D8200869CF5 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		E18DDFAB163D8D8200869CF5 /* OpenSource-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "OpenSource-Info.plist"; sourceTree = "<group>"; };
+		E18DDFAD163D8D8200869CF5 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		E18DDFAF163D8D8200869CF5 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		E18DDFB1163D8D8200869CF5 /* OpenSource-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "OpenSource-Prefix.pch"; sourceTree = "<group>"; };
+		E18DDFB5163D8D8200869CF5 /* BSPAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BSPAppDelegate.h; sourceTree = "<group>"; };
+		E18DDFB6163D8D8200869CF5 /* BSPAppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = BSPAppDelegate.mm; sourceTree = "<group>"; };
+		E18DDFBF163D8D9000869CF5 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/System/Library/Frameworks/OpenGL.framework; sourceTree = DEVELOPER_DIR; };
+		E18DDFC1163D8EA400869CF5 /* BSP.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = BSP.cpp; path = OpenSource/BSP.cpp; sourceTree = "<group>"; };
+		E18DDFC2163D8EA400869CF5 /* BSP.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = BSP.h; path = OpenSource/BSP.h; sourceTree = "<group>"; };
+		E18DDFC3163D8EA400869CF5 /* OpenSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = OpenSource.cpp; path = OpenSource/OpenSource.cpp; sourceTree = "<group>"; };
+		E18DDFC4163D8EA400869CF5 /* OpenSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = OpenSource.h; path = OpenSource/OpenSource.h; sourceTree = "<group>"; };
+		E1948116165BD7DB001B0619 /* CloudAtlas.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CloudAtlas.cpp; path = OpenSource/CloudAtlas.cpp; sourceTree = "<group>"; };
+		E1948117165BD7DB001B0619 /* CloudAtlas.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = CloudAtlas.h; path = OpenSource/CloudAtlas.h; sourceTree = "<group>"; };
+		E1948118165BD7DB001B0619 /* Entity.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Entity.cpp; path = OpenSource/Entity.cpp; sourceTree = "<group>"; };
+		E1948119165BD7DB001B0619 /* Entity.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Entity.h; path = OpenSource/Entity.h; sourceTree = "<group>"; };
+		E194811A165BD7DB001B0619 /* Materializer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Materializer.cpp; path = OpenSource/Materializer.cpp; sourceTree = "<group>"; };
+		E194811B165BD7DB001B0619 /* Materializer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Materializer.h; path = OpenSource/Materializer.h; sourceTree = "<group>"; };
+		E194811C165BD7DB001B0619 /* ResRes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ResRes.cpp; path = OpenSource/ResRes.cpp; sourceTree = "<group>"; };
+		E194811D165BD7DB001B0619 /* ResRes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = ResRes.h; path = OpenSource/ResRes.h; sourceTree = "<group>"; };
+		E194811E165BD7DB001B0619 /* VTF.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = VTF.cpp; path = OpenSource/VTF.cpp; sourceTree = "<group>"; };
+		E194811F165BD7DB001B0619 /* VTF.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = VTF.h; path = OpenSource/VTF.h; sourceTree = "<group>"; };
+		E1948130165BDEBD001B0619 /* OpenSource.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = OpenSource.xib; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E18DDF9C163D8D8100869CF5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E131D4F91661F55C00B0320A /* libkapusha.a in Frameworks */,
+				E18DDFC0163D8D9000869CF5 /* OpenGL.framework in Frameworks */,
+				E18DDFA4163D8D8200869CF5 /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		E13226881646F3D400E16F93 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E1A77C91165D16CE009FF8F3 /* libkapusha.a */,
+				E1A77C8F165D16CE009FF8F3 /* samples-ios.app */,
+				E131D4F71661F52E00B0320A /* kapusha-samples.app */,
+				E131D4F51661F52E00B0320A /* libkapusha.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E132269F1646F3ED00E16F93 /* OpenSource_mini */ = {
+			isa = PBXGroup;
+			children = (
+				E13226A01646F3ED00E16F93 /* main.cpp */,
+			);
+			path = OpenSource_mini;
+			sourceTree = "<group>";
+		};
+		E18DDF8F163D884200869CF5 = {
+			isa = PBXGroup;
+			children = (
+				E1948116165BD7DB001B0619 /* CloudAtlas.cpp */,
+				E1948117165BD7DB001B0619 /* CloudAtlas.h */,
+				E1948118165BD7DB001B0619 /* Entity.cpp */,
+				E1948119165BD7DB001B0619 /* Entity.h */,
+				E194811A165BD7DB001B0619 /* Materializer.cpp */,
+				E194811B165BD7DB001B0619 /* Materializer.h */,
+				E194811C165BD7DB001B0619 /* ResRes.cpp */,
+				E194811D165BD7DB001B0619 /* ResRes.h */,
+				E194811E165BD7DB001B0619 /* VTF.cpp */,
+				E194811F165BD7DB001B0619 /* VTF.h */,
+				E18DDFC1163D8EA400869CF5 /* BSP.cpp */,
+				E18DDFC2163D8EA400869CF5 /* BSP.h */,
+				E18DDFC3163D8EA400869CF5 /* OpenSource.cpp */,
+				E18DDFC4163D8EA400869CF5 /* OpenSource.h */,
+				E18DDFA9163D8D8200869CF5 /* OpenSource */,
+				E132269F1646F3ED00E16F93 /* OpenSource_mini */,
+				E18DDFA2163D8D8200869CF5 /* Frameworks */,
+				E18DDFA0163D8D8100869CF5 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E18DDFA0163D8D8100869CF5 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E18DDF9F163D8D8100869CF5 /* OpenSource.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E18DDFA2163D8D8200869CF5 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				E13226A91646F40300E16F93 /* GLUT.framework */,
+				E13226871646F3D400E16F93 /* Kapusha.xcodeproj */,
+				E18DDFBF163D8D9000869CF5 /* OpenGL.framework */,
+				E18DDFA3163D8D8200869CF5 /* Cocoa.framework */,
+				E18DDFA5163D8D8200869CF5 /* Other Frameworks */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		E18DDFA5163D8D8200869CF5 /* Other Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				E18DDFA6163D8D8200869CF5 /* AppKit.framework */,
+				E18DDFA7163D8D8200869CF5 /* CoreData.framework */,
+				E18DDFA8163D8D8200869CF5 /* Foundation.framework */,
+			);
+			name = "Other Frameworks";
+			sourceTree = "<group>";
+		};
+		E18DDFA9163D8D8200869CF5 /* OpenSource */ = {
+			isa = PBXGroup;
+			children = (
+				E18DDFB5163D8D8200869CF5 /* BSPAppDelegate.h */,
+				E18DDFB6163D8D8200869CF5 /* BSPAppDelegate.mm */,
+				E18DDFAA163D8D8200869CF5 /* Supporting Files */,
+			);
+			path = OpenSource;
+			sourceTree = "<group>";
+		};
+		E18DDFAA163D8D8200869CF5 /* Supporting Files */ = {
+			isa = PBXGroup;
+			children = (
+				E18DDFAB163D8D8200869CF5 /* OpenSource-Info.plist */,
+				E18DDFAC163D8D8200869CF5 /* InfoPlist.strings */,
+				E18DDFAF163D8D8200869CF5 /* main.m */,
+				E18DDFB1163D8D8200869CF5 /* OpenSource-Prefix.pch */,
+				E1948130165BDEBD001B0619 /* OpenSource.xib */,
+			);
+			name = "Supporting Files";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E18DDF9E163D8D8100869CF5 /* OpenSource */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E18DDFBD163D8D8200869CF5 /* Build configuration list for PBXNativeTarget "OpenSource" */;
+			buildPhases = (
+				E18DDF9B163D8D8100869CF5 /* Sources */,
+				E18DDF9C163D8D8100869CF5 /* Frameworks */,
+				E18DDF9D163D8D8100869CF5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenSource;
+			productName = OpenSource;
+			productReference = E18DDF9F163D8D8100869CF5 /* OpenSource.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E18DDF91163D884200869CF5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0450;
+			};
+			buildConfigurationList = E18DDF94163D884200869CF5 /* Build configuration list for PBXProject "OpenSource" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = E18DDF8F163D884200869CF5;
+			productRefGroup = E18DDFA0163D8D8100869CF5 /* Products */;
+			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = E13226881646F3D400E16F93 /* Products */;
+					ProjectRef = E13226871646F3D400E16F93 /* Kapusha.xcodeproj */;
+				},
+			);
+			projectRoot = "";
+			targets = (
+				E18DDF9E163D8D8100869CF5 /* OpenSource */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXReferenceProxy section */
+		E131D4F51661F52E00B0320A /* libkapusha.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libkapusha.a;
+			remoteRef = E131D4F41661F52E00B0320A /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E131D4F71661F52E00B0320A /* kapusha-samples.app */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.application;
+			path = "kapusha-samples.app";
+			remoteRef = E131D4F61661F52E00B0320A /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E1A77C8F165D16CE009FF8F3 /* samples-ios.app */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.application;
+			path = "samples-ios.app";
+			remoteRef = E1A77C8E165D16CE009FF8F3 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E1A77C91165D16CE009FF8F3 /* libkapusha.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libkapusha.a;
+			remoteRef = E1A77C90165D16CE009FF8F3 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+/* End PBXReferenceProxy section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E18DDF9D163D8D8100869CF5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E18DDFAE163D8D8200869CF5 /* InfoPlist.strings in Resources */,
+				E1948131165BDEBD001B0619 /* OpenSource.xib in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E18DDF9B163D8D8100869CF5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E18DDFB0163D8D8200869CF5 /* main.m in Sources */,
+				E18DDFB7163D8D8200869CF5 /* BSPAppDelegate.mm in Sources */,
+				E18DDFC5163D8EA400869CF5 /* BSP.cpp in Sources */,
+				E18DDFC6163D8EA400869CF5 /* OpenSource.cpp in Sources */,
+				E1948120165BD7DB001B0619 /* CloudAtlas.cpp in Sources */,
+				E1948122165BD7DB001B0619 /* Entity.cpp in Sources */,
+				E1948124165BD7DB001B0619 /* Materializer.cpp in Sources */,
+				E1948126165BD7DB001B0619 /* ResRes.cpp in Sources */,
+				E1948128165BD7DB001B0619 /* VTF.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		E18DDFAC163D8D8200869CF5 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E18DDFAD163D8D8200869CF5 /* en */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		E18DDF96163D884200869CF5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		E18DDF97163D884200869CF5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		E18DDFBB163D8D8200869CF5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD_64_BIT)";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_CPP_RTTI = NO;
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "OpenSource/OpenSource-Prefix.pch";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/Kapusha";
+				INFOPLIST_FILE = "OpenSource/OpenSource-Info.plist";
+				MACOSX_DEPLOYMENT_TARGET = 10.8;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				WRAPPER_EXTENSION = app;
+			};
+			name = Debug;
+		};
+		E18DDFBC163D8D8200869CF5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD_64_BIT)";
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_ENABLE_CPP_RTTI = NO;
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "OpenSource/OpenSource-Prefix.pch";
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/Kapusha";
+				INFOPLIST_FILE = "OpenSource/OpenSource-Info.plist";
+				MACOSX_DEPLOYMENT_TARGET = 10.8;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				WRAPPER_EXTENSION = app;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E18DDF94163D884200869CF5 /* Build configuration list for PBXProject "OpenSource" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E18DDF96163D884200869CF5 /* Debug */,
+				E18DDF97163D884200869CF5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E18DDFBD163D8D8200869CF5 /* Build configuration list for PBXNativeTarget "OpenSource" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E18DDFBB163D8D8200869CF5 /* Debug */,
+				E18DDFBC163D8D8200869CF5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E18DDF91163D884200869CF5 /* Project object */;
+}

@@ -1,8 +1,6 @@
-#include <Kapusha/sys/Log.h>
-#include <Kapusha/io/Stream.h>
-#include <Kapusha/gl/Program.h>
-#include <Kapusha/gl/Material.h>
-#include <Kapusha/gl/Texture.h>
+#include <kapusha/core/Core.h>
+#include <kapusha/io/Stream.h>
+#include <kapusha/render/Render.h>
 #include "ResRes.h"
 #include "VTF.h"
 #include "Materializer.h"
@@ -109,7 +107,7 @@ kapusha::Material* Materializer::loadMaterial(const char *name_raw)
     if (texture)
     {
       mat->setUniform("uv2_texscale",
-                      math::vec2f(1.f / tex.size().x, 1.f / tex.size().y));
+                      kapusha::vec2f(1.f / tex.size().x, 1.f / tex.size().y));
       mat->setTexture("us2_texture", texture);
     }
     delete restream;

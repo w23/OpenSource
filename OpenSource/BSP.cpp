@@ -1,21 +1,15 @@
 #include <vector>
 #include <map>
-#include <Kapusha/sys/Log.h>
-#include <Kapusha/io/Stream.h>
-#include <Kapusha/math/types.h>
-#include <Kapusha/gl/OpenGL.h>
-#include <Kapusha/gl/Buffer.h>
-#include <Kapusha/gl/Program.h>
-#include <Kapusha/gl/Material.h>
-#include <Kapusha/gl/Batch.h>
-#include <Kapusha/gl/Object.h>
-#include <Kapusha/gl/Camera.h>
+#include <kapusha/core/Log.h>
+#include <kapusha/io/Stream.h>
+#include <kapusha/math/types.h>
+#include <kapusha/render/Render.h>
+#include <kapusha/render/Camera.h>
 #include "Materializer.h"
 #include "Entity.h"
 #include "CloudAtlas.h"
 #include "BSP.h"
 
-using namespace math;
 using namespace kapusha;
 
 namespace bsp {
@@ -226,12 +220,12 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   }
 
   // load vertices
-  math::vec3f *vertices;
+  vec3f *vertices;
   int num_vertices;
   {
     const bsp::lump_t *lump_vtx = header.lumps + bsp::lumpVertexes;
-    num_vertices = lump_vtx->length / sizeof(math::vec3f);
-    vertices = new math::vec3f[num_vertices];
+    num_vertices = lump_vtx->length / sizeof(vec3f);
+    vertices = new vec3f[num_vertices];
     //L("Vertices: %d", lump_vtx->length / 12);
     stream->seek(lump_vtx->offset, StreamSeekable::ReferenceStart);
     stream->copy(vertices, lump_vtx->length);
@@ -299,11 +293,11 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   stream->seek(lump_faces->offset, StreamSeekable::ReferenceStart);
 
   struct MapVertex {
-    math::vec3f vertex;
-    math::vec2f tc_lightmap;
+    vec3f vertex;
+    vec2f tc_lightmap;
 
     MapVertex() {}
-    MapVertex(math::vec3f _vertex, math::vec2f _lightmap)
+    MapVertex(vec3f _vertex, vec2f _lightmap)
       : vertex(_vertex), tc_lightmap(_lightmap) {}
   };
   std::vector<MapVertex> tmp_vtx;
@@ -466,7 +460,7 @@ void BSP::draw(const kapusha::Camera& cam) const
 {
   for(auto it = objects_.begin(); it != objects_.end(); ++it)
   {
-    (*it)->getBatch()->getMaterial()->setUniform("uv4_trans", math::vec4f(translation_));
+    (*it)->getBatch()->getMaterial()->setUniform("uv4_trans", vec4f(translation_));
     (*it)->getBatch()->getMaterial()->setTexture("us2_lightmap", lightmap_);
     (*it)->draw(cam.getView(), cam.getProjection());
   }
@@ -476,7 +470,7 @@ void BSP::drawContours(const kapusha::Camera& cam) const
 {
   if (contours_)
   {
-    contours_->getBatch()->getMaterial()->setUniform("uv4_trans", math::vec4f(translation_));
+    contours_->getBatch()->getMaterial()->setUniform("uv4_trans", vec4f(translation_));
     contours_->draw(cam.getView(), cam.getProjection());
   }
 
@@ -484,14 +478,14 @@ void BSP::drawContours(const kapusha::Camera& cam) const
   //tstmp->draw();
 }
 
-void BSP::setParent(const BSP* parent, math::vec3f relative)
+void BSP::setParent(const BSP* parent, vec3f relative)
 {
   parent_ = parent;
   relative_ = relative;
   updateShift(shift_);
 }
 
-void BSP::updateShift(math::vec3f shift)
+void BSP::updateShift(vec3f shift)
 {
   shift_ = shift;
   translation_ = relative_ + shift_;

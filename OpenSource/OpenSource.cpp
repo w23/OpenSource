@@ -1,10 +1,7 @@
-#include <Kapusha/sys/Log.h>
-#include <Kapusha/math/types.h>
-#include <Kapusha/gl/OpenGL.h>
-#include <Kapusha/gl/Buffer.h>
-#include <Kapusha/gl/Object.h>
-#include <Kapusha/gl/Program.h>
-#include <Kapusha/io/StreamFile.h>
+#include <kapusha/core/Log.h>
+#include <kapusha/math/types.h>
+#include <kapusha/render/Render.h>
+#include <kapusha/io/StreamFile.h>
 #include "Materializer.h"
 #include "BSP.h"
 #include "OpenSource.h"
@@ -15,7 +12,7 @@ OpenSource::OpenSource(
   int depth)
 : resources_(path)
 , depth_(depth)
-, camera_(math::vec3f(0,10,0), math::vec3f(0), math::vec3f(0,0,1), 60.f, 1.7, 10.f, 100000.f)
+, camera_(kapusha::vec3f(0,10,0), kapusha::vec3f(0), kapusha::vec3f(0,0,1), 60.f, 1.7, 10.f, 100000.f)
 , forward_speed_(0), right_speed_(0), pitch_speed_(0), yaw_speed_(0)
 , selection_(0)
 , show_selection_(false)
@@ -27,9 +24,10 @@ OpenSource::~OpenSource(void)
 {
 }
 
-void OpenSource::init(kapusha::ISystem* system)
+void OpenSource::init(kapusha::IViewportController* viewctrl)
 {
-  system_ = system;
+  viewctrl_ = viewctrl;
+  viewctrl_->limitFramesPerSecond(60);
 
   Materializer materializer(resources_);
 
@@ -106,11 +104,11 @@ void OpenSource::init(kapusha::ISystem* system)
   glFrontFace(GL_CW);
 }
 
-void OpenSource::resize(int width, int height)
+void OpenSource::resize(kapusha::vec2i s)
 {
-  glViewport(0, 0, width, height);
-  viewport_ = math::rect2f(0, height, width, 0);
-  camera_.setAspect((float)width / (float)height);
+  glViewport(0, 0, s.x, s.y);
+  viewport_ = kapusha::rect2f(0, s.x, s.y, 0);
+  camera_.setAspect((float)s.x / (float)s.y);
 }
 
 void OpenSource::draw(int ms, float dt)
@@ -127,115 +125,109 @@ void OpenSource::draw(int ms, float dt)
 
   if (show_selection_)
     levelsv_[selection_]->drawContours(camera_);
- 
-  if (forward_speed_ != 0 || right_speed_ != 0)
-    system_->redraw();
 }
 
-void OpenSource::keyEvent(const kapusha::IViewport::KeyEvent &event)
+void OpenSource::inputKey(const kapusha::KeyState &keys)
 {
-  switch (event.key()) {
-    case 'w':
-      forward_speed_ += event.isPressed() ? 1.f : -1.f;
+  using kapusha::KeyState;
+  switch (keys.getLastKey()) {
+    case KeyState::KeyW:
+      forward_speed_ += keys.isLastKeyPressed() ? 1.f : -1.f;
       break;
-    case 's':
-      forward_speed_ += event.isPressed() ? -1.f : 1.f;
+    case KeyState::KeyS:
+      forward_speed_ += keys.isLastKeyPressed() ? -1.f : 1.f;
       break;
-    case 'a':
-      right_speed_ += event.isPressed() ? -1.f : 1.f;
+    case KeyState::KeyA:
+      right_speed_ += keys.isLastKeyPressed() ? -1.f : 1.f;
       break;
-    case 'd':
-      right_speed_ += event.isPressed() ? 1.f : -1.f;
+    case KeyState::KeyD:
+      right_speed_ += keys.isLastKeyPressed() ? 1.f : -1.f;
       break;
-    case 'z':
-      if (event.isPressed()) show_selection_ = !show_selection_;
+    case KeyState::KeyZ:
+      if (keys.isLastKeyPressed()) show_selection_ = !show_selection_;
       break;
-    case 'e':
+    case KeyState::KeyE:
       {
-        if (!event.isPressed()) break;
+        if (!keys.isLastKeyPressed()) break;
         ++selection_;
         selection_ %= levelsv_.size();
       }
       break;
-    case 'q':
+    case KeyState::KeyQ:
       {
-        if (!event.isPressed()) break;
+        if (!keys.isLastKeyPressed()) break;
         --selection_;
         if (selection_ < 0) selection_ += levelsv_.size();
       }
       break;
-    case 'y':
-      if (event.isPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - math::vec3f(1000.f,0,0));
+    case KeyState::KeyY:
+      if (keys.isLastKeyPressed()) {
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - kapusha::vec3f(1000.f,0,0));
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
-    case 'u':
-      if (event.isPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + math::vec3f(1000.f,0,0));
+    case 'U':
+      if (keys.isLastKeyPressed()) {
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + kapusha::vec3f(1000.f,0,0));
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
-    case 'h':
-      if (event.isPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - math::vec3f(0,1000.f,0));
+    case 'H':
+      if (keys.isLastKeyPressed()) {
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - kapusha::vec3f(0,1000.f,0));
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
-    case 'j':
-      if (event.isPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + math::vec3f(0,1000.f,0));
+    case 'J':
+      if (keys.isLastKeyPressed()) {
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + kapusha::vec3f(0,1000.f,0));
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
-    case 'n':
-      if (event.isPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - math::vec3f(0,0,1000.f));
+    case 'N':
+      if (keys.isLastKeyPressed()) {
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - kapusha::vec3f(0,0,1000.f));
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
     case 'm':
-      if (event.isPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + math::vec3f(0,0,1000.f));
+      if (keys.isLastKeyPressed()) {
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + kapusha::vec3f(0,0,1000.f));
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
-    case KeyEvent::KeyUp:
-      pitch_speed_ += event.isPressed() ? 1.f : -1.f;
+    case KeyState::KeyUp:
+      pitch_speed_ += keys.isLastKeyPressed() ? 1.f : -1.f;
       break;
-    case KeyEvent::KeyDown:
-      pitch_speed_ += event.isPressed() ? -1.f : 1.f;
+    case KeyState::KeyDown:
+      pitch_speed_ += keys.isLastKeyPressed() ? -1.f : 1.f;
       break;
-    case KeyEvent::KeyLeft:
-      yaw_speed_ += event.isPressed() ? 1.f : -1.f;
+    case KeyState::KeyLeft:
+      yaw_speed_ += keys.isLastKeyPressed() ? 1.f : -1.f;
       break;
-    case KeyEvent::KeyRight:
-      yaw_speed_ += event.isPressed() ? -1.f : 1.f;
+    case KeyState::KeyRight:
+      yaw_speed_ += keys.isLastKeyPressed() ? -1.f : 1.f;
       break;
-    case KeyEvent::KeyEsc:
-      system_->quit(0);
+    case KeyState::KeyEsc:
+      viewctrl_->quit(0);
 	  break;
       
     default:
-      L("key %d is unknown", event.key());
+      L("key %d is unknown", keys.getLastKey());
   }
 }
 
-void OpenSource::pointerEvent(const kapusha::IViewport::PointerEvent &event)
+void OpenSource::inputPointer(const kapusha::PointerState &pointers)
 {
-  math::vec2f rel = viewport_.relative(event.main().point)*2.f - 1.f;
-  //yaw_speed_ = -rel.x * 100.f;
-  //pitch_speed_ = rel.y * 100.f;
-  
-  camera_.rotatePitch(rel.y);
-  camera_.rotateAxis(math::vec3f(0.f, 0.f, 1.f), -rel.x);
-  
-  system_->pointerReset();
-  system_->redraw();
+  if (pointers.main().isPressed())
+  {
+    camera_.rotatePitch(pointers.main().movement.y);
+    camera_.rotateAxis(kapusha::vec3f(0.f, 0.f, 1.f), -pointers.main().movement.x);
+  }
 }

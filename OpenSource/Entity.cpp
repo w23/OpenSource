@@ -1,5 +1,5 @@
 #include <sstream>
-#include <Kapusha/sys/Log.h>
+#include <kapusha/core/Log.h>
 #include "Entity.h"
 
 Entity::Entity(void)
@@ -11,9 +11,9 @@ Entity::~Entity(void)
 {
 }
 
-int streamSkipSpacesUntilAfterChars(kapusha::Stream* stream, const char* chars)
+off_t streamSkipSpacesUntilAfterChars(kapusha::Stream* stream, const char* chars)
 {
-  int ret = -1;
+  off_t ret = -1;
   while(stream->error_ == kapusha::Stream::ErrorNone)
   {
     for(; stream->cursor_ < stream->end_; ++stream->cursor_)
@@ -40,7 +40,7 @@ int streamSkipSpacesUntilAfterChars(kapusha::Stream* stream, const char* chars)
   return ret;
 }
 
-int streamExtractUntilAfterChars(kapusha::Stream* stream, char end,
+off_t streamExtractUntilAfterChars(kapusha::Stream* stream, char end,
                                          char* out, int outmax)
 {
   char *p = out, *pend = out + outmax;
@@ -74,7 +74,7 @@ Entity* Entity::readNextEntity(kapusha::Stream* stream)
 
   for(;;)
   {
-    int chidx = streamSkipSpacesUntilAfterChars(stream, "\"}");
+    off_t chidx = streamSkipSpacesUntilAfterChars(stream, "\"}");
     if (chidx == 1)
       return ret;
 
@@ -107,13 +107,13 @@ const std::string* Entity::getParam(const std::string& name) const
   return &entry->second;
 }
 
-math::vec3f Entity::getVec3Param(const std::string& name) const
+kapusha::vec3f Entity::getVec3Param(const std::string& name) const
 {
   auto entry = params_.find(name);
   if (entry == params_.end())
-    return math::vec3f();
+    return kapusha::vec3f();
 
-  math::vec3f value;
+  kapusha::vec3f value;
   std::stringstream ss(entry->second);
   ss >> value.x;
   ss >> value.y;
@@ -122,13 +122,13 @@ math::vec3f Entity::getVec3Param(const std::string& name) const
   return value;
 }
 
-math::vec4f Entity::getVec4Param(const std::string& name) const
+kapusha::vec4f Entity::getVec4Param(const std::string& name) const
 {
   auto entry = params_.find(name);
   if (entry == params_.end())
-    return math::vec4f();
+    return kapusha::vec4f();
 
-  math::vec4f value;
+  kapusha::vec4f value;
   std::stringstream ss(entry->second);
   ss >> value.x;
   ss >> value.y;

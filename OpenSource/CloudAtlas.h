@@ -1,6 +1,6 @@
 #pragma once
-#include <Kapusha/sys/System.h>
-#include <Kapusha/math/types.h>
+#include <kapusha/core/Core.h>
+#include <kapusha/math/types.h>
 
 namespace kapusha {
   class Texture;
@@ -9,25 +9,25 @@ namespace kapusha {
 class CloudAtlas
 {
 public:
-  CloudAtlas(math::vec2i size);
+  CloudAtlas(kapusha::vec2i size);
   ~CloudAtlas(void);
 
-  math::rect2f addImage(math::vec2i size, const void *p);
+  kapusha::rect2f addImage(kapusha::vec2i size, const void *p);
   kapusha::Texture *texture() const;
 
 private:
-  math::vec2i size_;
-  math::vec2f pix2tex_;
+  kapusha::vec2i size_;
+  kapusha::vec2f pix2tex_;
   kapusha::u32 *pixels_;
 
   struct Node {
-    math::rect2i rect;
+    kapusha::rect2i rect;
     Node *next, *prev;
 
-    Node(math::rect2i _rect)
+    Node(kapusha::rect2i _rect)
       : rect(_rect)
     { next = prev = 0; }
-    bool insert(math::vec2i size);
+    bool insert(kapusha::vec2i size);
   };
   Node *root_;
 };
