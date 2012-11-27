@@ -56,7 +56,6 @@
 
 /* Begin PBXFileReference section */
 		E13226871646F3D400E16F93 /* Kapusha.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = Kapusha.xcodeproj; path = Kapusha/Kapusha.xcodeproj; sourceTree = "<group>"; };
-		E13226A01646F3ED00E16F93 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		E13226A91646F40300E16F93 /* GLUT.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLUT.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/System/Library/Frameworks/GLUT.framework; sourceTree = DEVELOPER_DIR; };
 		E18DDF9F163D8D8100869CF5 /* OpenSource.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenSource.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E18DDFA3163D8D8200869CF5 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
@@ -112,14 +111,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		E132269F1646F3ED00E16F93 /* OpenSource_mini */ = {
-			isa = PBXGroup;
-			children = (
-				E13226A01646F3ED00E16F93 /* main.cpp */,
-			);
-			path = OpenSource_mini;
-			sourceTree = "<group>";
-		};
 		E18DDF8F163D884200869CF5 = {
 			isa = PBXGroup;
 			children = (
@@ -138,7 +129,6 @@
 				E18DDFC3163D8EA400869CF5 /* OpenSource.cpp */,
 				E18DDFC4163D8EA400869CF5 /* OpenSource.h */,
 				E18DDFA9163D8D8200869CF5 /* OpenSource */,
-				E132269F1646F3ED00E16F93 /* OpenSource_mini */,
 				E18DDFA2163D8D8200869CF5 /* Frameworks */,
 				E18DDFA0163D8D8100869CF5 /* Products */,
 			);

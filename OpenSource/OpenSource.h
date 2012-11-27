@@ -46,4 +46,6 @@ private:
 
   int selection_;
   bool show_selection_;
+  
+  bool mouselook_;
 };

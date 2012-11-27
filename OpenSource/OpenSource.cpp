@@ -16,6 +16,7 @@ OpenSource::OpenSource(
 , forward_speed_(0), right_speed_(0), pitch_speed_(0), yaw_speed_(0)
 , selection_(0)
 , show_selection_(false)
+, mouselook_(false)
 {
   maps_to_load_.push_back(file);
 }
@@ -27,7 +28,6 @@ OpenSource::~OpenSource(void)
 void OpenSource::init(kapusha::IViewportController* viewctrl)
 {
   viewctrl_ = viewctrl;
-  viewctrl_->limitFramesPerSecond(60);
 
   Materializer materializer(resources_);
 
@@ -113,7 +113,8 @@ void OpenSource::resize(kapusha::vec2i s)
 
 void OpenSource::draw(int ms, float dt)
 {
-  const float speed = 1000.f;
+  const float speed = 1000.f *
+  (viewctrl_->keyState().isKeyPressed(kapusha::KeyState::KeyShift) ? 5.f : 1);
   camera_.moveForward(forward_speed_ * dt * speed);
   camera_.moveRigth(right_speed_ * dt * speed);
   camera_.update();
@@ -125,6 +126,9 @@ void OpenSource::draw(int ms, float dt)
 
   if (show_selection_)
     levelsv_[selection_]->drawContours(camera_);
+  
+  if (forward_speed_ != 0 || right_speed_ != 0)
+    viewctrl_->requestRedraw();
 }
 
 void OpenSource::inputKey(const kapusha::KeyState &keys)
@@ -215,19 +219,32 @@ void OpenSource::inputKey(const kapusha::KeyState &keys)
       yaw_speed_ += keys.isLastKeyPressed() ? -1.f : 1.f;
       break;
     case KeyState::KeyEsc:
-      viewctrl_->quit(0);
+      if (mouselook_)
+      {
+        viewctrl_->limitlessPointer(false);
+        viewctrl_->hideCursor(false);
+        mouselook_ = false;
+      }
 	  break;
       
     default:
-      L("key %d is unknown", keys.getLastKey());
+      return;
   }
+  
+  viewctrl_->requestRedraw();
 }
 
 void OpenSource::inputPointer(const kapusha::PointerState &pointers)
 {
-  if (pointers.main().isPressed())
+  if (mouselook_)
   {
     camera_.rotatePitch(pointers.main().movement.y);
     camera_.rotateAxis(kapusha::vec3f(0.f, 0.f, 1.f), -pointers.main().movement.x);
+    viewctrl_->requestRedraw();
+  } else if (pointers.wasPressed())
+  {
+    viewctrl_->limitlessPointer(true);
+    viewctrl_->hideCursor(true);
+    mouselook_ = true;
   }
 }
