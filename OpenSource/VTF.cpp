@@ -1,8 +1,8 @@
 #include "VTF.h"
-#include <Kapusha/core/Core.h>
-#include <Kapusha/core/Log.h>
-#include <Kapusha/io/Stream.h>
-#include <Kapusha/render/Texture.h>
+#include <kapusha/core/Core.h>
+#include <kapusha/core/Log.h>
+#include <kapusha/io/Stream.h>
+#include <kapusha/render/Texture.h>
 
 using namespace kapusha;
 

@@ -1,3 +1,4 @@
+#include <string.h>
 #include <vector>
 #include <map>
 #include <kapusha/core/Log.h>
@@ -335,7 +336,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     vec2i lmap_size = vec2i(1, 1);
     static u32 white = 0xffffffff;
     const void *luxels = &white;
-    if (face.ref_lightmap_offset/4 < lmap_luxels)
+    if (face.ref_lightmap_offset/4 < (unsigned)lmap_luxels)
     {
       lmap_size = vec2i(face.lightmapSize[0] + 1, face.lightmapSize[1] + 1);
       luxels = &lightmap[face.ref_lightmap_offset / 4];

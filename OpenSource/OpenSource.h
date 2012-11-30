@@ -5,8 +5,8 @@
 #include <deque>
 #include <map>
 
-#include <Kapusha/core/IViewport.h>
-#include <Kapusha/render/Camera.h>
+#include <kapusha/core/IViewport.h>
+#include <kapusha/render/Camera.h>
 
 #include "ResRes.h"
 

@@ -1,8 +1,8 @@
 #pragma once
 #include <string>
 #include <map>
-#include <Kapusha/io/Stream.h>
-#include <Kapusha/math/types.h>
+#include <kapusha/io/Stream.h>
+#include <kapusha/math/types.h>
 
 class Entity
 {
