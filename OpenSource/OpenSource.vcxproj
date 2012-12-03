@@ -58,7 +58,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <PrecompiledHeaderFile />
       <AdditionalOptions>/GR- %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(SolutionDir);$(SolutionDir)/Kapusha/glew</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/Kapusha;$(SolutionDir)/Kapusha/3p/glew</AdditionalIncludeDirectories>
       <SuppressStartupBanner>
       </SuppressStartupBanner>
     </ClCompile>
@@ -81,7 +81,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <PrecompiledHeaderFile />
       <AdditionalOptions>/GR- %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(SolutionDir);$(SolutionDir)/Kapusha/glew</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/Kapusha;$(SolutionDir)/Kapusha/3p/glew</AdditionalIncludeDirectories>
       <SuppressStartupBanner>
       </SuppressStartupBanner>
     </ClCompile>
