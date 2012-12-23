@@ -107,7 +107,7 @@ void OpenSource::init(kapusha::IViewportController* viewctrl)
 void OpenSource::resize(kapusha::vec2i s)
 {
   glViewport(0, 0, s.x, s.y);
-  viewport_ = kapusha::rect2f(0, s.x, s.y, 0);
+  viewport_ = kapusha::rect2f(0, (float)s.x, (float)s.y, 0);
   camera_.setAspect((float)s.x / (float)s.y);
 }
 
