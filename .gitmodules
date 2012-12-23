@@ -1,3 +1,3 @@
-[submodule "Kapusha"]
-	path = Kapusha
-	url = git@w23.ru:kapusha.git
+[submodule "kapusha"]
+	path = 3p/kapusha
+	url = git@github.com:w23/kapusha.git

@@ -98,6 +98,7 @@ kapusha::Material* Materializer::loadMaterial(const char *name_raw)
     return mat;
   }
 
+#if 0 // texture support is no more
   kapusha::StreamSeekable* restream = resources_.open(name.c_str(), ResRes::ResourceTexture);
   kapusha::Material* mat = new kapusha::Material(UBER_SHADER1111_);
   if (restream)
@@ -114,8 +115,12 @@ kapusha::Material* Materializer::loadMaterial(const char *name_raw)
   }
   
   cached_materials_[name] = mat;
+#endif
 
-  return mat;
+  KP_ASSERT(!"true materials are not supported");
+
+  return 0;
+
 }
 
 void Materializer::print() const

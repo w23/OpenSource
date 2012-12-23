@@ -1,12 +1,12 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Express 2012 for Windows Desktop
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OpenSource", "OpenSource\OpenSource.vcxproj", "{5E30D9D2-3C1C-4DA8-81B6-1905980658BB}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OpenSource", "src\OpenSource.vcxproj", "{5E30D9D2-3C1C-4DA8-81B6-1905980658BB}"
 	ProjectSection(ProjectDependencies) = postProject
 		{68E4D3F2-26BD-4A4A-92D1-10F2A163ED24} = {68E4D3F2-26BD-4A4A-92D1-10F2A163ED24}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Kapusha", "Kapusha\Kapusha.vcxproj", "{68E4D3F2-26BD-4A4A-92D1-10F2A163ED24}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Kapusha", "3p\kapusha\Kapusha.vcxproj", "{68E4D3F2-26BD-4A4A-92D1-10F2A163ED24}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

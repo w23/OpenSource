@@ -43,7 +43,7 @@ off_t streamSkipSpacesUntilAfterChars(kapusha::Stream* stream, const char* chars
 off_t streamExtractUntilAfterChars(kapusha::Stream* stream, char end,
                                          char* out, int outmax)
 {
-  char *p = out, *pend = out + outmax;
+  char *p = out;
   while(stream->error_ == kapusha::Stream::ErrorNone)
   {
     for(; stream->cursor_ < stream->end_; ++stream->cursor_)
@@ -55,7 +55,7 @@ off_t streamExtractUntilAfterChars(kapusha::Stream* stream, char end,
           return p - out;
       }
       *p++ = *stream->cursor_;
-      KP_ASSERT(p < pend);
+      KP_ASSERT(p < (out + outmax));
     }
     stream->refill();
   }

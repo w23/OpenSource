@@ -69,20 +69,20 @@
 		E18DDFB5163D8D8200869CF5 /* BSPAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BSPAppDelegate.h; sourceTree = "<group>"; };
 		E18DDFB6163D8D8200869CF5 /* BSPAppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = BSPAppDelegate.mm; sourceTree = "<group>"; };
 		E18DDFBF163D8D9000869CF5 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk/System/Library/Frameworks/OpenGL.framework; sourceTree = DEVELOPER_DIR; };
-		E18DDFC1163D8EA400869CF5 /* BSP.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = BSP.cpp; path = OpenSource/BSP.cpp; sourceTree = "<group>"; };
-		E18DDFC2163D8EA400869CF5 /* BSP.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = BSP.h; path = OpenSource/BSP.h; sourceTree = "<group>"; };
-		E18DDFC3163D8EA400869CF5 /* OpenSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = OpenSource.cpp; path = OpenSource/OpenSource.cpp; sourceTree = "<group>"; };
-		E18DDFC4163D8EA400869CF5 /* OpenSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = OpenSource.h; path = OpenSource/OpenSource.h; sourceTree = "<group>"; };
-		E1948116165BD7DB001B0619 /* CloudAtlas.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CloudAtlas.cpp; path = OpenSource/CloudAtlas.cpp; sourceTree = "<group>"; };
-		E1948117165BD7DB001B0619 /* CloudAtlas.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = CloudAtlas.h; path = OpenSource/CloudAtlas.h; sourceTree = "<group>"; };
-		E1948118165BD7DB001B0619 /* Entity.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Entity.cpp; path = OpenSource/Entity.cpp; sourceTree = "<group>"; };
-		E1948119165BD7DB001B0619 /* Entity.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Entity.h; path = OpenSource/Entity.h; sourceTree = "<group>"; };
-		E194811A165BD7DB001B0619 /* Materializer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Materializer.cpp; path = OpenSource/Materializer.cpp; sourceTree = "<group>"; };
-		E194811B165BD7DB001B0619 /* Materializer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Materializer.h; path = OpenSource/Materializer.h; sourceTree = "<group>"; };
-		E194811C165BD7DB001B0619 /* ResRes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ResRes.cpp; path = OpenSource/ResRes.cpp; sourceTree = "<group>"; };
-		E194811D165BD7DB001B0619 /* ResRes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = ResRes.h; path = OpenSource/ResRes.h; sourceTree = "<group>"; };
-		E194811E165BD7DB001B0619 /* VTF.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = VTF.cpp; path = OpenSource/VTF.cpp; sourceTree = "<group>"; };
-		E194811F165BD7DB001B0619 /* VTF.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = VTF.h; path = OpenSource/VTF.h; sourceTree = "<group>"; };
+		E18DDFC1163D8EA400869CF5 /* BSP.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = BSP.cpp; path = src/BSP.cpp; sourceTree = "<group>"; };
+		E18DDFC2163D8EA400869CF5 /* BSP.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = BSP.h; path = src/BSP.h; sourceTree = "<group>"; };
+		E18DDFC3163D8EA400869CF5 /* OpenSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = OpenSource.cpp; path = src/OpenSource.cpp; sourceTree = "<group>"; };
+		E18DDFC4163D8EA400869CF5 /* OpenSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = OpenSource.h; path = src/OpenSource.h; sourceTree = "<group>"; };
+		E1948116165BD7DB001B0619 /* CloudAtlas.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CloudAtlas.cpp; path = src/CloudAtlas.cpp; sourceTree = "<group>"; };
+		E1948117165BD7DB001B0619 /* CloudAtlas.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = CloudAtlas.h; path = src/CloudAtlas.h; sourceTree = "<group>"; };
+		E1948118165BD7DB001B0619 /* Entity.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Entity.cpp; path = src/Entity.cpp; sourceTree = "<group>"; };
+		E1948119165BD7DB001B0619 /* Entity.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Entity.h; path = src/Entity.h; sourceTree = "<group>"; };
+		E194811A165BD7DB001B0619 /* Materializer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Materializer.cpp; path = src/Materializer.cpp; sourceTree = "<group>"; };
+		E194811B165BD7DB001B0619 /* Materializer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Materializer.h; path = src/Materializer.h; sourceTree = "<group>"; };
+		E194811C165BD7DB001B0619 /* ResRes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ResRes.cpp; path = src/ResRes.cpp; sourceTree = "<group>"; };
+		E194811D165BD7DB001B0619 /* ResRes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = ResRes.h; path = src/ResRes.h; sourceTree = "<group>"; };
+		E194811E165BD7DB001B0619 /* VTF.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = VTF.cpp; path = src/VTF.cpp; sourceTree = "<group>"; };
+		E194811F165BD7DB001B0619 /* VTF.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = VTF.h; path = src/VTF.h; sourceTree = "<group>"; };
 		E1948130165BDEBD001B0619 /* OpenSource.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = OpenSource.xib; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -171,7 +171,7 @@
 				E18DDFB6163D8D8200869CF5 /* BSPAppDelegate.mm */,
 				E18DDFAA163D8D8200869CF5 /* Supporting Files */,
 			);
-			path = OpenSource;
+			path = src;
 			sourceTree = "<group>";
 		};
 		E18DDFAA163D8D8200869CF5 /* Supporting Files */ = {
@@ -340,7 +340,7 @@
 				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
-				GCC_PREFIX_HEADER = "OpenSource/OpenSource-Prefix.pch";
+				GCC_PREFIX_HEADER = "src/OpenSource-Prefix.pch";
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
 					"$(inherited)",
@@ -351,7 +351,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/Kapusha";
-				INFOPLIST_FILE = "OpenSource/OpenSource-Info.plist";
+				INFOPLIST_FILE = "src/OpenSource-Info.plist";
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -376,13 +376,13 @@
 				GCC_ENABLE_CPP_RTTI = NO;
 				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
-				GCC_PREFIX_HEADER = "OpenSource/OpenSource-Prefix.pch";
+				GCC_PREFIX_HEADER = "src/OpenSource-Prefix.pch";
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/Kapusha";
-				INFOPLIST_FILE = "OpenSource/OpenSource-Info.plist";
+				INFOPLIST_FILE = "src/OpenSource-Info.plist";
 				MACOSX_DEPLOYMENT_TARGET = 10.8;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
