@@ -7,6 +7,8 @@ CloudAtlas::CloudAtlas(kapusha::vec2i size)
   , pix2tex_(1.f / size.x, 1.f / size.y)
   , pixels_(new kapusha::u32[size_.x * size_.y])
 {
+  for (int i = 0; i < (size_.x * size_.y); ++i)
+    pixels_[i] = 0x00ff0000;
   root_ = new Node(kapusha::rect2i(size_));
 }
 
