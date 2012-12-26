@@ -99,8 +99,8 @@ void OpenSource::init(kapusha::IViewportController* viewctrl)
       L("%d: %s", i, it->first.c_str());
   }
 
-  glEnable(GL_CULL_FACE);
-  glEnable(GL_DEPTH_TEST);
+  render_.cullFace().on();
+  render_.depthTest().on();
   glFrontFace(GL_CW);
 }
 
