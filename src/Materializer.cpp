@@ -6,6 +6,9 @@
 #include "Materializer.h"
 
 static const char* shader_vertex =
+#if KAPUSHA_GLES
+  "precision mediump float;\n"
+#endif
   "uniform mat4 um4_view, um4_proj;\n"
   "uniform vec4 uv4_trans;\n"
   "uniform vec2 uv2_texscale;\n"
@@ -18,6 +21,9 @@ static const char* shader_vertex =
 ;
 
 static const char* shader_fragment =
+#if KAPUSHA_GLES
+  "precision mediump float;\n"
+#endif
   "uniform sampler2D us2_texture;\n"
   "varying vec2 vv2_tex;\n"
   "void main(){\n"
@@ -26,6 +32,9 @@ static const char* shader_fragment =
 ;
 
 static const char* shader_vertex_lightmap =
+#if KAPUSHA_GLES
+  "precision mediump float;\n"
+#endif
   "uniform mat4 um4_view, um4_proj;\n"
   "uniform vec4 uv4_trans;\n"
   "attribute vec4 av4_vertex;\n"
@@ -38,6 +47,9 @@ static const char* shader_vertex_lightmap =
 ;
 
 static const char* shader_fragment_lightmap =
+#if KAPUSHA_GLES
+  "precision mediump float;\n"
+#endif
   "uniform sampler2D us2_lightmap;\n"
   "varying vec2 vv2_lightmap;\n"
   "void main(){\n"
@@ -46,6 +58,9 @@ static const char* shader_fragment_lightmap =
 ;
 
 static const char* shader_vertex_white =
+#if KAPUSHA_GLES
+  "precision mediump float;\n"
+#endif
   "uniform mat4 um4_view, um4_proj;\n"
   "uniform vec4 uv4_trans;\n"
   "attribute vec4 av4_vertex;\n"
@@ -55,6 +70,9 @@ static const char* shader_vertex_white =
 ;
 
 static const char* shader_fragment_white =
+#if KAPUSHA_GLES
+  "precision mediump float;\n"
+#endif
   "void main(){\n"
     "gl_FragColor = vec4(1.);\n"
   "}"
@@ -84,9 +102,12 @@ kapusha::Material* Materializer::loadMaterial(const char *name_raw)
 
   if (name == "__lightmap_only")
   {
+    GL_ASSERT
     kapusha::Program *prog = new kapusha::Program(shader_vertex_lightmap,
                                                   shader_fragment_lightmap);
+    GL_ASSERT
     kapusha::Material* mat = new kapusha::Material(prog);
+    GL_ASSERT
     cached_materials_[name] = mat;
     return mat;
   } else if (name == "__white")

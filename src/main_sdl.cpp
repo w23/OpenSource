@@ -1,6 +1,10 @@
 #include <stdlib.h>
 #include <errno.h>
+#if KAPUSHA_RPI
+#include <kapusha/sys/rpi/RPi.h>
+#else
 #include <kapusha/sys/SDL/KPSDL.h>
+#endif
 #include <kapusha/core/Log.h>
 #include "OpenSource.h"
 
@@ -31,6 +35,10 @@ int main(int argc, char* argv[])
 	}
   }
 
+#if KAPUSHA_RPI
+  return kapusha::RunRaspberryRun(new OpenSource(argv[1], argv[2], map_limit));
+#else
   return kapusha::KPSDL(new OpenSource(argv[1], argv[2], map_limit), 1280, 720);
+#endif
 }
 

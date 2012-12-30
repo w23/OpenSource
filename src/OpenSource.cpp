@@ -28,6 +28,7 @@ OpenSource::~OpenSource(void)
 void OpenSource::init(kapusha::IViewportController* viewctrl)
 {
   viewctrl_ = viewctrl;
+  render_ = new kapusha::Render;
 
   Materializer materializer(resources_);
 
@@ -49,7 +50,7 @@ void OpenSource::init(kapusha::IViewportController* viewctrl)
     BSP *bsp = new BSP;
     KP_ENSURE(bsp->load(stream, &materializer));
     delete stream;
-
+    
     const BSP::MapLink& link = bsp->getMapLinks();
     {
       bool link_found = false;
@@ -99,8 +100,8 @@ void OpenSource::init(kapusha::IViewportController* viewctrl)
       L("%d: %s", i, it->first.c_str());
   }
 
-  render_.cullFace().on();
-  render_.depthTest().on();
+  render_->cullFace().on();
+  render_->depthTest().on();
   glFrontFace(GL_CW);
 }
 
@@ -114,7 +115,7 @@ void OpenSource::resize(kapusha::vec2i s)
 void OpenSource::draw(int ms, float dt)
 {
   const float speed = 1000.f *
-  (viewctrl_->keyState().isKeyPressed(kapusha::KeyState::KeyShift) ? 5.f : 1);
+  (viewctrl_->keyState().isShiftPressed() ? 5.f : 1);
   camera_.moveForward(forward_speed_ * dt * speed);
   camera_.moveRigth(right_speed_ * dt * speed);
   camera_.update();
@@ -224,8 +225,9 @@ void OpenSource::inputKey(const kapusha::KeyState &keys)
         viewctrl_->limitlessPointer(false);
         viewctrl_->hideCursor(false);
         mouselook_ = false;
-      }
-	  break;
+      } else
+        viewctrl_->quit(0);
+      break;
       
     default:
       return;

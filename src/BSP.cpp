@@ -1,3 +1,4 @@
+#include <stddef.h> // offsetof
 #include <string.h>
 #include <vector>
 #include <map>
@@ -177,7 +178,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
       c.z = CLAMP(c.z, 0, 255);
 #undef CLAMP
 
-      *reinterpret_cast<u32*>(&lightmap[i]) = 0xff000000 | c.x << 16 | c.y << 8 | c.z;
+      *reinterpret_cast<vec4<u8>*>(&lightmap[i]) = vec4<u8>(c, 255);
     }
   }
 
@@ -302,8 +303,8 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
       : vertex(_vertex), tc_lightmap(_lightmap) {}
   };
   std::vector<MapVertex> tmp_vtx;
-  std::vector<int> tmp_idx;
-  std::vector<int> tmp_idx_cont;
+  std::vector<u16> tmp_idx;
+  std::vector<u16> tmp_idx_cont;
   for (int i = 0; i < num_faces; ++i)
   {
     bsp::face_t face;
@@ -380,7 +381,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
       }
     }
   }
-  //L("Total: vertices %d, indices %d", tmp_vtx.size(), tmp_idx.size());
+  L("Map: vertices %d, indices %d", tmp_vtx.size(), tmp_idx.size());
   if (tmp_vtx.size() > 65535)
     L("WARNING: total vertices size exceeds 64k: %d", tmp_vtx.size());
 
@@ -400,13 +401,13 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
 
   { // map geometry
     Buffer *index_buffer = new Buffer;
-    index_buffer->load(&tmp_idx[0], tmp_idx.size() * sizeof(int));
+    index_buffer->load(&tmp_idx[0], tmp_idx.size() * sizeof(tmp_idx[0]));
 
     Batch* batch = new Batch();
     batch->setMaterial(materializer->loadMaterial("__lightmap_only"));
     batch->setAttribSource("av4_vertex", attribs_buffer, 3, 0, sizeof(MapVertex));
     batch->setAttribSource("av2_lightmap", attribs_buffer, 2, offsetof(MapVertex, tc_lightmap), sizeof(MapVertex));
-    batch->setGeometry(Batch::GeometryTriangleList, 0, tmp_idx.size(), index_buffer);
+    batch->setGeometry(Batch::GeometryTriangleList, 0, tmp_idx.size(), Batch::IndexU16, index_buffer);
     objects_.push_back(new Object(batch));
 
     lightmap_ = lmap_atlas.texture();
@@ -419,40 +420,9 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
     Batch* batch = new Batch();
     batch->setMaterial(materializer->loadMaterial("__white"));
     batch->setAttribSource("av4_vertex", attribs_buffer, 3, 0, sizeof(MapVertex));
-    batch->setGeometry(Batch::GeometryLineList, 0, tmp_idx_cont.size(), index_buffer);
+    batch->setGeometry(Batch::GeometryLineList, 0, tmp_idx_cont.size(), Batch::IndexU16, index_buffer);
     contours_ = new Object(batch);
   }
-
-  /*
-  { // debug lightmap atlas
-    const char *vtx =
-      "attribute vec4 pos;\n"
-      "varying vec2 p;\n"
-      "void main(){\n"
-        "gl_Position = pos;\n"
-        "p = pos.xy * .5f + .5f;\n"
-      "}";
-    const char *frg =
-      "uniform sampler2D tex;\n"
-      "varying vec2 p;\n"
-      "void main(){\n"
-        "gl_FragColor = texture2D(tex, p);\n"
-      "}";
-    Material *mat = new Material(new Program(vtx, frg));
-    mat->setTexture("tex", lightmap_);
-    
-    vec2f qd[] = {
-      vec2f(-1, -1), vec2f(-1, 1), vec2f(1, 1), vec2f(1, -1)
-    };
-    Buffer *buf = new Buffer;
-    buf->load(qd, sizeof qd);
-
-    tstmp = new Batch();
-    tstmp->setMaterial(mat);
-    tstmp->setAttribSource("pos", buf, 2);
-    tstmp->setGeometry(Batch::GeometryTriangleFan, 0, 4);
-  }
-  */
 
   return true;
 }

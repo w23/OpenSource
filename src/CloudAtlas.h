@@ -6,6 +6,8 @@ namespace kapusha {
   class Texture;
 }
 
+using kapusha::u8;
+
 class CloudAtlas
 {
 public:
@@ -18,7 +20,7 @@ public:
 private:
   kapusha::vec2i size_;
   kapusha::vec2f pix2tex_;
-  kapusha::u32 *pixels_;
+  kapusha::vec4<u8> *pixels_;
 
   struct Node {
     kapusha::rect2i rect;

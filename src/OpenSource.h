@@ -31,7 +31,7 @@ public: // IViewport
   virtual void inputKey(const kapusha::KeyState& keys);
 
 private:
-  kapusha::Render render_;
+  kapusha::Render *render_;
   ResRes resources_;
   int depth_;
   kapusha::IViewportController *viewctrl_;
