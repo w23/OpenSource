@@ -14,6 +14,9 @@ Then, after all these years, I suddenly realized that it's actually not that har
 So, here you go, this utility does exactly that -- it loads a valve bsp file, then
 finds all the connections and loads them next.
 
+![](http://i.imgur.com/9jIDV.jpg)
+![](http://i.imgur.com/kzb9u.jpg)
+
 ## What it loads
  - all the bsp brushed geometry, including some weird detached stuff
  - lightmaps
