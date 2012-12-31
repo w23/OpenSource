@@ -24,6 +24,7 @@ What it does not load:
  - bsp visibility info, as there's obviously no point in doing that
 
 How to:
+
 1. Get an appropriate binary from bin/
 2. Get a Half-Life: Source (not the vanilla one) gcf file and extract it somewhere
 3. win32/osx: drag-n-drop c0a0.bsp onto application; linux/rpi: ???
