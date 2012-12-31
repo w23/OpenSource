@@ -74,4 +74,7 @@ Prerequisites:
 
 Other platforms (win32/osx): there are nice project files!
 
+# ISSUES
+* The code is bad and I should feel bad.
+
 # Next stop: the huge world of Portal 2
