@@ -5,10 +5,10 @@
 CloudAtlas::CloudAtlas(kapusha::vec2i size)
   : size_(size)
   , pix2tex_(1.f / size.x, 1.f / size.y)
-  , pixels_(new kapusha::vec4<u8>[size_.x * size_.y])
+  , pixels_(new kapusha::u16[size_.x * size_.y])
 {
   for (int i = 0; i < (size_.x * size_.y); ++i)
-    pixels_[i] = kapusha::vec4<u8>(255, 0, 0, 255);
+    pixels_[i] = 0xf800;
   root_ = new Node(kapusha::rect2i(size_));
 }
 
@@ -27,7 +27,8 @@ CloudAtlas::~CloudAtlas(void)
 kapusha::Texture *CloudAtlas::texture() const
 {
   kapusha::Texture *ret = new kapusha::Texture();
-  ret->upload(kapusha::Texture::ImageDesc(size_.x, size_.y, kapusha::Texture::ImageDesc::Format_RGBA32), pixels_);
+  ret->upload(kapusha::Texture::Meta(size_, kapusha::Texture::Meta::RGB565),
+              pixels_);
   return ret;
 }
 
@@ -48,10 +49,17 @@ kapusha::rect2f CloudAtlas::addImage(kapusha::vec2i size, const void *data)
         n->next->prev = n->prev;
       delete n;
 
-      const kapusha::u32 *p_in = reinterpret_cast<const kapusha::u32*>(data);
-      kapusha::vec4<u8> *p_out = pixels_ + r.bottom() * size_.x + r.left();
+      const kapusha::vec4<kapusha::u8> *p_in =
+        reinterpret_cast<const kapusha::vec4<kapusha::u8>*>(data);
+      kapusha::u16 *p_out = pixels_ + r.bottom() * size_.x + r.left();
       for (int y = 0; y < size.y; ++y, p_out += size_.x, p_in += size.x)
-        memcpy(p_out, p_in, 4 * size.x);
+      {
+        for (int x = 0; x < size.x; ++x)
+          p_out[x] =
+            ((p_in[x].x&0xf8) << 8) |
+            ((p_in[x].y&0xfc) << 3) |
+            (p_in[x].z >> 3);
+      }
 
       return kapusha::rect2f(kapusha::vec2f(r.left()+.5f, r.top()) * pix2tex_,
                           kapusha::vec2f(r.right(), r.bottom()+.5f) * pix2tex_);

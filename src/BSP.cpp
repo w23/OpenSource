@@ -178,7 +178,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
       c.z = CLAMP(c.z, 0, 255);
 #undef CLAMP
 
-      *reinterpret_cast<vec4<u8>*>(&lightmap[i]) = vec4<u8>(c, 255);
+      *reinterpret_cast<vec4<u8>*>(&lightmap[i]) = vec4<u8>(c);
     }
   }
 

@@ -107,12 +107,12 @@ unsigned imageSize(u32 format, int width, int height)
   return pixels * pixelsize;
 }
 
-struct Image : public kapusha::Texture::ImageDesc {
+struct Image : public kapusha::Texture::Meta {
   u8 *pixels;
 
   //Image() : width(0), height(0), format(FormatNone), pixels(0) {}
   Image(int _width, int _height)
-    : ImageDesc(_width, _height, Format_BGRA32)
+    : Meta(_width, _height, BGRA8888)
   {
     pixels = new u8[size.x * size.y * 4];
   }
@@ -162,7 +162,7 @@ struct Image : public kapusha::Texture::ImageDesc {
   {
     KP_ASSERT(size.x > 0);
     KP_ASSERT(size.y > 0);
-    KP_ASSERT(format == Format_BGRA32);
+    KP_ASSERT(format == BGRA8888);
 
     for (int y = 0; y < size.y; y += 4)
     {
