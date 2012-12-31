@@ -27,7 +27,35 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdS
   UNREFERENCED_PARAMETER(cmdShow);
 
   KP_LOG_OPEN("OpenSource.log", new OutputDebugLog());
-  OpenSource *os = new OpenSource(__argv[1], __argv[2], 128);
+  if (__argc < 2)
+  {
+    L("Feed me some *.bsp file kudasai");
+    MessageBox(0, L"Feed me some *.bsp file kudasai", L"THE CAPTION",
+      MB_OK | MB_ICONEXCLAMATION);
+    return 1;
+  }
+
+  int infilenamelen = strlen(__argv[1]);
+  char *infile = new char[infilenamelen+1];
+  strcpy(infile, __argv[1]);
+  char* mapspos = strstr(infile, "\\maps\\");
+  char* bsppos = strstr(infile, ".bsp");
+  
+  if (mapspos == 0 || bsppos == 0)
+  {
+    L("File %s doesn't seem to be .bsp or lie in \"maps\" dir", infile);
+    MessageBox(0,
+      L"Specified file doesn't seem to be .bsp or lie in \"maps\" dir",
+      L"THE CAPTION", MB_OK | MB_ICONEXCLAMATION);
+    return 2;
+  }
+
+  *mapspos = 0;
+  *bsppos = 0;
+
+  char *filepart = mapspos + 6;
+
+  OpenSource *os = new OpenSource(infile, filepart, 128);
 
   return RunWindow(hInst, os, WIDTH, HEIGHT, false);
 }
