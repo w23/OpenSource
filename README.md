@@ -59,6 +59,7 @@ Prerequisites:
  * /dev/input/event0 and 1 are expected to be a mouse and a keyboard respectively
 
 1. git clone https://github.com/w23/OpenSource.git
+2. cd OpenSource
 2. git submodule init
 3. git submodule update
 4. make -C 3p/kapusha -j5
