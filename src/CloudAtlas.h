@@ -6,6 +6,12 @@ namespace kapusha {
   class Texture;
 }
 
+#if LIGHTMAP_FORMAT == 1
+typedef kapusha::u16 lmap_texel_t;
+#else
+typedef kapusha::u32 lmap_texel_t;
+#endif
+
 class CloudAtlas
 {
 public:
@@ -18,7 +24,7 @@ public:
 private:
   kapusha::vec2i size_;
   kapusha::vec2f pix2tex_;
-  kapusha::u16 *pixels_;
+  lmap_texel_t *pixels_;
 
   struct Node {
     kapusha::rect2i rect;
