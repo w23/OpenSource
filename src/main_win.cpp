@@ -27,8 +27,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdS
   UNREFERENCED_PARAMETER(cmdShow);
 
   KP_LOG_OPEN("OpenSource.log", new OutputDebugLog());
-  L("O NOES!!");
-
   OpenSource *os = new OpenSource(__argv[1], __argv[2], 128);
 
   return RunWindow(hInst, os, WIDTH, HEIGHT, false);

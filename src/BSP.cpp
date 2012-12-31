@@ -413,7 +413,7 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
 
   { // contours
     Buffer *index_buffer = new Buffer;
-    index_buffer->load(&tmp_idx_cont[0], tmp_idx_cont.size() * sizeof(int));
+    index_buffer->load(&tmp_idx_cont[0], tmp_idx_cont.size() * sizeof(tmp_idx_cont[0]));
 
     Batch* batch = new Batch();
     batch->setMaterial(materializer->loadMaterial("__white"));

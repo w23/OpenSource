@@ -17,10 +17,10 @@ kapusha::StreamSeekable* ResRes::open(const char* name, ResourceType type) const
   switch (type)
   {
   case ResourceMap:
-    fullpath = path_ + "maps/" + name + ".bsp";
+    fullpath = path_ + "/maps/" + name + ".bsp";
     break;
   case ResourceTexture:
-    fullpath = path_ + "materials/" + name + ".vtf";
+    fullpath = path_ + "/materials/" + name + ".vtf";
     break;
   default:
     L("Unsupported resource type %d", type);
