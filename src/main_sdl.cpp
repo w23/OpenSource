@@ -3,7 +3,7 @@
 #if KAPUSHA_RPI
 #include <kapusha/sys/rpi/RPi.h>
 #else
-#include <kapusha/sys/SDL/KPSDL.h>
+#include <kapusha/sys/sdl/KPSDL.h>
 #endif
 #include <kapusha/core/Log.h>
 #include "OpenSource.h"
