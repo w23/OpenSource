@@ -185,10 +185,8 @@ bool BSP::load(StreamSeekable* stream, Materializer* materializer)
   // guess combined lightmap size
   vec2i lmap_atlas_size(1);
   for (;lmap_atlas_size.x * lmap_atlas_size.x < lmap_luxels; lmap_atlas_size.x <<= 1);
-  {
-    int lmap_min_height = lmap_luxels / lmap_atlas_size.x;
-    for (;lmap_atlas_size.y < lmap_min_height; lmap_atlas_size.y <<= 1);
-  }
+  int lmap_min_height = lmap_luxels / lmap_atlas_size.x;
+  for (;lmap_atlas_size.y < lmap_min_height; lmap_atlas_size.y <<= 1);
   CloudAtlas lmap_atlas(lmap_atlas_size);
 
   // find linked maps in entities
@@ -444,9 +442,6 @@ void BSP::drawContours(const kapusha::Camera& cam) const
     contours_->getBatch()->getMaterial()->setUniform("uv4_trans", vec4f(translation_));
     contours_->draw(cam.getView(), cam.getProjection());
   }
-
-  //tstmp->prepare();
-  //tstmp->draw();
 }
 
 void BSP::setParent(const BSP* parent, vec3f relative)

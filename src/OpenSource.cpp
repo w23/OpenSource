@@ -220,13 +220,16 @@ void OpenSource::inputKey(const kapusha::KeyState &keys)
       yaw_speed_ += keys.isLastKeyPressed() ? -1.f : 1.f;
       break;
     case KeyState::KeyEsc:
-      if (mouselook_)
+      if (keys.isLastKeyPressed())
       {
-        viewctrl_->limitlessPointer(false);
-        viewctrl_->hideCursor(false);
-        mouselook_ = false;
-      } else
-        viewctrl_->quit(0);
+        if (mouselook_)
+        {
+          viewctrl_->limitlessPointer(false);
+          viewctrl_->hideCursor(false);
+          mouselook_ = false;
+        } else
+          viewctrl_->quit(0);
+      }
       break;
       
     default:

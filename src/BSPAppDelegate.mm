@@ -14,6 +14,8 @@ public:
 
 @interface BSPAppDelegate ()
 @property (assign) IBOutlet KPView *viewport;
+@property (strong) NSString *bspPath;
+@property (strong) NSString *bspFile;
 @end
 
 @implementation BSPAppDelegate
@@ -23,14 +25,25 @@ public:
   [super dealloc];
 }
 
+- (BOOL)application:(NSApplication *)theApplication
+           openFile:(NSString *)filename
+{
+  self.bspFile = [[filename lastPathComponent] stringByDeletingPathExtension];
+  self.bspPath = [[[filename stringByDeletingLastPathComponent]
+                  stringByDeletingLastPathComponent] stringByAppendingString:@"/"];
+  return YES;
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification
 {
-  // \hack force likning KPView class from libkapusha
+  //! \hack force likning KPView class from libkapusha
   [KPView class];
   
   KP_LOG_OPEN(0, new CocoaLog);
   [self.window setAcceptsMouseMovedEvents:YES];
-  [self.viewport setViewport:new OpenSource("/Users/w23/tmp/hl1/", "c0a0", 128)];
+  [self.viewport setViewport:new OpenSource(
+    [self.bspPath cStringUsingEncoding:NSUTF8StringEncoding],
+    [self.bspFile cStringUsingEncoding:NSUTF8StringEncoding], 128)];
 }
 
 - (BOOL)windowShouldClose:(id)sender

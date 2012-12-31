@@ -9,3 +9,4 @@ project.xcworkspace
 *.a
 *.log
 *.bsp
+*.app
