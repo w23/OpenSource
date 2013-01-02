@@ -50,25 +50,39 @@ void OpenSource::init(kapusha::IViewportController* viewctrl)
     BSP *bsp = new BSP;
     KP_ENSURE(bsp->load(stream, &materializer));
     delete stream;
-    
-    const BSP::MapLink& link = bsp->getMapLinks();
+
+    //! \hack inject c1a0c link to previous map
+    BSP::MapLink hacklink;
+    if (map == "c1a0c")
+    {
+      hacklink = bsp->getMapLinks();
+      hacklink.maps["c1a0b"] = "c1a0btoc";
+      hacklink.landmarks["c1a0btoc"] = kapusha::vec3f(2052.f, 864.f, 566.f);
+    }
+    const BSP::MapLink& link = hacklink.landmarks.empty() ? bsp->getMapLinks() : hacklink;
+
     {
       bool link_found = false;
       for(auto ref = link.maps.begin(); ref != link.maps.end(); ++ref)
       {
+        auto refmark = link.landmarks.find(ref->second);
+        KP_ASSERT(refmark != link.landmarks.end());
+        L("\t links to %s via landmark \"%s\" (%f, %f, %f)",
+          ref->first.c_str(), refmark->first.c_str(),
+          refmark->second.x, refmark->second.y, refmark->second.z);
+        
         auto found = levels_.find(ref->first);
         if (found != levels_.end())
         {
           if (!link_found)
           {
-            auto minemark = link.landmarks.find(ref->second);
-            KP_ASSERT(minemark != link.landmarks.end());
-
             auto landmark = found->second->getMapLinks().landmarks.find(ref->second);
             KP_ASSERT(landmark != found->second->getMapLinks().landmarks.end());
 
-            bsp->setParent(found->second, landmark->second - minemark->second);
-            //L("%s links to %s", map.c_str(), ref->first.c_str());
+            bsp->setParent(found->second, landmark->second - refmark->second);
+            /*L("%s (%f, %f, %f) links to %s (%f, %f, %f)",
+              map.c_str(), minemark->second.x, minemark->second.y, minemark->second.z,
+              ref->first.c_str(), landmark->second.x, landmark->second.y, landmark->second.z);*/
             link_found = true;
           }
         } else {
@@ -76,12 +90,11 @@ void OpenSource::init(kapusha::IViewportController* viewctrl)
               std::find(maps_to_load_.begin(),
                         maps_to_load_.end(), ref->first) == maps_to_load_.end())
             maps_to_load_.push_back(ref->first);
-
         }
       }
 
-      if (!link_found)
-        L("%s doesn't link to anything!", map.c_str());
+      if (!link_found && !levels_.empty())
+        L("WARNING! %s doesn't link to any existing map! This map will begin from (0, 0, 0)", map.c_str());
     }
 
     levels_[map] = bsp;
@@ -97,7 +110,8 @@ void OpenSource::init(kapusha::IViewportController* viewctrl)
     L("List of all loaded maps:");
     int i = 0;
     for (auto it = levels_.begin(); it != levels_.end(); ++it, ++i)
-      L("%d: %s", i, it->first.c_str());
+      L("%d: %s (%f, %f, %f)", i, it->first.c_str(),
+        it->second->translation().x, it->second->translation().y, it->second->translation().z);
   }
 
   render_->cullFace().on();
@@ -167,42 +181,48 @@ void OpenSource::inputKey(const kapusha::KeyState &keys)
       break;
     case KeyState::KeyY:
       if (keys.isLastKeyPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - kapusha::vec3f(1000.f,0,0));
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - kapusha::vec3f(1.f,0,0)*(keys.isShiftPressed()?100.f:1));
+        L("(%f, %f, %f)", levelsv_[selection_]->shift().x, levelsv_[selection_]->shift().y, levelsv_[selection_]->shift().z);
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
     case 'U':
       if (keys.isLastKeyPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + kapusha::vec3f(1000.f,0,0));
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + kapusha::vec3f(1.f,0,0)*(keys.isShiftPressed()?100.f:1));
+        L("(%f, %f, %f)", levelsv_[selection_]->shift().x, levelsv_[selection_]->shift().y, levelsv_[selection_]->shift().z);
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
     case 'H':
       if (keys.isLastKeyPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - kapusha::vec3f(0,1000.f,0));
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - kapusha::vec3f(0,1.f,0)*(keys.isShiftPressed()?100.f:1));
+        L("(%f, %f, %f)", levelsv_[selection_]->shift().x, levelsv_[selection_]->shift().y, levelsv_[selection_]->shift().z);
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
     case 'J':
       if (keys.isLastKeyPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + kapusha::vec3f(0,1000.f,0));
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + kapusha::vec3f(0,1.f,0)*(keys.isShiftPressed()?100.f:1));
+        L("(%f, %f, %f)", levelsv_[selection_]->shift().x, levelsv_[selection_]->shift().y, levelsv_[selection_]->shift().z);
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
     case 'N':
       if (keys.isLastKeyPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - kapusha::vec3f(0,0,1000.f));
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() - kapusha::vec3f(0,0,1.f)*(keys.isShiftPressed()?100.f:1));
+        L("(%f, %f, %f)", levelsv_[selection_]->shift().x, levelsv_[selection_]->shift().y, levelsv_[selection_]->shift().z);
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
       break;
     case 'm':
       if (keys.isLastKeyPressed()) {
-        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + kapusha::vec3f(0,0,1000.f));
+        levelsv_[selection_]->updateShift(levelsv_[selection_]->shift() + kapusha::vec3f(0,0,1.f)*(keys.isShiftPressed()?100.f:1));
+        L("(%f, %f, %f)", levelsv_[selection_]->shift().x, levelsv_[selection_]->shift().y, levelsv_[selection_]->shift().z);
         for (auto it = levelsv_.begin(); it != levelsv_.end(); ++it)
           (*it)->updateShift((*it)->shift());
       }
