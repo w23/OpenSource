@@ -14,7 +14,12 @@ Then, after all these years, I suddenly realized that it's actually not that har
 So, here you go, this utility does exactly that -- it loads a valve bsp file, then
 finds all the connections and loads them next.
 
+Video of a fly around the entire Half-Life world: http://www.youtube.com/watch?v=-SaRdQdW-Ik
+
+Half-Life 1:
 ![](http://i.imgur.com/9jIDV.jpg)
+
+Half-Life 2:
 ![](http://i.imgur.com/kzb9u.jpg)
 
 ## What it loads
