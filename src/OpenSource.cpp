@@ -89,7 +89,10 @@ void OpenSource::init(kapusha::IViewportController* viewctrl)
           if (map != ref->first && 
               std::find(maps_to_load_.begin(),
                         maps_to_load_.end(), ref->first) == maps_to_load_.end())
-            maps_to_load_.push_back(ref->first);
+          {
+            if (enabled_maps_.empty() || enabled_maps_.count(ref->first))
+              maps_to_load_.push_back(ref->first);
+          }
         }
       }
 

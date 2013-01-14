@@ -20,6 +20,16 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////////
 
+std::string extractMapName(const char* s)
+{
+  const char* mapspos = strstr(s, "\\maps\\");
+  const char* bsppos = strstr(s, ".bsp");
+
+  if (mapspos == 0 || bsppos == 0) return std::string();
+
+  return std::string(mapspos + 6, bsppos);
+}
+
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdShow)
 {
   UNREFERENCED_PARAMETER(hPrevInst);
@@ -56,6 +66,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR cmdLine, int cmdS
   char *filepart = mapspos + 6;
 
   OpenSource *os = new OpenSource(infile, filepart, 128);
+
+  for (int i = 2; i < __argc; ++i)
+  {
+    std::string mapname = extractMapName(__argv[i]);
+    if (!mapname.empty())
+      os->addMapRestriction(mapname);
+  }
 
   return RunWindow(hInst, os, WIDTH, HEIGHT, false);
 }

@@ -4,6 +4,7 @@
 #include <vector>
 #include <deque>
 #include <map>
+#include <unordered_set>
 
 #include <kapusha/core/IViewport.h>
 #include <kapusha/render/Render.h>
@@ -22,6 +23,10 @@ public:
     int depth = 32);
   virtual ~OpenSource();
 
+  void addMapRestriction(const std::string& name) {
+    enabled_maps_.emplace(name);
+  }
+
 public: // IViewport
   virtual void init(kapusha::IViewportController *viewctrl);
   virtual void resize(kapusha::vec2i size);
@@ -38,6 +43,7 @@ private:
   std::map<std::string, BSP*> levels_;
   std::vector<BSP*> levelsv_;
   std::deque<std::string> maps_to_load_;
+  std::unordered_set<std::string> enabled_maps_;
   
   kapusha::rect2f viewport_;
   kapusha::Camera camera_;
