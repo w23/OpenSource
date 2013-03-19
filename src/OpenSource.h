@@ -24,7 +24,7 @@ public:
   virtual ~OpenSource();
 
   void addMapRestriction(const std::string& name) {
-    enabled_maps_.emplace(name);
+    enabled_maps_.insert(name);
   }
 
 public: // IViewport

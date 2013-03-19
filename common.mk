@@ -10,7 +10,7 @@ else
 endif
 
 ifeq ($(RPI),1)
-	CXXFLAGS += -DKAPUSHA_RPI=1 -I/opt/vc/include -I/opt/vc/include/interface/vcos/pthreads
+	CXXFLAGS += -DKAPUSHA_RPI=1 -I/opt/vc/include -I/opt/vc/include/interface/vcos/pthreads -I/opt/vc/include/interface/vmcs_host/linux
 	LDFLAGS += -lGLESv2 -lEGL -lbcm_host -L/opt/vc/lib
 else
 	CXXFLAGS += `pkg-config --cflags sdl` -march=native
