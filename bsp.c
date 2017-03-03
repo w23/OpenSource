@@ -135,7 +135,7 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		return FaceProbe_SurfedgesOOB;
 
 	if (face->lightmap_offset % sizeof(struct VBSPLumpLightMap) != 0) {
-		PRINT("Error: face%u references lightmap at unaligned offset %u: %lu",
+		PRINT("Error: face%u references lightmap at unaligned offset %u: %zu",
 				index, face->lightmap_offset, face->lightmap_offset % sizeof(struct VBSPLumpLightMap));
 		return FaceProbe_UnalignedLightmap;
 	}
@@ -402,12 +402,11 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 				aVec4fDot(aVec4f3(vertex->vertex, 1.f),	lm_map_u),
 				aVec4fDot(aVec4f3(vertex->vertex, 1.f), lm_map_v));
 
-			
 			if (vertex->lightmap_uv.x < 0 || vertex->lightmap_uv.y < 0 || vertex->lightmap_uv.x > vis_face->width || vertex->lightmap_uv.y > vis_face->height)
 				PRINT("Error: OOB LM F%u:V%u: x=%f y=%f z=%f u=%f v=%f w=%d h=%d", iface, iedge, lv->x, lv->y, lv->z, vertex->lightmap_uv.x, vertex->lightmap_uv.y, vis_face->width, vis_face->height);
 
-			vertex->lightmap_uv.x = (vertex->lightmap_uv.x + vis_face->atlas_x) / ctx->lightmap.texture.width;
-			vertex->lightmap_uv.y = (vertex->lightmap_uv.y + vis_face->atlas_y) / ctx->lightmap.texture.height;
+			vertex->lightmap_uv.x = (vertex->lightmap_uv.x + vis_face->atlas_x + .5f) / ctx->lightmap.texture.width;
+			vertex->lightmap_uv.y = (vertex->lightmap_uv.y + vis_face->atlas_y + .5f) / ctx->lightmap.texture.height;
 
 			if (iedge > 1) {
 				indices[(iedge-2)*3+0] = vertex_pos + 0;

@@ -7,6 +7,7 @@
 #include "atto/math.h"
 
 #include <stdlib.h> /* malloc */
+#include <stddef.h> /* offsetof */
 
 static char temp_data[32*1024*1024];
 
@@ -62,7 +63,6 @@ static void simplecamLookAt(struct SimpleCamera *cam, struct AVec3f pos, struct 
 	simplecamRecalc(cam);
 }
 
-#if 0
 static void simplecamMove(struct SimpleCamera *cam, struct AVec3f v) {
 	cam->pos = aVec3fAdd(cam->pos, aVec3fMulf(cam->axes.X, v.x));
 	cam->pos = aVec3fAdd(cam->pos, aVec3fMulf(cam->axes.Y, v.y));
@@ -76,10 +76,9 @@ static void simplecamRotateYaw(struct SimpleCamera *cam, float yaw) {
 
 static void simplecamRotatePitch(struct SimpleCamera *cam, float pitch) {
 	/* TODO limit pitch */
-	const struct AMat3f rot = aMat3fRotateAxis(cam->up, pitch);
+	const struct AMat3f rot = aMat3fRotateAxis(cam->axes.X, pitch);
 	cam->dir = aVec3fMulMat(rot, cam->dir);
 }
-#endif
 
 #define COUNTOF(v) (sizeof(v) / sizeof(*(v)))
 
@@ -298,6 +297,7 @@ enum { AttribPos, AttribNormal, AttribLightmapUV, Attrib_COUNT };
 
 static struct {
 	struct SimpleCamera camera;
+	int forward, right, run;
 	struct AVec3f center;
 	float R;
 
@@ -397,6 +397,11 @@ static void opensrcInit(const char *filename) {
 	g.merge.depth.func = AGLDF_Less;
 
 	g.screen.framebuffer = 0;
+
+	const float t = 0;
+	simplecamLookAt(&g.camera,
+			aVec3fAdd(g.center, aVec3fMulf(aVec3f(cosf(t*.5), sinf(t*.5), .25f), g.R*.5f)),
+			g.center, aVec3f(0.f, 0.f, 1.f));
 }
 
 static void drawBSPDraw(const struct BSPDraw *draw) {
@@ -430,10 +435,16 @@ static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int ol
 static void opensrcPaint(ATimeUs timestamp, float dt) {
 	(void)(timestamp); (void)(dt);
 
-	const float t = timestamp * 1e-6f;
-	simplecamLookAt(&g.camera,
-			aVec3fAdd(g.center, aVec3fMulf(aVec3f(cosf(t*.5), sinf(t*.5), .25f), g.R*.5f)),
-			g.center, aVec3f(0.f, 0.f, 1.f));
+	if (0) {
+		const float t = timestamp * 1e-6f;
+		simplecamLookAt(&g.camera,
+				aVec3fAdd(g.center, aVec3fMulf(aVec3f(cosf(t*.5), sinf(t*.5), .25f), g.R*.5f)),
+				g.center, aVec3f(0.f, 0.f, 1.f));
+	} else {
+		float move = dt * (g.run?3000.f:300.f);
+		simplecamMove(&g.camera, aVec3f(g.right * move, 0.f, -g.forward * move));
+		simplecamRecalc(&g.camera);
+	}
 
 	AGLClearParams clear;
 	clear.r = clear.g = clear.b = 0;
@@ -441,27 +452,52 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 	clear.bits = AGLCB_ColorAndDepth;
 	aGLClear(&clear, &g.screen);
 
-	fsquadDraw(1., &g.worldspawn.lightmap, &g.screen);
+	if (0)
+		fsquadDraw(1., &g.worldspawn.lightmap, &g.screen);
 
 	drawModel(&g.worldspawn);
 
-	const struct AABBDraw aabb = {
-		.min = g.worldspawn.aabb.min,
-		.max = g.worldspawn.aabb.max,
-		.color = aVec3ff(1),
-		.mvp = &g.camera.view_projection,
-		.target = &g.screen
-	};
-	aabbDraw(&aabb);
+	if (0) {
+		const struct AABBDraw aabb = {
+			.min = g.worldspawn.aabb.min,
+			.max = g.worldspawn.aabb.max,
+			.color = aVec3ff(1),
+			.mvp = &g.camera.view_projection,
+			.target = &g.screen
+		};
+		aabbDraw(&aabb);
+	}
 }
 
 static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 	(void)(timestamp); (void)(key); (void)(pressed);
-	if (key == AK_Esc) aAppTerminate(0);
+	//printf("KEY %u %d %d\n", timestamp, key, pressed);
+	switch (key) {
+	case AK_Esc:
+		if (!pressed) break;
+		if (a_app_state->grabbed)
+			aAppGrabInput(0);
+		else
+			aAppTerminate(0);
+		break;
+	case AK_W: g.forward += pressed?1:-1; break;
+	case AK_S: g.forward += pressed?-1:1; break;
+	case AK_A: g.right += pressed?-1:1; break;
+	case AK_D: g.right += pressed?1:-1; break;
+	case AK_LeftShift: g.run = pressed; break;
+	default: break;
+	}
 }
 
 static void opensrcPointer(ATimeUs timestamp, int dx, int dy, unsigned int btndiff) {
 	(void)(timestamp); (void)(dx); (void)(dy); (void)(btndiff);
+	//printf("PTR %u %d %d %x\n", timestamp, dx, dy, btndiff);
+	if (a_app_state->grabbed) {
+		simplecamRotatePitch(&g.camera, dy * -4e-3f);
+		simplecamRotateYaw(&g.camera, dx * -4e-3f);
+		simplecamRecalc(&g.camera);
+	} else if (btndiff)
+		aAppGrabInput(1);
 }
 
 void attoAppInit(struct AAppProctable *proctable) {
