@@ -250,9 +250,9 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 				lumps->vertices.p[vstart].x,
 				lumps->vertices.p[vstart].y,
 				lumps->vertices.p[vstart].z);
-			if (lumps->vertices.p[vstart].x == vis_face->dispinfo->start_pos.x
-					&& lumps->vertices.p[vstart].y == vis_face->dispinfo->start_pos.y
-					&& lumps->vertices.p[vstart].z == vis_face->dispinfo->start_pos.z) {
+			if (fabs(lumps->vertices.p[vstart].x - vis_face->dispinfo->start_pos.x) < .5f
+					&& fabs(lumps->vertices.p[vstart].y - vis_face->dispinfo->start_pos.y) < .5f
+					&& fabs(lumps->vertices.p[vstart].z - vis_face->dispinfo->start_pos.z) < .5f) {
 				PRINT("%d matches disp_start", i);
 				vis_face->dispstartvtx = i;
 			}
