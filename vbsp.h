@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 enum {
-	VSBP_Lump_Entity = 0,
+	VBSP_Lump_Entity = 0,
 	VBSP_Lump_Plane = 1,
 	VBSP_Lump_TexData = 2,
 	VBSP_Lump_Vertex = 3,
@@ -15,11 +15,18 @@ enum {
 	VBSP_Lump_LightMap = 8,
 
 	VBSP_Lump_Leaf = 10,
+
 	VBSP_Lump_Edge = 12,
 	VBSP_Lump_Surfedge = 13,
 	VBSP_Lump_Model = 14,
 
 	VBSP_Lump_LeafFace = 16,
+
+	VBSP_Lump_DispInfo = 26,
+
+	VBSP_Lump_DispVerts = 33,
+
+	VBSP_Lump_PakFile = 40,
 
 	VBSP_Lump_TexDataStringData = 43,
 	VBSP_Lump_TexDataStringTable = 44,
@@ -72,10 +79,10 @@ struct VBSPLumpFace {
 	uint16_t plane;
 	uint8_t side, node;
 	uint32_t first_edge;
-	uint16_t num_edges;
-	uint16_t texinfo;
-	uint16_t dispinfo;
-	uint16_t surface_fog_volume_id;
+	int16_t num_edges;
+	int16_t texinfo;
+	int16_t dispinfo;
+	int16_t surface_fog_volume_id;
 	uint8_t styles[4];
 	uint32_t lightmap_offset;
 	float area;
@@ -109,6 +116,37 @@ struct VBSPLumpModel {
 	struct { float x, y, z; } origin;
 	int32_t head_node;
 	int32_t first_face, num_faces;
+};
+struct VBSPLumpDispInfo {
+	struct { float x, y, z; } start_pos;
+	int32_t vtx_start;
+	int32_t tri_start;
+	int32_t power;
+	int32_t min_tess;
+	float smoothing_angle;
+	int32_t contents;
+	uint16_t face;
+	int32_t lightmap_alpha_start;
+	int32_t lightmap_sample_position_start;
+	/* FIXME a mistake here?
+	struct {
+		struct {
+			uint16_t index;
+			uint8_t orientation;
+			uint8_t span;
+			uint8_t neighbor_span;
+		} sub_neighbors[2];
+	} edge_neighbors[4];
+	struct {
+		uint16_t indices[4];
+		uint8_t num;
+	} corner_neighbors[4];
+	*/
+	uint8_t fixme_padding[90];
+	uint32_t allowed_verts[10];
+};
+struct VBSPLumpDispVert {
+	float x, y, z, dist, alpha;
 };
 #pragma pack()
 

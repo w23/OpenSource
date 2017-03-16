@@ -30,29 +30,53 @@ struct AnyLump {
 
 struct Lumps {
 	uint32_t version;
-#define BSPLUMP(type,name) struct{const type *p;uint32_t n;} name
-	BSPLUMP(struct VBSPLumpModel, models);
-	BSPLUMP(struct VBSPLumpNode, nodes);
-	BSPLUMP(struct VBSPLumpPlane, planes);
-	BSPLUMP(struct VBSPLumpLeaf, leaves);
-	BSPLUMP(uint16_t, leaffaces);
-	BSPLUMP(struct VBSPLumpFace, faces);
-	BSPLUMP(int32_t, surfedges);
-	BSPLUMP(struct VBSPLumpEdge, edges);
-	BSPLUMP(struct VBSPLumpVertex, vertices);
-	BSPLUMP(struct VBSPLumpTexInfo, texinfos);
-	BSPLUMP(struct VBSPLumpLightMap, lightmaps);
-	BSPLUMP(char, entities);
+#define LIST_LUMPS \
+	BSPLUMP(Entity, char, entities); \
+	BSPLUMP(Plane, struct VBSPLumpPlane, planes); \
+	BSPLUMP(TexData, struct VBSPLumpTexData, texdata); \
+	BSPLUMP(Vertex, struct VBSPLumpVertex, vertices); \
+	\
+	BSPLUMP(Node, struct VBSPLumpNode, nodes); \
+	BSPLUMP(TexInfo, struct VBSPLumpTexInfo, texinfos); \
+	BSPLUMP(Face, struct VBSPLumpFace, faces); \
+	BSPLUMP(LightMap, struct VBSPLumpLightMap, lightmaps); \
+	\
+	BSPLUMP(Leaf, struct VBSPLumpLeaf, leaves); \
+	\
+	BSPLUMP(Edge, struct VBSPLumpEdge, edges); \
+	BSPLUMP(Surfedge, int32_t, surfedges); \
+	BSPLUMP(Model, struct VBSPLumpModel, models); \
+	\
+	BSPLUMP(LeafFace, uint16_t, leaffaces); \
+	\
+	BSPLUMP(DispInfo, struct VBSPLumpDispInfo, dispinfos); \
+	\
+	BSPLUMP(DispVerts, struct VBSPLumpDispVert, dispverts); \
+	\
+	BSPLUMP(PakFile, uint8_t, pakfile); \
+	\
+	BSPLUMP(TexDataStringData, char, texdatastringdata); \
+	BSPLUMP(TexDataStringTable, int32_t, texdatastringtable);
+
+#define BSPLUMP(name,type,field) struct{const type *p;uint32_t n;} field
+	LIST_LUMPS
 #undef BSPLUMP
 };
 
 /* data needed for making lightmap atlas */
 struct VisibleFace {
-	unsigned int face_index;
+	const struct VBSPLumpFace *face;
 	/* read directly from lumps */
 	unsigned int vertices;
+	int indices;
 	unsigned int width, height;
 	const struct VBSPLumpLightMap *samples;
+	const struct VBSPLumpTexInfo *texinfo;
+	const struct VBSPLumpTexData *texdata;
+	const struct VBSPLumpDispInfo *dispinfo;
+	int dispquadvtx[4]; // filled only when displaced
+	int dispstartvtx;
+	const char *texture;
 
 	/* filled as a result of atlas allocation */
 	unsigned int atlas_x, atlas_y;
@@ -65,6 +89,7 @@ struct LoadModelContext {
 	struct VisibleFace *faces;
 	unsigned int faces_count;
 	unsigned int vertices;
+	int indices;
 	unsigned int max_draw_vertices;
 	struct {
 		unsigned int pixels;
@@ -75,10 +100,13 @@ struct LoadModelContext {
 	unsigned int draws_to_alloc;
 };
 
+/* TODO change this to Ok|Skip|Inconsistent,
+ * print verbose errors for inconsistent */
 enum FaceProbe {
 	FaceProbe_Ok,
 	FaceProbe_Skip,
 	FaceProbe_OOB,
+	FaceProbe_Inconsistent,
 	FaceProbe_PlaneOOB,
 	FaceProbe_TooFewEdges,
 	FaceProbe_SurfedgesOOB,
@@ -87,8 +115,12 @@ enum FaceProbe {
 	FaceProbe_InconsistentEdge,
 	FaceProbe_UnalignedLightmap,
 	FaceProbe_LightmapOOB,
-	FaceProbe_TexinfoOOB,
-	FaceProbe_VertexOOB
+	FaceProbe_TexInfoOOB,
+	FaceProbe_TexDataOOB,
+	FaceProbe_TexDataStringTableOOB,
+	FaceProbe_TexDataStringDataOOB,
+	FaceProbe_VertexOOB,
+	FaceProbe_DispInfoOOB
 };
 
 static const char *faceProbeError(enum FaceProbe code) {
@@ -104,8 +136,13 @@ static const char *faceProbeError(enum FaceProbe code) {
 		case FaceProbe_InconsistentEdge: return "FaceProbe_InconsistentEdge"; break;
 		case FaceProbe_UnalignedLightmap: return "FaceProbe_UnalignedLightmap"; break;
 		case FaceProbe_LightmapOOB: return "FaceProbe_LightmapOOB"; break;
-		case FaceProbe_TexinfoOOB: return "FaceProbe_TexinfoOOB"; break;
+		case FaceProbe_TexInfoOOB: return "FaceProbe_TexInfoOOB"; break;
+		case FaceProbe_TexDataOOB: return "FaceProbe_TexDataOOB"; break;
+		case FaceProbe_TexDataStringTableOOB: return "FaceProbe_TexDataStringTableOOB"; break;
+		case FaceProbe_TexDataStringDataOOB: return "FaceProbe_TexDataStringDataOOB"; break;
 		case FaceProbe_VertexOOB: return "FaceProbe_VertexOOB"; break;
+		case FaceProbe_DispInfoOOB: return "FaceProbe_DispInfoOOB"; break;
+		case FaceProbe_Inconsistent: return "FaceProbe_Inconsistent"; break;
 	}
 	return "UNKNOWN";
 }
@@ -122,16 +159,50 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 	const struct Lumps * const lumps = ctx->lumps;
 	if (index >= lumps->faces.n) return FaceProbe_OOB;
 	const struct VBSPLumpFace * const face = lumps->faces.p + index;
+	vis_face->face = face;
 
-	if (face->texinfo > lumps->texinfos.n)
-		return FaceProbe_TexinfoOOB;
+	if (face->texinfo < 0)
+		return FaceProbe_Skip;
+	if ((unsigned)face->texinfo > lumps->texinfos.n)
+		return FaceProbe_TexInfoOOB;
+	vis_face->texinfo = lumps->texinfos.p + face->texinfo;
 	if (shouldSkipFace(face, lumps))
 		return FaceProbe_Skip;
+	if (vis_face->texinfo->texdata >= lumps->texdata.n)
+		return FaceProbe_TexDataOOB;
+	vis_face->texdata = lumps->texdata.p + vis_face->texinfo->texdata;
+	if (vis_face->texdata->name_string_table_id >= lumps->texdatastringtable.n)
+		return FaceProbe_TexDataStringTableOOB;
+	const int32_t texdatastringdata_offset = lumps->texdatastringtable.p[vis_face->texdata->name_string_table_id];
+	if (texdatastringdata_offset < 0 || (uint32_t)texdatastringdata_offset >= lumps->texdatastringdata.n)
+		return FaceProbe_TexDataStringDataOOB;
+	/* FIXME validate string: has \0 earlier than end */
+	vis_face->texture = lumps->texdatastringdata.p + texdatastringdata_offset;
+
+	if (face->dispinfo >= 0) {
+		if ((unsigned)face->dispinfo >= lumps->dispinfos.n)
+			return FaceProbe_DispInfoOOB;
+		vis_face->dispinfo = lumps->dispinfos.p + face->dispinfo;
+		const int side = (1 << vis_face->dispinfo->power) + 1;
+		if (face->num_edges != 4) {
+			PRINT("Displaced face has invalid num_edges %d", face->num_edges);
+			return FaceProbe_Inconsistent;
+		}
+		vis_face->vertices = side * side;
+		vis_face->indices = (side - 1) * (side - 1) * 6; /* triangle list */
+		PRINT("Power: %d, min_tess: %d, vertices: %d",
+				vis_face->dispinfo->power, vis_face->dispinfo->min_tess, vis_face->vertices);
+		vis_face->dispstartvtx = 0;
+	} else {
+		vis_face->dispinfo = 0;
+		vis_face->vertices = face->num_edges;
+		vis_face->indices = (vis_face->vertices - 2) * 3;
+	}
 
 	/* Check for basic reference consistency */
 	if (face->plane >= lumps->planes.n) return FaceProbe_PlaneOOB;
 	if (face->num_edges < 3) return FaceProbe_TooFewEdges;
-	if (face->first_edge >= lumps->surfedges.n || lumps->surfedges.n - face->first_edge < face->num_edges)
+	if (face->first_edge >= lumps->surfedges.n || lumps->surfedges.n - face->first_edge < (unsigned)face->num_edges)
 		return FaceProbe_SurfedgesOOB;
 
 	if (face->lightmap_offset % sizeof(struct VBSPLumpLightMap) != 0) {
@@ -170,6 +241,23 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		const unsigned int vstart = lumps->edges.p[edge_index].v[istart];
 		const unsigned int vend = lumps->edges.p[edge_index].v[1^istart];
 
+		if (vis_face->dispinfo) {
+			vis_face->dispquadvtx[i] = vstart;
+			PRINT("%f %f %f -- %f %f %f",
+				vis_face->dispinfo->start_pos.x,
+				vis_face->dispinfo->start_pos.y,
+				vis_face->dispinfo->start_pos.z,
+				lumps->vertices.p[vstart].x,
+				lumps->vertices.p[vstart].y,
+				lumps->vertices.p[vstart].z);
+			if (lumps->vertices.p[vstart].x == vis_face->dispinfo->start_pos.x
+					&& lumps->vertices.p[vstart].y == vis_face->dispinfo->start_pos.y
+					&& lumps->vertices.p[vstart].z == vis_face->dispinfo->start_pos.z) {
+				PRINT("%d matches disp_start", i);
+				vis_face->dispstartvtx = i;
+			}
+		}
+
 		if (vstart > lumps->vertices.n)
 			return FaceProbe_VertexOOB;
 
@@ -180,16 +268,15 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		prev_end = vend;
 	}
 
-	vis_face->vertices = face->num_edges;
 	vis_face->width = lm_width;
 	vis_face->height = lm_height;
 	vis_face->samples = lumps->lightmaps.p + sample_offset;
 	if (lm_width > ctx->lightmap.max_width) ctx->lightmap.max_width = lm_width;
 	if (lm_height > ctx->lightmap.max_height) ctx->lightmap.max_height = lm_height;
-	vis_face->face_index = index;
 
 	ctx->lightmap.pixels += lightmap_size;
-	ctx->vertices += face->num_edges;
+	ctx->vertices += vis_face->vertices;
+	ctx->indices += vis_face->indices;
 	ctx->faces_count++;
 
 	return FaceProbe_Ok;
@@ -328,6 +415,75 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 	return BSPLoadResult_Success;
 }
 
+inline static struct AVec3f aVec3fLumpVec(struct VBSPLumpVertex v) { return aVec3f(v.x, v.y, v.z); }
+
+inline static struct AVec3f aVec3fMix(struct AVec3f a, struct AVec3f b, float t) {
+	return aVec3fAdd(a, aVec3fMulf(aVec3fSub(b, a), t));
+}
+
+static enum BSPLoadResult bspLoadDisplacement(const struct LoadModelContext *ctx,
+		const struct VisibleFace *face,
+		struct BSPModelVertex *out_vertices, uint16_t *out_indices, int index_shift) {
+ 	const int side = (1 << face->dispinfo->power) + 1;
+	const struct VBSPLumpVertex *const vertices = ctx->lumps->vertices.p;
+	const struct VBSPLumpTexInfo * const tinfo = face->texinfo;
+
+	const struct AVec3f
+		bl = aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 0)%4]]),
+		tl = aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 1)%4]]),
+		tr = aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 2)%4]]),
+		br = aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 3)%4]]);
+
+	const struct AVec4f lm_map_u = aVec4f(
+				tinfo->lightmap_vecs[0][0], tinfo->lightmap_vecs[0][1],
+				tinfo->lightmap_vecs[0][2], tinfo->lightmap_vecs[0][3] - face->face->lightmap_min[0]);
+	const struct AVec4f lm_map_v = aVec4f(
+				tinfo->lightmap_vecs[1][0], tinfo->lightmap_vecs[1][1],
+				tinfo->lightmap_vecs[1][2], tinfo->lightmap_vecs[1][3] - face->face->lightmap_min[1]);
+
+	const struct VBSPLumpDispVert *const dispvert = ctx->lumps->dispverts.p + face->dispinfo->vtx_start;
+	for (int y = 0; y < side; ++y) {
+		const float ty = (float)y / (side - 1);
+		const struct AVec3f vl = aVec3fMix(bl, tl, ty);
+		const struct AVec3f vr = aVec3fMix(br, tr, ty);
+		for (int x = 0; x < side; ++x) {
+			const float tx = (float)x / (side - 1);
+			struct BSPModelVertex * const v = out_vertices + y * side + x;
+			const struct VBSPLumpDispVert * const dv = dispvert + y * side + x;
+
+			v->vertex = aVec3fMix(vl, vr, tx);
+			v->lightmap_uv = aVec2f(
+				aVec4fDot(aVec4f3(v->vertex, 1.f),	lm_map_u),
+				aVec4fDot(aVec4f3(v->vertex, 1.f), lm_map_v));
+			v->vertex = aVec3fAdd(aVec3fMix(vl, vr, tx), aVec3fMulf(aVec3f(dv->x, dv->y, dv->z), dv->dist));
+
+			if (v->lightmap_uv.x < 0 || v->lightmap_uv.y < 0 || v->lightmap_uv.x > face->width || v->lightmap_uv.y > face->height)
+				PRINT("Error: OOB LM F:V%u: x=%f y=%f z=%f u=%f v=%f w=%d h=%d",
+						x + y * side, v->vertex.x, v->vertex.y, v->vertex.z, v->lightmap_uv.x, v->lightmap_uv.y, face->width, face->height);
+
+			v->lightmap_uv.x = (v->lightmap_uv.x + face->atlas_x + .5f) / ctx->lightmap.texture.width;
+			v->lightmap_uv.y = (v->lightmap_uv.y + face->atlas_y + .5f) / ctx->lightmap.texture.height;
+
+			/* FIXME normal */
+			v->normal = aVec3f(0, 0, 1);
+		}
+	}
+
+	for (int y = 0; y < side - 1; ++y) {
+		for (int x = 0; x < side - 1; ++x) {
+			const int base = index_shift + y * side + x;
+			*out_indices++ = base;
+			*out_indices++ = base + side + 1;
+			*out_indices++ = base + side;
+			*out_indices++ = base;
+			*out_indices++ = base + 1;
+			*out_indices++ = base + side + 1;
+		}
+	}
+
+	return BSPLoadResult_Success;
+}
+
 static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, struct MemoryPool *pool,
 		struct BSPModel *model) {
 	struct BSPModelVertex * const vertices_buffer
@@ -335,8 +491,7 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	if (!vertices_buffer) return BSPLoadResult_ErrorTempMemory;
 
 	/* each vertex after second in a face is a new triangle */
-	const size_t indices_buffer_count = ctx->vertices * 3 - ctx->faces_count * 6;
-	uint16_t * const indices_buffer = tmpAdvance(ctx->tmp, sizeof(uint16_t) * indices_buffer_count);
+	uint16_t * const indices_buffer = tmpAdvance(ctx->tmp, sizeof(uint16_t) * ctx->indices);
 	if (!indices_buffer) return BSPLoadResult_ErrorTempMemory;
 
 	size_t vertex_pos = 0;
@@ -367,60 +522,66 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 			ASSERT(idraw < ctx->draws_to_alloc);
 		}
 
-		const struct VBSPLumpFace *face = ctx->lumps->faces.p + vis_face->face_index;
-		const struct VBSPLumpTexInfo *tinfo = ctx->lumps->texinfos.p + face->texinfo;
-		struct AVec3f normal;
-		normal.x = ctx->lumps->planes.p[face->plane].x;
-		normal.y = ctx->lumps->planes.p[face->plane].y;
-		normal.z = ctx->lumps->planes.p[face->plane].z;
-		if (face->side) normal = aVec3fNeg(normal);
+		if (vis_face->dispinfo) {
+			bspLoadDisplacement(ctx, vis_face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos);
+			vertex_pos += vis_face->vertices;
+			indices_pos += vis_face->indices;
+		} else {
+			const struct VBSPLumpFace *face = vis_face->face;
+			const struct VBSPLumpTexInfo * const tinfo = vis_face->texinfo;
+			struct AVec3f normal;
+			normal.x = ctx->lumps->planes.p[face->plane].x;
+			normal.y = ctx->lumps->planes.p[face->plane].y;
+			normal.z = ctx->lumps->planes.p[face->plane].z;
+			if (face->side) normal = aVec3fNeg(normal);
 
-		const struct AVec4f lm_map_u = aVec4f(
-					tinfo->lightmap_vecs[0][0], tinfo->lightmap_vecs[0][1],
-					tinfo->lightmap_vecs[0][2], tinfo->lightmap_vecs[0][3] - face->lightmap_min[0]);
-		const struct AVec4f lm_map_v = aVec4f(
-					tinfo->lightmap_vecs[1][0], tinfo->lightmap_vecs[1][1],
-					tinfo->lightmap_vecs[1][2], tinfo->lightmap_vecs[1][3] - face->lightmap_min[1]);
+			const struct AVec4f lm_map_u = aVec4f(
+						tinfo->lightmap_vecs[0][0], tinfo->lightmap_vecs[0][1],
+						tinfo->lightmap_vecs[0][2], tinfo->lightmap_vecs[0][3] - face->lightmap_min[0]);
+			const struct AVec4f lm_map_v = aVec4f(
+						tinfo->lightmap_vecs[1][0], tinfo->lightmap_vecs[1][1],
+						tinfo->lightmap_vecs[1][2], tinfo->lightmap_vecs[1][3] - face->lightmap_min[1]);
 
-		const int32_t * const surfedges = ctx->lumps->surfedges.p + face->first_edge;
-		const size_t indices_count =  (face->num_edges - 2) * 3;
-		ASSERT(indices_count + indices_pos <= indices_buffer_count);
-		ASSERT(vertex_pos + face->num_edges <= ctx->max_draw_vertices);
-		uint16_t * const indices = indices_buffer + indices_pos;
-		struct BSPModelVertex * const vertices = vertices_buffer + vertex_pos;
-		for (unsigned int iedge = 0; iedge < face->num_edges; ++iedge) {
-			const uint16_t vstart = (surfedges[iedge] >= 0)
-				? ctx->lumps->edges.p[surfedges[iedge]].v[0]
-				: ctx->lumps->edges.p[-surfedges[iedge]].v[1];
+			const int32_t * const surfedges = ctx->lumps->surfedges.p + face->first_edge;
+			const size_t indices_count =  (face->num_edges - 2) * 3;
+			ASSERT(indices_count + indices_pos <= (unsigned)ctx->indices);
+			ASSERT(vertex_pos + face->num_edges <= ctx->max_draw_vertices);
+			uint16_t * const indices = indices_buffer + indices_pos;
+			struct BSPModelVertex * const vertices = vertices_buffer + vertex_pos;
+			for (int iedge = 0; iedge < face->num_edges; ++iedge) {
+				const uint16_t vstart = (surfedges[iedge] >= 0)
+					? ctx->lumps->edges.p[surfedges[iedge]].v[0]
+					: ctx->lumps->edges.p[-surfedges[iedge]].v[1];
 
-			const struct VBSPLumpVertex * const lv = ctx->lumps->vertices.p + vstart;
-			struct BSPModelVertex * const vertex = vertices + iedge;
+				const struct VBSPLumpVertex * const lv = ctx->lumps->vertices.p + vstart;
+				struct BSPModelVertex * const vertex = vertices + iedge;
 
-			vertex->vertex = aVec3f(lv->x, lv->y, lv->z);
-			vertex->normal = normal;
-			vertex->lightmap_uv = aVec2f(
-				aVec4fDot(aVec4f3(vertex->vertex, 1.f),	lm_map_u),
-				aVec4fDot(aVec4f3(vertex->vertex, 1.f), lm_map_v));
+				vertex->vertex = aVec3f(lv->x, lv->y, lv->z);
+				vertex->normal = normal;
+				vertex->lightmap_uv = aVec2f(
+					aVec4fDot(aVec4f3(vertex->vertex, 1.f),	lm_map_u),
+					aVec4fDot(aVec4f3(vertex->vertex, 1.f), lm_map_v));
 
-			if (vertex->lightmap_uv.x < 0 || vertex->lightmap_uv.y < 0 || vertex->lightmap_uv.x > vis_face->width || vertex->lightmap_uv.y > vis_face->height)
-				PRINT("Error: OOB LM F%u:V%u: x=%f y=%f z=%f u=%f v=%f w=%d h=%d", iface, iedge, lv->x, lv->y, lv->z, vertex->lightmap_uv.x, vertex->lightmap_uv.y, vis_face->width, vis_face->height);
+				if (vertex->lightmap_uv.x < 0 || vertex->lightmap_uv.y < 0 || vertex->lightmap_uv.x > vis_face->width || vertex->lightmap_uv.y > vis_face->height)
+					PRINT("Error: OOB LM F%u:V%u: x=%f y=%f z=%f u=%f v=%f w=%d h=%d", iface, iedge, lv->x, lv->y, lv->z, vertex->lightmap_uv.x, vertex->lightmap_uv.y, vis_face->width, vis_face->height);
 
-			vertex->lightmap_uv.x = (vertex->lightmap_uv.x + vis_face->atlas_x + .5f) / ctx->lightmap.texture.width;
-			vertex->lightmap_uv.y = (vertex->lightmap_uv.y + vis_face->atlas_y + .5f) / ctx->lightmap.texture.height;
+				vertex->lightmap_uv.x = (vertex->lightmap_uv.x + vis_face->atlas_x + .5f) / ctx->lightmap.texture.width;
+				vertex->lightmap_uv.y = (vertex->lightmap_uv.y + vis_face->atlas_y + .5f) / ctx->lightmap.texture.height;
 
-			if (iedge > 1) {
-				indices[(iedge-2)*3+0] = vertex_pos + 0;
-				indices[(iedge-2)*3+1] = vertex_pos + iedge;
-				indices[(iedge-2)*3+2] = vertex_pos + iedge - 1;
+				if (iedge > 1) {
+					indices[(iedge-2)*3+0] = vertex_pos + 0;
+					indices[(iedge-2)*3+1] = vertex_pos + iedge;
+					indices[(iedge-2)*3+2] = vertex_pos + iedge - 1;
+				}
 			}
-		}
 
-		indices_pos += indices_count;
-		vertex_pos += face->num_edges;
+			indices_pos += indices_count;
+			vertex_pos += face->num_edges;
+		}
 	}
 
 	model->ibo = aGLBufferCreate(AGLBT_Index);
-	aGLBufferUpload(&model->ibo, sizeof(uint16_t) * indices_buffer_count, indices_buffer);
+	aGLBufferUpload(&model->ibo, sizeof(uint16_t) * ctx->indices, indices_buffer);
 
 	/*for (unsigned int i = 0; i < (indices_buffer_count<256?indices_buffer_count:256); ++i)
 		PRINT("%u: %u", i, indices_buffer[i]);
@@ -472,10 +633,13 @@ static enum BSPLoadResult bspLoadModel(struct BSPModel *model, struct MemoryPool
 	return BSPLoadResult_Success;
 }
 
-static int initLump(const struct VBSPLumpHeader *header, const struct AFileMap *map,
+static int initLump(const char *name, const struct VBSPLumpHeader *header, const struct AFileMap *map,
 		struct AnyLump *ptr, uint32_t item_size) {
 	if (map->size <= header->file_offset || map->size - header->file_offset < header->size)
 		return 0;
+
+	PRINT("Lump %s, offset %u, size %u bytes / %u item = %u elements",
+			name, header->file_offset, header->size, item_size, header->size / item_size);
 
 	ptr->p = (const char*)map->map + header->file_offset;
 	ptr->n = header->size / item_size;
@@ -512,24 +676,14 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context) {
 
 	struct Lumps lumps;
 	lumps.version = hdr->version;
-#define INIT_LUMP_T(name, type, field) \
-	if (!initLump(hdr->lump_headers + VBSP_Lump_##name, &file, \
+#define BSPLUMP(name, type, field) \
+	if (!initLump(#name, hdr->lump_headers + VBSP_Lump_##name, &file, \
 			(struct AnyLump*)&lumps.field, sizeof(type))) { \
 		result = BSPLoadResult_ErrorFileFormat; \
 		goto exit; \
 	}
-#define INIT_LUMP(name, field) INIT_LUMP_T(name, struct VBSPLump##name, field)
-	INIT_LUMP(Model, models);
-	INIT_LUMP(Node, nodes);
-	INIT_LUMP(Plane, planes);
-	INIT_LUMP(Leaf, leaves);
-	INIT_LUMP_T(LeafFace, uint16_t, leaffaces);
-	INIT_LUMP(Face, faces);
-	INIT_LUMP_T(Surfedge, int32_t, surfedges);
-	INIT_LUMP(Edge, edges);
-	INIT_LUMP(Vertex, vertices);
-	INIT_LUMP(TexInfo, texinfos);
-	INIT_LUMP(LightMap, lightmaps);
+	LIST_LUMPS
+#undef BSPLUMP
 
 	result = bspLoadModel(context.model, context.pool, context.tmp, &lumps, 0);
 	if (result != BSPLoadResult_Success) {
