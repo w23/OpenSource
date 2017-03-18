@@ -126,7 +126,7 @@ struct VBSPLumpDispInfo {
 	float smoothing_angle;
 	int32_t contents;
 	uint16_t face;
-	int32_t lightmap_alpha_start;
+	int32_t lightmap_alpha_start; /* not used? */
 	int32_t lightmap_sample_position_start;
 	/* FIXME a mistake here?
 	struct {

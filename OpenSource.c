@@ -285,14 +285,16 @@ static const char vertex_src[] =
 
 static const char fragment_src[] =
 	"uniform sampler2D us2_lightmap;\n"
+	"uniform vec2 uv2_lightmap_size;\n"
 	"varying vec2 vv2_lightmap;\n"
 	"varying vec3 vv3_normal;\n"
+	"uniform float uf_lmn;\n"
 	"void main() {\n"
-		"gl_FragColor = texture2D(us2_lightmap, vv2_lightmap);\n"
-		//"gl_FragColor = vec4(vv3_normal * texture2D(us2_lightmap, vv2_lightmap).xyz, 1.);\n"
+		"gl_FragColor = mix(texture2D(us2_lightmap, vv2_lightmap), vec4(vv3_normal, 0.), uf_lmn);\n"
+		//"gl_FragColor = texture2D(us2_lightmap, vv2_lightmap);\n"
 	"}\n";
 
-enum { UniformM, UniformVP, UniformLightmap, Uniform_COUNT };
+enum { UniformM, UniformVP, UniformLightmap, UniformLightmapSize, UniformLMN, Uniform_COUNT };
 enum { AttribPos, AttribNormal, AttribLightmapUV, Attrib_COUNT };
 
 static struct {
@@ -300,6 +302,7 @@ static struct {
 	int forward, right, run;
 	struct AVec3f center;
 	float R;
+	float lmn;
 
 	AGLDrawTarget screen;
 	AGLDrawSource source;
@@ -392,6 +395,16 @@ static void opensrcInit(const char *filename) {
 	g.uniforms[UniformLightmap].type = AGLAT_Texture;
 	g.uniforms[UniformLightmap].count = 1;
 
+	g.uniforms[UniformLightmapSize].name = "uv2_lightmap_size";
+	g.uniforms[UniformLightmapSize].type = AGLAT_Vec2;
+	g.uniforms[UniformLightmapSize].count = 1;
+
+	g.uniforms[UniformLMN].name = "uf_lmn";
+	g.uniforms[UniformLMN].type = AGLAT_Float;
+	g.uniforms[UniformLMN].count = 1;
+	g.uniforms[UniformLMN].value.pf = &g.lmn;
+	g.lmn = 0;
+
 	g.merge.blend.enable = 0;
 	g.merge.depth.mode = AGLDM_TestAndWrite;
 	g.merge.depth.func = AGLDF_Less;
@@ -415,7 +428,9 @@ static void drawBSPDraw(const struct BSPDraw *draw) {
 }
 
 static void drawModel(const struct BSPModel *model) {
+	const struct AVec2f lm_size = aVec2f(model->lightmap.width, model->lightmap.height);
 	g.uniforms[UniformLightmap].value.texture = &model->lightmap;
+	g.uniforms[UniformLightmapSize].value.pf = &lm_size.x;
 	g.source.primitive.index.buffer = &model->ibo;
 
 	for (unsigned int i = 0; i < model->draws_count; ++i)
@@ -485,6 +500,7 @@ static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 	case AK_A: g.right += pressed?-1:1; break;
 	case AK_D: g.right += pressed?1:-1; break;
 	case AK_LeftShift: g.run = pressed; break;
+	case AK_E: g.lmn = pressed; break;
 	default: break;
 	}
 }

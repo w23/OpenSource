@@ -11,6 +11,7 @@ RPI=
 RPI_ROOT=${RPI_ROOT:-'/opt/raspberry-pi'}
 
 SOURCES='OpenSource.c bsp.c atlas.c filemap.c'
+WERROR='-Werror'
 
 while [ $# -gt 0 ]
 do
@@ -18,6 +19,7 @@ do
 		-D) DEBUG=1;;
 		-P) RPI=1;;
 		-S) ASAN=1;;
+		-W) WERROR='';;
 	esac
 	shift
 done
@@ -42,14 +44,14 @@ then
 
 	CC=${CC:-"$RPI_TOOLCHAINDIR/bin/arm-linux-gnueabihf-gcc"}
 
-	CFLAGS="-std=gnu99 -Wall -Werror -Wextra $CFLAGS"
+	CFLAGS="-std=gnu99 -Wall -Wextra $WERROR $CFLAGS"
 	CFLAGS="-I$RPI_VCDIR/include -I$RPI_VCDIR/include/interface/vcos/pthreads $CFLAGS"
 	CFLAGS="-I$RPI_VCDIR/include/interface/vmcs_host/linux -DATTO_PLATFORM_RPI $CFLAGS"
 	LDFLAGS="-lGLESv2 -lEGL -lbcm_host -lvcos -lvchiq_arm -L$RPI_VCDIR/lib -lrt -lm $LDFLAGS"
 	SOURCES+=' 3p/atto/src/app_linux.c 3p/atto/src/app_rpi.c'
 else
 	CC=${CC:-clang}
-	CFLAGS="-std=c99 -Wall -Werror -Wextra -pedantic $CFLAGS"
+	CFLAGS="-std=c99 -Wall -Wextra -pedantic $WERROR $CFLAGS"
 	LDFLAGS="-lm -lGL -lX11 -lXfixes $LDFLAGS"
 	SOURCES+=' 3p/atto/src/app_linux.c 3p/atto/src/app_x11.c'
 fi

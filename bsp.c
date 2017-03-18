@@ -190,7 +190,8 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		}
 		vis_face->vertices = side * side;
 		vis_face->indices = (side - 1) * (side - 1) * 6; /* triangle list */
-		PRINT("Power: %d, min_tess: %d, vertices: %d",
+		if (vis_face->dispinfo->min_tess != 0)
+			PRINT("Power: %d, min_tess: %d, vertices: %d",
 				vis_face->dispinfo->power, vis_face->dispinfo->min_tess, vis_face->vertices);
 		vis_face->dispstartvtx = 0;
 	} else {
@@ -243,17 +244,17 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 
 		if (vis_face->dispinfo) {
 			vis_face->dispquadvtx[i] = vstart;
-			PRINT("%f %f %f -- %f %f %f",
+			/*PRINT("%f %f %f -- %f %f %f",
 				vis_face->dispinfo->start_pos.x,
 				vis_face->dispinfo->start_pos.y,
 				vis_face->dispinfo->start_pos.z,
 				lumps->vertices.p[vstart].x,
 				lumps->vertices.p[vstart].y,
-				lumps->vertices.p[vstart].z);
+				lumps->vertices.p[vstart].z);*/
 			if (fabs(lumps->vertices.p[vstart].x - vis_face->dispinfo->start_pos.x) < .5f
 					&& fabs(lumps->vertices.p[vstart].y - vis_face->dispinfo->start_pos.y) < .5f
 					&& fabs(lumps->vertices.p[vstart].z - vis_face->dispinfo->start_pos.z) < .5f) {
-				PRINT("%d matches disp_start", i);
+				//PRINT("%d matches disp_start", i);
 				vis_face->dispstartvtx = i;
 			}
 		}
@@ -416,9 +417,37 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 }
 
 inline static struct AVec3f aVec3fLumpVec(struct VBSPLumpVertex v) { return aVec3f(v.x, v.y, v.z); }
-
 inline static struct AVec3f aVec3fMix(struct AVec3f a, struct AVec3f b, float t) {
 	return aVec3fAdd(a, aVec3fMulf(aVec3fSub(b, a), t));
+}
+inline static struct AVec2f aVec2fMulf(struct AVec2f v, float f) { return aVec2f(v.x * f, v.y * f); }
+inline static struct AVec2f aVec2fMix(struct AVec2f a, struct AVec2f b, float t) {
+	return aVec2fAdd(a, aVec2fMulf(aVec2fSub(b, a), t));
+}
+inline static struct AVec4f aVec4fNeg(struct AVec4f v) { return aVec4f(-v.x, -v.y, -v.z, -v.w); }
+inline static float aVec3fLength2(struct AVec3f v) { return aVec3fDot(v,v); }
+#define MAKE_MAX(type) \
+	inline static type type##Max(type a, type b) { return (a > b) ? a : b; }
+MAKE_MAX(float)
+inline static float aVec2fLength(struct AVec2f v) { return sqrtf(aVec2fDot(v, v)); }
+
+static int shouldSwapUV(struct AVec3f mapU, struct AVec3f mapV, const struct AVec3f *v) {
+	float mappedU = 0.f, mappedV = 0.f;
+	for (int i = 0; i < 4; ++i) {
+		const float U = aVec3fDot(mapU, aVec3fSub(v[(i+1)%4], v[i]));
+		if (U > mappedU) mappedU = U;
+		const float V = aVec3fDot(mapV, aVec3fSub(v[(i+1)%4], v[i]));
+		if (V > mappedV) mappedV = V;
+	}
+
+	const float dX1 = aVec3fLength2(aVec3fSub(v[3], v[0]));
+	const float dX2 = aVec3fLength2(aVec3fSub(v[2], v[1]));
+	const float dY1 = aVec3fLength2(aVec3fSub(v[1], v[0]));
+	const float dY2 = aVec3fLength2(aVec3fSub(v[2], v[3]));
+	const float maxDX = (dX1 > dX2) ? dX1 : dX2;
+	const float maxDY = (dY1 > dY2) ? dY1 : dY2;
+	//PRINT("mappedU=%f mappedV=%f maxDX=%f, maxDY=%f", mappedU, mappedV, maxDX, maxDY);
+	return (mappedU > mappedV) != (maxDX > maxDY);
 }
 
 static enum BSPLoadResult bspLoadDisplacement(const struct LoadModelContext *ctx,
@@ -427,45 +456,70 @@ static enum BSPLoadResult bspLoadDisplacement(const struct LoadModelContext *ctx
  	const int side = (1 << face->dispinfo->power) + 1;
 	const struct VBSPLumpVertex *const vertices = ctx->lumps->vertices.p;
 	const struct VBSPLumpTexInfo * const tinfo = face->texinfo;
+	
+	//if (face->dispstartvtx != 0) PRINT("dispstartvtx = %d", face->dispstartvtx);
 
-	const struct AVec3f
-		bl = aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 0)%4]]),
-		tl = aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 1)%4]]),
-		tr = aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 2)%4]]),
-		br = aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 3)%4]]);
+	const struct AVec3f vec[4] = { /* bl, tl, tr, br */
+		aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 0)%4]]),
+		aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 1)%4]]),
+		aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 2)%4]]),
+		aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 3)%4]])};
 
-	const struct AVec4f lm_map_u = aVec4f(
-				tinfo->lightmap_vecs[0][0], tinfo->lightmap_vecs[0][1],
-				tinfo->lightmap_vecs[0][2], tinfo->lightmap_vecs[0][3] - face->face->lightmap_min[0]);
-	const struct AVec4f lm_map_v = aVec4f(
-				tinfo->lightmap_vecs[1][0], tinfo->lightmap_vecs[1][1],
-				tinfo->lightmap_vecs[1][2], tinfo->lightmap_vecs[1][3] - face->face->lightmap_min[1]);
+	const struct AVec3f lm_map_u = aVec3f(
+		tinfo->lightmap_vecs[0][0], tinfo->lightmap_vecs[0][1], tinfo->lightmap_vecs[0][2]);
+	const float luxels_per_unit = aVec3fLength(lm_map_u);
+	float length_lm_u = luxels_per_unit * floatMax(
+			aVec3fLength(aVec3fSub(vec[3], vec[0])),
+			aVec3fLength(aVec3fSub(vec[2], vec[1])));
+	float length_lm_v = luxels_per_unit * floatMax(
+			aVec3fLength(aVec3fSub(vec[1], vec[0])),
+			aVec3fLength(aVec3fSub(vec[2], vec[3])));
+	
+	const int swap = shouldSwapUV(
+				aVec3f(tinfo->lightmap_vecs[0][0],tinfo->lightmap_vecs[0][1],tinfo->lightmap_vecs[0][2]),
+				aVec3f(tinfo->lightmap_vecs[1][0],tinfo->lightmap_vecs[1][1],tinfo->lightmap_vecs[1][2]), vec);
+
+	const struct AVec2f atlas_scale = aVec2f(1.f / ctx->lightmap.texture.width, 1.f / ctx->lightmap.texture.height);
+	const struct AVec2f atlas_offset = aVec2f(
+			.5f + face->atlas_x + tinfo->lightmap_vecs[0][3]*0 - 0*face->face->lightmap_min[0],
+			.5f + face->atlas_y + tinfo->lightmap_vecs[1][3]*0 - 0*face->face->lightmap_min[1]);
+
+	if (length_lm_u < 0. || length_lm_u >= face->width
+		|| length_lm_v < 0. || length_lm_v >= face->height) {
+		PRINT("LM OOB: (%f, %f) (%d, %d)", length_lm_u, length_lm_v, face->width, face->height);
+		if (length_lm_u >= face->width) length_lm_u = face->width - 1;
+		if (length_lm_v >= face->height) length_lm_v = face->height - 1;
+	}
+
+	/*
+	PRINT("%f %f %f %f",
+			tinfo->lightmap_vecs[0][3] * atlas_scale.x, face->face->lightmap_min[0] * atlas_scale.x,
+			tinfo->lightmap_vecs[1][3] * atlas_scale.y, face->face->lightmap_min[1] * atlas_scale.y);
+	*/
 
 	const struct VBSPLumpDispVert *const dispvert = ctx->lumps->dispverts.p + face->dispinfo->vtx_start;
+	const float div_side = 1.f / (side - 1);
 	for (int y = 0; y < side; ++y) {
-		const float ty = (float)y / (side - 1);
-		const struct AVec3f vl = aVec3fMix(bl, tl, ty);
-		const struct AVec3f vr = aVec3fMix(br, tr, ty);
+		const float ty = (float)y * div_side;
+		const struct AVec3f vl = aVec3fMix(vec[0], vec[1], ty);
+		const struct AVec3f vr = aVec3fMix(vec[3], vec[2], ty);
 		for (int x = 0; x < side; ++x) {
-			const float tx = (float)x / (side - 1);
+			const float tx = (float)x * div_side;
 			struct BSPModelVertex * const v = out_vertices + y * side + x;
 			const struct VBSPLumpDispVert * const dv = dispvert + y * side + x;
 
 			v->vertex = aVec3fMix(vl, vr, tx);
-			v->lightmap_uv = aVec2f(
-				aVec4fDot(aVec4f3(v->vertex, 1.f),	lm_map_u),
-				aVec4fDot(aVec4f3(v->vertex, 1.f), lm_map_v));
+			v->lightmap_uv = aVec2f(tx * length_lm_u, ty * length_lm_v);
 			v->vertex = aVec3fAdd(aVec3fMix(vl, vr, tx), aVec3fMulf(aVec3f(dv->x, dv->y, dv->z), dv->dist));
 
 			if (v->lightmap_uv.x < 0 || v->lightmap_uv.y < 0 || v->lightmap_uv.x > face->width || v->lightmap_uv.y > face->height)
-				PRINT("Error: OOB LM F:V%u: x=%f y=%f z=%f u=%f v=%f w=%d h=%d",
-						x + y * side, v->vertex.x, v->vertex.y, v->vertex.z, v->lightmap_uv.x, v->lightmap_uv.y, face->width, face->height);
+				PRINT("Error: DISP OOB LM F:V%u: x=%f y=%f z=%f tx=%f, ty=%f u=%f v=%f w=%d h=%d",
+						x + y * side, v->vertex.x, v->vertex.y, v->vertex.z, tx, ty, v->lightmap_uv.x, v->lightmap_uv.y, face->width, face->height);
 
-			v->lightmap_uv.x = (v->lightmap_uv.x + face->atlas_x + .5f) / ctx->lightmap.texture.width;
-			v->lightmap_uv.y = (v->lightmap_uv.y + face->atlas_y + .5f) / ctx->lightmap.texture.height;
+			v->lightmap_uv = aVec2fMul(aVec2fAdd(v->lightmap_uv, atlas_offset), atlas_scale);
 
 			/* FIXME normal */
-			v->normal = aVec3f(0, 0, 1);
+			v->normal = aVec3f(face->dispstartvtx/3.f, swap, dv->dist / 100.f);
 		}
 	}
 
@@ -557,7 +611,7 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 				struct BSPModelVertex * const vertex = vertices + iedge;
 
 				vertex->vertex = aVec3f(lv->x, lv->y, lv->z);
-				vertex->normal = normal;
+				vertex->normal = aVec3f(0.f, 0.f, 0.f);// FIXME normal;
 				vertex->lightmap_uv = aVec2f(
 					aVec4fDot(aVec4f3(vertex->vertex, 1.f),	lm_map_u),
 					aVec4fDot(aVec4f3(vertex->vertex, 1.f), lm_map_v));
