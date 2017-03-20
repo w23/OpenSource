@@ -178,6 +178,7 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		return FaceProbe_TexDataStringDataOOB;
 	/* FIXME validate string: has \0 earlier than end */
 	vis_face->texture = lumps->texdatastringdata.p + texdatastringdata_offset;
+	//PRINT("F%u: texture %s", index, vis_face->texture);
 
 	if (face->dispinfo >= 0) {
 		if ((unsigned)face->dispinfo >= lumps->dispinfos.n)
@@ -244,17 +245,9 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 
 		if (vis_face->dispinfo) {
 			vis_face->dispquadvtx[i] = vstart;
-			/*PRINT("%f %f %f -- %f %f %f",
-				vis_face->dispinfo->start_pos.x,
-				vis_face->dispinfo->start_pos.y,
-				vis_face->dispinfo->start_pos.z,
-				lumps->vertices.p[vstart].x,
-				lumps->vertices.p[vstart].y,
-				lumps->vertices.p[vstart].z);*/
 			if (fabs(lumps->vertices.p[vstart].x - vis_face->dispinfo->start_pos.x) < .5f
 					&& fabs(lumps->vertices.p[vstart].y - vis_face->dispinfo->start_pos.y) < .5f
 					&& fabs(lumps->vertices.p[vstart].z - vis_face->dispinfo->start_pos.z) < .5f) {
-				//PRINT("%d matches disp_start", i);
 				vis_face->dispstartvtx = i;
 			}
 		}
@@ -456,6 +449,7 @@ static enum BSPLoadResult bspLoadDisplacement(const struct LoadModelContext *ctx
  	const int side = (1 << face->dispinfo->power) + 1;
 	const struct VBSPLumpVertex *const vertices = ctx->lumps->vertices.p;
 	const struct VBSPLumpTexInfo * const tinfo = face->texinfo;
+	const struct VBSPLumpDispVert *const dispvert = ctx->lumps->dispverts.p + face->dispinfo->vtx_start;
 	
 	//if (face->dispstartvtx != 0) PRINT("dispstartvtx = %d", face->dispstartvtx);
 
@@ -464,6 +458,14 @@ static enum BSPLoadResult bspLoadDisplacement(const struct LoadModelContext *ctx
 		aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 1)%4]]),
 		aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 2)%4]]),
 		aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 3)%4]])};
+
+	/*
+	const struct AVec3f ovec[4] = {
+			aVec3fAdd(vec[0], aVec3fMulf(aVec3f(dispvert[0].x, dispvert[0].y, dispvert[0].z), dispvert[0].dist)),
+			aVec3fAdd(vec[1], aVec3fMulf(aVec3f(dispvert[side*(side-1)].x, dispvert[side*(side-1)].y, dispvert[side*(side-1)].z), dispvert[side*(side-1)].dist)),
+			aVec3fAdd(vec[2], aVec3fMulf(aVec3f(dispvert[side*side-1].x, dispvert[side*side-1].y, dispvert[side*side-1].z), dispvert[side*side-1].dist)),
+			aVec3fAdd(vec[3], aVec3fMulf(aVec3f(dispvert[side-1].x, dispvert[side-1].y, dispvert[side-1].z), dispvert[side-1].dist))};
+	*/
 
 	const struct AVec3f lm_map_u = aVec3f(
 		tinfo->lightmap_vecs[0][0], tinfo->lightmap_vecs[0][1], tinfo->lightmap_vecs[0][2]);
@@ -497,7 +499,6 @@ static enum BSPLoadResult bspLoadDisplacement(const struct LoadModelContext *ctx
 			tinfo->lightmap_vecs[1][3] * atlas_scale.y, face->face->lightmap_min[1] * atlas_scale.y);
 	*/
 
-	const struct VBSPLumpDispVert *const dispvert = ctx->lumps->dispverts.p + face->dispinfo->vtx_start;
 	const float div_side = 1.f / (side - 1);
 	for (int y = 0; y < side; ++y) {
 		const float ty = (float)y * div_side;
