@@ -36,3 +36,38 @@ void aFileMapClose(struct AFileMap *file) {
 	}
 }
 
+void aFileReset(struct AFile *file) {
+	file->size = 0;
+	file->impl_.fd = -1;
+}
+
+enum AFileResult aFileOpen(struct AFile *file, const char *filename) {
+	file->impl_.fd = open(filename, O_RDONLY);
+	if (file->impl_.fd < 0)
+		return AFile_Fail;
+
+	struct stat stat;
+	fstat(file->impl_.fd, &stat);
+	file->size = stat.st_size;
+
+	return AFile_Success;
+}
+
+size_t aFileRead(struct AFile *file, size_t size, void *buffer) {
+	ssize_t rd = read(file->impl_.fd, buffer, size);
+	if (rd < 0) perror("read(fd)");
+	return rd;
+}
+
+size_t aFileReadAtOffset(struct AFile *file, size_t off, size_t size, void *buffer) {
+	ssize_t rd = pread(file->impl_.fd, buffer, size, off);
+	if (rd < 0) perror("pread(fd)");
+	return rd;
+}
+
+void aFileClose(struct AFile *file) {
+	if (file->impl_.fd > 0) {
+		close(file->impl_.fd);
+		aFileReset(file);
+	}
+}

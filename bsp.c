@@ -1,7 +1,8 @@
-#include "vbsp.h"
 #include "bsp.h"
 #include "atlas.h"
-#include "filemap.h"
+#include "vbsp.h"
+#include "collection.h"
+#include "mempools.h"
 #include <stdint.h>
 #include <string.h> /* memset */
 #include <stdio.h> /* printf */
@@ -688,51 +689,66 @@ static enum BSPLoadResult bspLoadModel(struct BSPModel *model, struct MemoryPool
 	return BSPLoadResult_Success;
 }
 
-static int initLump(const char *name, const struct VBSPLumpHeader *header, const struct AFileMap *map,
-		struct AnyLump *ptr, uint32_t item_size) {
-	if (map->size <= header->file_offset || map->size - header->file_offset < header->size)
-		return 0;
+static int lumpRead(const char *name, const struct VBSPLumpHeader *header,
+		struct IFile *file, struct TemporaryPool *pool,
+		struct AnyLump *out_ptr, uint32_t item_size) {
+	out_ptr->p = tmpAdvance(pool, header->size);
+	if (!out_ptr->p) {
+		PRINT("Not enough temp memory to allocate storage for lump %s", name);
+		return -1;
+	}
 
-	PRINT("Lump %s, offset %u, size %u bytes / %u item = %u elements",
+	const size_t bytes = file->read(file, header->file_offset, header->size, (void*)out_ptr->p);
+	if (bytes != header->size) {
+		PRINT("Cannot read full lump %s, read only %zu bytes out of %u", name, bytes, header->size);
+		return -1;
+	}
+
+	PRINT("Read lump %s, offset %u, size %u bytes / %u item = %u elements",
 			name, header->file_offset, header->size, item_size, header->size / item_size);
 
-	ptr->p = (const char*)map->map + header->file_offset;
-	ptr->n = header->size / item_size;
+	out_ptr->n = header->size / item_size;
 	return 1;
 }
 
-enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context) {
+enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const char *mapname) {
 	enum BSPLoadResult result = BSPLoadResult_Success;
+	struct IFile *file = 0;
+	if (CollectionOpen_Success !=
+			collectionChainOpen(context.collection, mapname, File_Map, &file)) {
+		return BSPLoadResult_ErrorFileOpen;
+	}
 
-	struct AFileMap file = aFileMapOpen(context.filename);
-	if (!file.map) return BSPLoadResult_ErrorFileOpen;
-	if (file.size <= sizeof(struct VBSPHeader)) {
-		PRINT("Size is too small: %zu <= %zu", file.size, sizeof(struct VBSPHeader));
+	void *tmp_cursor = tmpGetCursor(context.tmp);
+
+	struct VBSPHeader vbsp_header;
+	size_t bytes = file->read(file, 0, sizeof vbsp_header, &vbsp_header);
+	if (bytes < sizeof(vbsp_header)) {
+		PRINT("Size is too small: %zu <= %zu", bytes, sizeof(struct VBSPHeader));
 		result = BSPLoadResult_ErrorFileFormat;
 		goto exit;
 	}
 
-	const struct VBSPHeader *hdr = file.map;
-	if (hdr->ident[0] != 'V' || hdr->ident[1] != 'B' ||
-			hdr->ident[2] != 'S' || hdr->ident[3] != 'P') {
+	if (vbsp_header.ident[0] != 'V' || vbsp_header.ident[1] != 'B' ||
+			vbsp_header.ident[2] != 'S' || vbsp_header.ident[3] != 'P') {
 		PRINT("Error: invalid ident => %c%c%c%c != VBSP",
-				hdr->ident[0], hdr->ident[1], hdr->ident[2], hdr->ident[3]);
+				vbsp_header.ident[0], vbsp_header.ident[1], vbsp_header.ident[2], vbsp_header.ident[3]);
 		result = BSPLoadResult_ErrorFileFormat;
 		goto exit;
 	}
 
-	if (hdr->version != 19 && hdr->version != 20) {
-		PRINT("Error: invalid version: %d != 19 or 20", hdr->version);
+	if (vbsp_header.version != 19 && vbsp_header.version != 20) {
+		PRINT("Error: invalid version: %d != 19 or 20", vbsp_header.version);
 		result = BSPLoadResult_ErrorFileFormat;
 		goto exit;
 	}
 
-	PRINT("VBSP version %u opened", hdr->version);
+	PRINT("VBSP version %u opened", vbsp_header.version);
 
 	struct Lumps lumps;
-	lumps.version = hdr->version;
+	lumps.version = vbsp_header.version;
 #define BSPLUMP(name, type, field) \
-	if (!initLump(#name, hdr->lump_headers + VBSP_Lump_##name, &file, \
+	if (1 != lumpRead(#name, vbsp_header.lump_headers + VBSP_Lump_##name, file, context.tmp, \
 			(struct AnyLump*)&lumps.field, sizeof(type))) { \
 		result = BSPLoadResult_ErrorFileFormat; \
 		goto exit; \
@@ -741,11 +757,11 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context) {
 #undef BSPLUMP
 
 	result = bspLoadModel(context.model, context.pool, context.tmp, &lumps, 0);
-	if (result != BSPLoadResult_Success) {
+	if (result != BSPLoadResult_Success)
 		PRINT("Error: bspLoadModel() => %s", R2S(result));
-	}
 
 exit:
-	aFileMapClose(&file);
+	tmpReturnToPosition(context.tmp, tmp_cursor);
+	if (file) file->close(file);
 	return result;
 }

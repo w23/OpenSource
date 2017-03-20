@@ -1,4 +1,6 @@
 #include "bsp.h"
+#include "collection.h"
+#include "mempools.h"
 
 #include "atto/app.h"
 #define ATTO_GL_DEBUG
@@ -6,10 +8,11 @@
 #include "atto/gl.h"
 #include "atto/math.h"
 
+#include <string.h>
 #include <stdlib.h> /* malloc */
 #include <stddef.h> /* offsetof */
 
-static char temp_data[32*1024*1024];
+static char temp_data[64*1024*1024];
 
 static struct TemporaryPool temp = {
 	.storage = temp_data,
@@ -313,7 +316,7 @@ static struct {
 	struct AMat4f model;
 } g;
 
-static void opensrcInit(const char *filename) {
+static void opensrcInit(struct ICollection *collection, const char *map) {
 	g.source.program = aGLProgramCreateSimple(vertex_src, fragment_src);
 	if (g.source.program < 1) {
 		aAppDebugPrintf("Shader compilation error: %s", a_gl_error);
@@ -322,18 +325,18 @@ static void opensrcInit(const char *filename) {
 	fsquadInit();
 
 	struct BSPLoadModelContext loadctx = {
-		.filename = filename,
+		.collection = collection,
 		.pool = &stdpool,
 		.tmp = &temp,
 		.model = &g.worldspawn
 	};
-	const enum BSPLoadResult result = bspLoadWorldspawn(loadctx);
+	const enum BSPLoadResult result = bspLoadWorldspawn(loadctx, map);
 	if (result != BSPLoadResult_Success) {
-		aAppDebugPrintf("Cannot load file \"%s\": %d", filename, result);
+		aAppDebugPrintf("Cannot load map \"%s\": %d", map, result);
 		aAppTerminate(-2);
 	}
 
-	aAppDebugPrintf("Loaded %s to %u draw calls", filename, g.worldspawn.draws_count);
+	aAppDebugPrintf("Loaded %s to %u draw calls", map, g.worldspawn.draws_count);
 	aAppDebugPrintf("AABB (%f, %f, %f) - (%f, %f, %f)",
 			g.worldspawn.aabb.min.x,
 			g.worldspawn.aabb.min.y,
@@ -518,10 +521,52 @@ static void opensrcPointer(ATimeUs timestamp, int dx, int dy, unsigned int btndi
 
 void attoAppInit(struct AAppProctable *proctable) {
 	aGLInit();
-	opensrcInit(a_app_state->argv[1]);
+	const int max_collections = 16;
+	struct FilesystemCollection collections[max_collections];
+	int free_collection = 0;
+	const char *map = 0;
+
+	for (int i = 1; i < a_app_state->argc; ++i) {
+		const char *argv = a_app_state->argv[i];
+		if (strcmp(argv, "-d") == 0) {
+			if (i == a_app_state->argc - 1) {
+				aAppDebugPrintf("-d requires an argument");
+				goto print_usage_and_exit;
+			}
+			const char *value = a_app_state->argv[++i];
+
+			if (free_collection >= max_collections) {
+				aAppDebugPrintf("Too many fs collections specified: %s", value); 
+				goto print_usage_and_exit;
+			}
+
+			filesystemCollectionCreate(collections + (free_collection++), value);
+		} else {
+			if (map) {
+				aAppDebugPrintf("Only one map can be specified");
+				goto print_usage_and_exit;
+			}
+			map = argv;
+		}
+	}
+
+	if (!map || !free_collection) {
+		aAppDebugPrintf("At least one map and one collection required");
+		goto print_usage_and_exit;
+	}
+
+	for (int i = 0; i < free_collection - 1; ++i)
+		collections[i].head.next = &collections[i+1].head;
+
+	opensrcInit(&collections[0].head, map);
 
 	proctable->resize = opensrcResize;
 	proctable->paint = opensrcPaint;
 	proctable->key = opensrcKeyPress;
 	proctable->pointer = opensrcPointer;
+	return;
+
+print_usage_and_exit:
+	aAppDebugPrintf("usage: %s <-d path> ... mapname", a_app_state->argv[0]);
+	aAppTerminate(1);
 }

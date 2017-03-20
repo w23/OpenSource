@@ -1,0 +1,30 @@
++ grab input
++ hide cursor
+- simpler camera with limited pitch
++ evdev
+	+ kbd
+	+ mouse
+	+ joy
+	+ scan
+- move atlas to atto
+- move filemap to atto
++ rpi build
+- entities
+- informative log
++ displacements
+- vpk reading || vpk_fuse
+- textures
+- materials
+- bsp models
+- models
+- console
+- running stats
+- ver 20 lightmaps
+- visibility clusters
+- multiple levels
+- bump lightmaps
+- valve lighting
+
+KNOWN ISSUES:
+1. displacement lightmap coordinates are broken. There are visible artifacts.
+And core loading them detects wrong dimensions that are larger than the lightmap size
