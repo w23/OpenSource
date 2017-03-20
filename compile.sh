@@ -12,6 +12,7 @@ RPI_ROOT=${RPI_ROOT:-'/opt/raspberry-pi'}
 
 SOURCES='OpenSource.c bsp.c atlas.c filemap.c'
 WERROR='-Werror'
+CFLAGS="-D_POSIX_C_SOURCE=200809L $CFLAGS"
 
 while [ $# -gt 0 ]
 do
@@ -33,7 +34,7 @@ if [ $DEBUG ]
 then
 	CFLAGS="-O0 -g $CFLAGS"
 else
-	CFLAGS="-O3"
+	CFLAGS="-O3 $CFLAGS"
 fi
 
 if [ $RPI ]
