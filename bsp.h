@@ -42,7 +42,7 @@ static inline void tmpReturn(struct TemporaryPool *tmp, size_t size) {
 }
 static inline void tmpReturnToPosition(struct TemporaryPool *tmp, void *marker) {
 	ASSERT((char*)marker >= tmp->storage);
-	const size_t to_release = (char*)marker - tmp->storage;
+	const size_t to_release = tmp->cursor - ((char*)marker - tmp->storage);
 	tmpReturn(tmp, to_release);
 }
 
