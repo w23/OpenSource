@@ -21,6 +21,7 @@ static inline size_t tmpGetLeft(const struct TemporaryPool *tmp) {
 	return tmp->size - tmp->cursor;
 }
 static inline void *tmpAdvance(struct TemporaryPool *tmp, size_t size) {
+	size = 4 * ((size + 3) / 4); // alignment
 	if (tmp->size - tmp->cursor < size)
 		return 0;
 
