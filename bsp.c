@@ -106,47 +106,8 @@ struct LoadModelContext {
 enum FaceProbe {
 	FaceProbe_Ok,
 	FaceProbe_Skip,
-	FaceProbe_OOB,
-	FaceProbe_Inconsistent,
-	FaceProbe_PlaneOOB,
-	FaceProbe_TooFewEdges,
-	FaceProbe_SurfedgesOOB,
-	FaceProbe_OutOfMemory,
-	FaceProbe_EdgesOOB,
-	FaceProbe_InconsistentEdge,
-	FaceProbe_UnalignedLightmap,
-	FaceProbe_LightmapOOB,
-	FaceProbe_TexInfoOOB,
-	FaceProbe_TexDataOOB,
-	FaceProbe_TexDataStringTableOOB,
-	FaceProbe_TexDataStringDataOOB,
-	FaceProbe_VertexOOB,
-	FaceProbe_DispInfoOOB
+	FaceProbe_Inconsistent
 };
-
-static const char *faceProbeError(enum FaceProbe code) {
-	switch(code) {
-		case FaceProbe_Ok: return "FaceProbe_Ok"; break;
-		case FaceProbe_Skip: return "FaceProbe_Skip"; break;
-		case FaceProbe_OOB: return "FaceProbe_OOB"; break;
-		case FaceProbe_PlaneOOB: return "FaceProbe_PlaneOOB"; break;
-		case FaceProbe_TooFewEdges: return "FaceProbe_TooFewEdges"; break;
-		case FaceProbe_SurfedgesOOB: return "FaceProbe_SurfedgesOOB"; break;
-		case FaceProbe_OutOfMemory: return "FaceProbe_OutOfMemory"; break;
-		case FaceProbe_EdgesOOB: return "FaceProbe_EdgesOOB"; break;
-		case FaceProbe_InconsistentEdge: return "FaceProbe_InconsistentEdge"; break;
-		case FaceProbe_UnalignedLightmap: return "FaceProbe_UnalignedLightmap"; break;
-		case FaceProbe_LightmapOOB: return "FaceProbe_LightmapOOB"; break;
-		case FaceProbe_TexInfoOOB: return "FaceProbe_TexInfoOOB"; break;
-		case FaceProbe_TexDataOOB: return "FaceProbe_TexDataOOB"; break;
-		case FaceProbe_TexDataStringTableOOB: return "FaceProbe_TexDataStringTableOOB"; break;
-		case FaceProbe_TexDataStringDataOOB: return "FaceProbe_TexDataStringDataOOB"; break;
-		case FaceProbe_VertexOOB: return "FaceProbe_VertexOOB"; break;
-		case FaceProbe_DispInfoOOB: return "FaceProbe_DispInfoOOB"; break;
-		case FaceProbe_Inconsistent: return "FaceProbe_Inconsistent"; break;
-	}
-	return "UNKNOWN";
-}
 
 static inline int shouldSkipFace(const struct VBSPLumpFace *face, const struct Lumps *lumps) {
 	(void)(face); (void)(lumps);
@@ -158,38 +119,33 @@ static inline int shouldSkipFace(const struct VBSPLumpFace *face, const struct L
 static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		struct VisibleFace *vis_face, unsigned index) {
 	const struct Lumps * const lumps = ctx->lumps;
-	if (index >= lumps->faces.n) return FaceProbe_OOB;
+#define FACE_CHECK(cond) \
+	if (!(cond)) { PRINT("F%d: check failed: (%s)", index, #cond); return FaceProbe_Inconsistent; }
+	FACE_CHECK(index < lumps->faces.n);
+
 	const struct VBSPLumpFace * const face = lumps->faces.p + index;
 	vis_face->face = face;
 
-	if (face->texinfo < 0)
-		return FaceProbe_Skip;
-	if ((unsigned)face->texinfo > lumps->texinfos.n)
-		return FaceProbe_TexInfoOOB;
+	if (face->texinfo < 0) return FaceProbe_Skip;
+	FACE_CHECK((unsigned)face->texinfo < lumps->texinfos.n);
 	vis_face->texinfo = lumps->texinfos.p + face->texinfo;
-	if (shouldSkipFace(face, lumps))
-		return FaceProbe_Skip;
-	if (vis_face->texinfo->texdata >= lumps->texdata.n)
-		return FaceProbe_TexDataOOB;
+
+	if (shouldSkipFace(face, lumps)) return FaceProbe_Skip;
+	FACE_CHECK(vis_face->texinfo->texdata < lumps->texdata.n);
 	vis_face->texdata = lumps->texdata.p + vis_face->texinfo->texdata;
-	if (vis_face->texdata->name_string_table_id >= lumps->texdatastringtable.n)
-		return FaceProbe_TexDataStringTableOOB;
+
+	FACE_CHECK(vis_face->texdata->name_string_table_id < lumps->texdatastringtable.n);
 	const int32_t texdatastringdata_offset = lumps->texdatastringtable.p[vis_face->texdata->name_string_table_id];
-	if (texdatastringdata_offset < 0 || (uint32_t)texdatastringdata_offset >= lumps->texdatastringdata.n)
-		return FaceProbe_TexDataStringDataOOB;
+	FACE_CHECK(texdatastringdata_offset >= 0 && (uint32_t)texdatastringdata_offset < lumps->texdatastringdata.n);
 	/* FIXME validate string: has \0 earlier than end */
 	vis_face->texture = lumps->texdatastringdata.p + texdatastringdata_offset;
 	//PRINT("F%u: texture %s", index, vis_face->texture);
 
 	if (face->dispinfo >= 0) {
-		if ((unsigned)face->dispinfo >= lumps->dispinfos.n)
-			return FaceProbe_DispInfoOOB;
+		FACE_CHECK((unsigned)face->dispinfo < lumps->dispinfos.n);
 		vis_face->dispinfo = lumps->dispinfos.p + face->dispinfo;
 		const int side = (1 << vis_face->dispinfo->power) + 1;
-		if (face->num_edges != 4) {
-			PRINT("Displaced face has invalid num_edges %d", face->num_edges);
-			return FaceProbe_Inconsistent;
-		}
+		FACE_CHECK(face->num_edges == 4);
 		vis_face->vertices = side * side;
 		vis_face->indices = (side - 1) * (side - 1) * 6; /* triangle list */
 		if (vis_face->dispinfo->min_tess != 0)
@@ -203,23 +159,17 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 	}
 
 	/* Check for basic reference consistency */
-	if (face->plane >= lumps->planes.n) return FaceProbe_PlaneOOB;
-	if (face->num_edges < 3) return FaceProbe_TooFewEdges;
-	if (face->first_edge >= lumps->surfedges.n || lumps->surfedges.n - face->first_edge < (unsigned)face->num_edges)
-		return FaceProbe_SurfedgesOOB;
+	FACE_CHECK(face->plane < lumps->planes.n);
+	FACE_CHECK(face->num_edges > 2);
+	FACE_CHECK(face->first_edge < lumps->surfedges.n && lumps->surfedges.n - face->first_edge >= (unsigned)face->num_edges);
 
-	if (face->lightmap_offset % sizeof(struct VBSPLumpLightMap) != 0) {
-		PRINT("Error: face%u references lightmap at unaligned offset %u: %zu",
-				index, face->lightmap_offset, face->lightmap_offset % sizeof(struct VBSPLumpLightMap));
-		return FaceProbe_UnalignedLightmap;
-	}
+	FACE_CHECK(face->lightmap_offset % sizeof(struct VBSPLumpLightMap) == 0);
 
 	const unsigned int lm_width = face->lightmap_size[0] + 1;
 	const unsigned int lm_height = face->lightmap_size[1] + 1;
 	const size_t lightmap_size = lm_width * lm_height;
 	const size_t sample_offset = face->lightmap_offset / sizeof(struct VBSPLumpLightMap);
-	if (sample_offset >= lumps->lightmaps.n || lumps->lightmaps.n - sample_offset < lightmap_size)
-		return FaceProbe_LightmapOOB;
+	FACE_CHECK(sample_offset < lumps->lightmaps.n && lumps->lightmaps.n - sample_offset >= lightmap_size);
 
 	const int32_t *surfedges = lumps->surfedges.p + face->first_edge;
 	unsigned int prev_end = 0xffffffffu;
@@ -238,7 +188,7 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		if (edge_index >= lumps->edges.n) {
 			PRINT("Error: face%u surfedge%u/%u references edge %u > max edges %u",
 					index, i, face->num_edges, edge_index, lumps->edges.n);
-			return FaceProbe_EdgesOOB;
+			return FaceProbe_Inconsistent;
 		}
 
 		const unsigned int vstart = lumps->edges.p[edge_index].v[istart];
@@ -253,12 +203,8 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 			}
 		}
 
-		if (vstart > lumps->vertices.n)
-			return FaceProbe_VertexOOB;
-
-		if (prev_end != 0xffffffffu && prev_end != vstart) {
-			return FaceProbe_InconsistentEdge;
-		}
+		FACE_CHECK(vstart < lumps->vertices.n);
+		FACE_CHECK(prev_end == 0xffffffffu || prev_end == vstart);
 
 		prev_end = vend;
 	}
@@ -306,7 +252,6 @@ static enum BSPLoadResult bspLoadModelCollectFaces(struct LoadModelContext *ctx)
 		}
 
 		if (result != FaceProbe_Skip) {
-			PRINT("Error: bspFaceProbe returned %s (%d)", faceProbeError(result), result);
 			return BSPLoadResult_ErrorFileFormat;
 		}
 	}
