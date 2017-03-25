@@ -3,13 +3,8 @@
 #include "vbsp.h"
 #include "collection.h"
 #include "mempools.h"
-#include <stdint.h>
-#include <string.h> /* memset */
-#include <stdio.h> /* printf */
+#include "common.h"
 
-#define STR1(m) #m
-#define STR(m) STR1(m)
-#define PRINT(fmt, ...) fprintf(stderr, __FILE__ ":" STR(__LINE__) ": " fmt "\n", __VA_ARGS__)
 #define R2S(r) bspLoadResultString(r)
 
 const char *bspLoadResultString(enum BSPLoadResult result) {
@@ -355,20 +350,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 	return BSPLoadResult_Success;
 }
 
-inline static struct AVec3f aVec3fLumpVec(struct VBSPLumpVertex v) { return aVec3f(v.x, v.y, v.z); }
-inline static struct AVec3f aVec3fMix(struct AVec3f a, struct AVec3f b, float t) {
-	return aVec3fAdd(a, aVec3fMulf(aVec3fSub(b, a), t));
-}
-inline static struct AVec2f aVec2fMulf(struct AVec2f v, float f) { return aVec2f(v.x * f, v.y * f); }
-inline static struct AVec2f aVec2fMix(struct AVec2f a, struct AVec2f b, float t) {
-	return aVec2fAdd(a, aVec2fMulf(aVec2fSub(b, a), t));
-}
-inline static struct AVec4f aVec4fNeg(struct AVec4f v) { return aVec4f(-v.x, -v.y, -v.z, -v.w); }
-inline static float aVec3fLength2(struct AVec3f v) { return aVec3fDot(v,v); }
-#define MAKE_MAX(type) \
-	inline static type type##Max(type a, type b) { return (a > b) ? a : b; }
-MAKE_MAX(float)
-inline static float aVec2fLength(struct AVec2f v) { return sqrtf(aVec2fDot(v, v)); }
+static inline struct AVec3f aVec3fLumpVec(struct VBSPLumpVertex v) { return aVec3f(v.x, v.y, v.z); }
 
 static int shouldSwapUV(struct AVec3f mapU, struct AVec3f mapV, const struct AVec3f *v) {
 	float mappedU = 0.f, mappedV = 0.f;
@@ -583,11 +565,6 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 
 	model->ibo = aGLBufferCreate(AGLBT_Index);
 	aGLBufferUpload(&model->ibo, sizeof(uint16_t) * ctx->indices, indices_buffer);
-
-	/*for (unsigned int i = 0; i < (indices_buffer_count<256?indices_buffer_count:256); ++i)
-		PRINT("%u: %u", i, indices_buffer[i]);
-	*/
-
 	return BSPLoadResult_Success;
 }
 

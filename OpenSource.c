@@ -1,16 +1,13 @@
 #include "bsp.h"
 #include "collection.h"
 #include "mempools.h"
+#include "common.h"
 
 #include "atto/app.h"
 #define ATTO_GL_DEBUG
 #define ATTO_GL_H_IMPLEMENT
 #include "atto/gl.h"
 #include "atto/math.h"
-
-#include <string.h>
-#include <stdlib.h> /* malloc */
-#include <stddef.h> /* offsetof */
 
 static char temp_data[64*1024*1024];
 
