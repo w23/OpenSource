@@ -48,6 +48,7 @@ struct FilesystemCollectionFile_ {
 struct FilesystemCollection {
 	struct ICollection head;
 	char path[256];
+	int path_len;
 	struct FilesystemCollectionFile_ files[FilesystemCollectionFileSlots];
 };
 

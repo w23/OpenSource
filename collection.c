@@ -1,6 +1,5 @@
 #include "collection.h"
-#include <string.h>
-#include <stdio.h>
+#include "common.h"
 
 enum CollectionOpenResult collectionChainOpen(struct ICollection *collection,
 		const char *name, enum FileType type, struct IFile **out_file) {
@@ -65,8 +64,22 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 		case File_Texture: subdir = "/textures/"; suffix = ".vtf"; break;
 		case File_Model: subdir = "/models/"; suffix = ".mdl"; break;
 	}
-	snprintf(buffer, sizeof(buffer) - 1, "%s%s%s%s", fsc->path, subdir, name, suffix);
-	/* FIXME case insensitivity */
+
+	const int subdir_len = strlen(subdir);
+	const int name_len = strlen(name);
+	const int suffix_len = strlen(suffix);
+
+	if (fsc->path_len + subdir_len + name_len + suffix_len >= (int)sizeof(buffer)) {
+		PRINT("Resource \"%s\" path is too long", name);
+		return CollectionOpen_NotFound;
+	}
+
+	char *c = buffer;
+	for (int i = 0; i < fsc->path_len; ++i) *c++ = fsc->path[i];
+	for (int i = 0; i < subdir_len; ++i) *c++ = subdir[i];
+	for (int i = 0; i < name_len; ++i) *c++ = tolower(name[i]);
+	for (int i = 0; i < suffix_len; ++i) *c++ = suffix[i];
+	*c = '\0';
 
 	if (AFile_Success != filesystemCollectionFile_Open(f, buffer))
 		return CollectionOpen_NotFound;
@@ -76,6 +89,8 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 
 void filesystemCollectionCreate(struct FilesystemCollection *collection, const char *dir) {
 	memset(collection, 0, sizeof *collection);
+	/* TODO length check? dir exists check? */
+	collection->path_len = strlen(dir);
 	strncpy(collection->path, dir, sizeof(collection->path) - 1);
 
 	for (int i = 0; i < FilesystemCollectionFileSlots; ++i) {
