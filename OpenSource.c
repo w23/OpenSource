@@ -1,10 +1,11 @@
 #include "bsp.h"
+#include "cache.h"
 #include "collection.h"
 #include "mempools.h"
 #include "common.h"
 
 #include "atto/app.h"
-#define ATTO_GL_DEBUG
+//#define ATTO_GL_DEBUG
 #define ATTO_GL_H_IMPLEMENT
 #include "atto/gl.h"
 #include "atto/math.h"
@@ -320,6 +321,8 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 		aAppTerminate(-1);
 	}
 	fsquadInit();
+
+	cacheInit(&stdpool);
 
 	struct BSPLoadModelContext loadctx = {
 		.collection = collection,

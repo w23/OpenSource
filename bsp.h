@@ -1,4 +1,5 @@
 #pragma once
+#include "material.h"
 #include "atto/gl.h"
 #include "atto/math.h"
 

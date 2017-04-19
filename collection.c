@@ -61,7 +61,7 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 	switch (type) {
 		case File_Map: subdir = "/maps/"; suffix = ".bsp"; break;
 		case File_Material: subdir = "/materials/"; suffix = ".vmt"; break;
-		case File_Texture: subdir = "/textures/"; suffix = ".vtf"; break;
+		case File_Texture: subdir = "/materials/"; suffix = ".vtf"; break;
 		case File_Model: subdir = "/models/"; suffix = ".mdl"; break;
 	}
 
@@ -70,14 +70,17 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 	const int suffix_len = strlen(suffix);
 
 	if (fsc->path_len + subdir_len + name_len + suffix_len >= (int)sizeof(buffer)) {
-		PRINT("Resource \"%s\" path is too long", name);
+		PRINTF("Resource \"%s\" path is too long", name);
 		return CollectionOpen_NotFound;
 	}
 
 	char *c = buffer;
 	for (int i = 0; i < fsc->path_len; ++i) *c++ = fsc->path[i];
 	for (int i = 0; i < subdir_len; ++i) *c++ = subdir[i];
-	for (int i = 0; i < name_len; ++i) *c++ = tolower(name[i]);
+	for (int i = 0; i < name_len; ++i) {
+		char C = tolower(name[i]);
+		*c++ = (C == '\\') ? '/' : C;
+	}
 	for (int i = 0; i < suffix_len; ++i) *c++ = suffix[i];
 	*c = '\0';
 

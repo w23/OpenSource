@@ -80,6 +80,7 @@ struct VisibleFace {
 
 struct LoadModelContext {
 	struct TemporaryPool *tmp;
+	struct ICollection *collection;
 	const struct Lumps *lumps;
 	const struct VBSPLumpModel *model;
 	struct VisibleFace *faces;
@@ -115,7 +116,7 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		struct VisibleFace *vis_face, unsigned index) {
 	const struct Lumps * const lumps = ctx->lumps;
 #define FACE_CHECK(cond) \
-	if (!(cond)) { PRINT("F%d: check failed: (%s)", index, #cond); return FaceProbe_Inconsistent; }
+	if (!(cond)) { PRINTF("F%d: check failed: (%s)", index, #cond); return FaceProbe_Inconsistent; }
 	FACE_CHECK(index < lumps->faces.n);
 
 	const struct VBSPLumpFace * const face = lumps->faces.p + index;
@@ -134,7 +135,7 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 	FACE_CHECK(texdatastringdata_offset >= 0 && (uint32_t)texdatastringdata_offset < lumps->texdatastringdata.n);
 	/* FIXME validate string: has \0 earlier than end */
 	vis_face->texture = lumps->texdatastringdata.p + texdatastringdata_offset;
-	//PRINT("F%u: texture %s", index, vis_face->texture);
+	//PRINTF("F%u: texture %s", index, vis_face->texture);
 
 	if (face->dispinfo >= 0) {
 		FACE_CHECK((unsigned)face->dispinfo < lumps->dispinfos.n);
@@ -144,7 +145,7 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		vis_face->vertices = side * side;
 		vis_face->indices = (side - 1) * (side - 1) * 6; /* triangle list */
 		if (vis_face->dispinfo->min_tess != 0)
-			PRINT("Power: %d, min_tess: %d, vertices: %d",
+			PRINTF("Power: %d, min_tess: %d, vertices: %d",
 				vis_face->dispinfo->power, vis_face->dispinfo->min_tess, vis_face->vertices);
 		vis_face->dispstartvtx = 0;
 	} else {
@@ -181,7 +182,7 @@ static enum FaceProbe bspFaceProbe(struct LoadModelContext *ctx,
 		}
 
 		if (edge_index >= lumps->edges.n) {
-			PRINT("Error: face%u surfedge%u/%u references edge %u > max edges %u",
+			PRINTF("Error: face%u surfedge%u/%u references edge %u > max edges %u",
 					index, i, face->num_edges, edge_index, lumps->edges.n);
 			return FaceProbe_Inconsistent;
 		}
@@ -239,7 +240,7 @@ static enum BSPLoadResult bspLoadModelCollectFaces(struct LoadModelContext *ctx)
 
 			struct VisibleFace *stored_face = tmpAdvance(ctx->tmp, sizeof(struct VisibleFace));
 			if (!stored_face) {
-				PRINT("Error: cannot allocate %zu temp bytes", sizeof(struct VisibleFace));
+				PRINTF("Error: cannot allocate %zu temp bytes", sizeof(struct VisibleFace));
 				return BSPLoadResult_ErrorTempMemory;
 			}
 			*stored_face = face;
@@ -252,7 +253,7 @@ static enum BSPLoadResult bspLoadModelCollectFaces(struct LoadModelContext *ctx)
 	}
 
 	if (!ctx->faces_count) {
-		PRINT("Error: no visible faces found%s", "");
+		PRINTF("Error: no visible faces found%s", "");
 		return BSPLoadResult_ErrorFileFormat; /* FIXME handle this */
 	}
 
@@ -283,7 +284,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 	for(;;) {
 		const enum AtlasResult result = atlasCompute(&atlas_context);
 
-		PRINT("atlas: %u %u %u", atlas_context.width, atlas_context.height, result);
+		PRINTF("atlas: %u %u %u", atlas_context.width, atlas_context.height, result);
 
 		if (result == Atlas_Success)
 			break;
@@ -367,7 +368,7 @@ static int shouldSwapUV(struct AVec3f mapU, struct AVec3f mapV, const struct AVe
 	const float dY2 = aVec3fLength2(aVec3fSub(v[2], v[3]));
 	const float maxDX = (dX1 > dX2) ? dX1 : dX2;
 	const float maxDY = (dY1 > dY2) ? dY1 : dY2;
-	//PRINT("mappedU=%f mappedV=%f maxDX=%f, maxDY=%f", mappedU, mappedV, maxDX, maxDY);
+	//PRINTF("mappedU=%f mappedV=%f maxDX=%f, maxDY=%f", mappedU, mappedV, maxDX, maxDY);
 	return (mappedU > mappedV) != (maxDX > maxDY);
 }
 
@@ -379,7 +380,7 @@ static enum BSPLoadResult bspLoadDisplacement(const struct LoadModelContext *ctx
 	const struct VBSPLumpTexInfo * const tinfo = face->texinfo;
 	const struct VBSPLumpDispVert *const dispvert = ctx->lumps->dispverts.p + face->dispinfo->vtx_start;
 	
-	//if (face->dispstartvtx != 0) PRINT("dispstartvtx = %d", face->dispstartvtx);
+	//if (face->dispstartvtx != 0) PRINTF("dispstartvtx = %d", face->dispstartvtx);
 
 	const struct AVec3f vec[4] = { /* bl, tl, tr, br */
 		aVec3fLumpVec(vertices[face->dispquadvtx[(face->dispstartvtx + 0)%4]]),
@@ -406,23 +407,23 @@ static enum BSPLoadResult bspLoadDisplacement(const struct LoadModelContext *ctx
 			aVec3fLength(aVec3fSub(vec[2], vec[3])));
 	
 	const int swap = shouldSwapUV(
-				aVec3f(tinfo->lightmap_vecs[0][0],tinfo->lightmap_vecs[0][1],tinfo->lightmap_vecs[0][2]),
-				aVec3f(tinfo->lightmap_vecs[1][0],tinfo->lightmap_vecs[1][1],tinfo->lightmap_vecs[1][2]), vec);
+				aVec3f(tinfo->lightmap_vecs[0][0], tinfo->lightmap_vecs[0][1], tinfo->lightmap_vecs[0][2]),
+				aVec3f(tinfo->lightmap_vecs[1][0], tinfo->lightmap_vecs[1][1], tinfo->lightmap_vecs[1][2]), vec);
 
 	const struct AVec2f atlas_scale = aVec2f(1.f / ctx->lightmap.texture.width, 1.f / ctx->lightmap.texture.height);
 	const struct AVec2f atlas_offset = aVec2f(
-			.5f + face->atlas_x + tinfo->lightmap_vecs[0][3]*0 - 0*face->face->lightmap_min[0],
-			.5f + face->atlas_y + tinfo->lightmap_vecs[1][3]*0 - 0*face->face->lightmap_min[1]);
+			.5f + face->atlas_x /*+ tinfo->lightmap_vecs[0][3] - face->face->lightmap_min[0]*/,
+			.5f + face->atlas_y /*+ tinfo->lightmap_vecs[1][3] - face->face->lightmap_min[1]*/);
 
 	if (length_lm_u < 0. || length_lm_u >= face->width
 		|| length_lm_v < 0. || length_lm_v >= face->height) {
-		PRINT("LM OOB: (%f, %f) (%d, %d)", length_lm_u, length_lm_v, face->width, face->height);
+		PRINTF("LM OOB: (%f, %f) (%d, %d)", length_lm_u, length_lm_v, face->width, face->height);
 		if (length_lm_u >= face->width) length_lm_u = face->width - 1;
 		if (length_lm_v >= face->height) length_lm_v = face->height - 1;
 	}
 
 	/*
-	PRINT("%f %f %f %f",
+	PRINTF("%f %f %f %f",
 			tinfo->lightmap_vecs[0][3] * atlas_scale.x, face->face->lightmap_min[0] * atlas_scale.x,
 			tinfo->lightmap_vecs[1][3] * atlas_scale.y, face->face->lightmap_min[1] * atlas_scale.y);
 	*/
@@ -442,7 +443,7 @@ static enum BSPLoadResult bspLoadDisplacement(const struct LoadModelContext *ctx
 			v->vertex = aVec3fAdd(aVec3fMix(vl, vr, tx), aVec3fMulf(aVec3f(dv->x, dv->y, dv->z), dv->dist));
 
 			if (v->lightmap_uv.x < 0 || v->lightmap_uv.y < 0 || v->lightmap_uv.x > face->width || v->lightmap_uv.y > face->height)
-				PRINT("Error: DISP OOB LM F:V%u: x=%f y=%f z=%f tx=%f, ty=%f u=%f v=%f w=%d h=%d",
+				PRINTF("Error: DISP OOB LM F:V%u: x=%f y=%f z=%f tx=%f, ty=%f u=%f v=%f w=%d h=%d",
 						x + y * side, v->vertex.x, v->vertex.y, v->vertex.z, tx, ty, v->lightmap_uv.x, v->lightmap_uv.y, face->width, face->height);
 
 			v->lightmap_uv = aVec2fMul(aVec2fAdd(v->lightmap_uv, atlas_offset), atlas_scale);
@@ -493,7 +494,7 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 			draw->count = indices_pos - draw_indices_start;
 			draw->start = draw_indices_start;
 
-			PRINT("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
+			PRINTF("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
 
 			draw->vbo = aGLBufferCreate(AGLBT_Vertex);
 			aGLBufferUpload(&draw->vbo, sizeof(struct BSPModelVertex) * vertex_pos, vertices_buffer);
@@ -504,6 +505,9 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 			++idraw;
 			ASSERT(idraw < ctx->draws_to_alloc);
 		}
+
+		const struct Material *mat = materialGet(vis_face->texture, ctx->collection, ctx->tmp);
+		if (!mat) continue; //PRINTF("%p", (void*)mat);
 
 		if (vis_face->dispinfo) {
 			bspLoadDisplacement(ctx, vis_face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos);
@@ -546,7 +550,7 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 					aVec4fDot(aVec4f3(vertex->vertex, 1.f), lm_map_v));
 
 				if (vertex->lightmap_uv.x < 0 || vertex->lightmap_uv.y < 0 || vertex->lightmap_uv.x > vis_face->width || vertex->lightmap_uv.y > vis_face->height)
-					PRINT("Error: OOB LM F%u:V%u: x=%f y=%f z=%f u=%f v=%f w=%d h=%d", iface, iedge, lv->x, lv->y, lv->z, vertex->lightmap_uv.x, vertex->lightmap_uv.y, vis_face->width, vis_face->height);
+					PRINTF("Error: OOB LM F%u:V%u: x=%f y=%f z=%f u=%f v=%f w=%d h=%d", iface, iedge, lv->x, lv->y, lv->z, vertex->lightmap_uv.x, vertex->lightmap_uv.y, vis_face->width, vis_face->height);
 
 				vertex->lightmap_uv.x = (vertex->lightmap_uv.x + vis_face->atlas_x + .5f) / ctx->lightmap.texture.width;
 				vertex->lightmap_uv.y = (vertex->lightmap_uv.y + vis_face->atlas_y + .5f) / ctx->lightmap.texture.height;
@@ -568,7 +572,7 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	return BSPLoadResult_Success;
 }
 
-static enum BSPLoadResult bspLoadModel(struct BSPModel *model, struct MemoryPool *pool, struct TemporaryPool *temp,
+static enum BSPLoadResult bspLoadModel(struct ICollection *collection, struct BSPModel *model, struct MemoryPool *pool, struct TemporaryPool *temp,
 		const struct Lumps *lumps, unsigned index) {
 	struct LoadModelContext context;
 	memset(&context, 0, sizeof context);
@@ -576,20 +580,21 @@ static enum BSPLoadResult bspLoadModel(struct BSPModel *model, struct MemoryPool
 	ASSERT(index < lumps->models.n);
 
 	context.tmp = temp;
+	context.collection = collection;
 	context.lumps = lumps;
 	context.model = lumps->models.p + index;
 
 	/* Step 1. Collect lightmaps for all faces */
 	enum BSPLoadResult result = bspLoadModelCollectFaces(&context);
 	if (result != BSPLoadResult_Success) {
-		PRINT("Error: bspLoadModelCollectFaces() => %s", R2S(result));
+		PRINTF("Error: bspLoadModelCollectFaces() => %s", R2S(result));
 		return result;
 	}
 
 	/* Step 2. Build an atlas of all lightmaps */
 	result = bspLoadModelLightmaps(&context);
 	if (result != BSPLoadResult_Success) {
-		PRINT("Error: bspLoadModelLightmaps() => %s", R2S(result));
+		PRINTF("Error: bspLoadModelLightmaps() => %s", R2S(result));
 		return result;
 	}
 
@@ -616,17 +621,17 @@ static int lumpRead(const char *name, const struct VBSPLumpHeader *header,
 		struct AnyLump *out_ptr, uint32_t item_size) {
 	out_ptr->p = tmpAdvance(pool, header->size);
 	if (!out_ptr->p) {
-		PRINT("Not enough temp memory to allocate storage for lump %s", name);
+		PRINTF("Not enough temp memory to allocate storage for lump %s", name);
 		return -1;
 	}
 
 	const size_t bytes = file->read(file, header->file_offset, header->size, (void*)out_ptr->p);
 	if (bytes != header->size) {
-		PRINT("Cannot read full lump %s, read only %zu bytes out of %u", name, bytes, header->size);
+		PRINTF("Cannot read full lump %s, read only %zu bytes out of %u", name, bytes, header->size);
 		return -1;
 	}
 
-	PRINT("Read lump %s, offset %u, size %u bytes / %u item = %u elements",
+	PRINTF("Read lump %s, offset %u, size %u bytes / %u item = %u elements",
 			name, header->file_offset, header->size, item_size, header->size / item_size);
 
 	out_ptr->n = header->size / item_size;
@@ -646,26 +651,26 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const c
 	struct VBSPHeader vbsp_header;
 	size_t bytes = file->read(file, 0, sizeof vbsp_header, &vbsp_header);
 	if (bytes < sizeof(vbsp_header)) {
-		PRINT("Size is too small: %zu <= %zu", bytes, sizeof(struct VBSPHeader));
+		PRINTF("Size is too small: %zu <= %zu", bytes, sizeof(struct VBSPHeader));
 		result = BSPLoadResult_ErrorFileFormat;
 		goto exit;
 	}
 
 	if (vbsp_header.ident[0] != 'V' || vbsp_header.ident[1] != 'B' ||
 			vbsp_header.ident[2] != 'S' || vbsp_header.ident[3] != 'P') {
-		PRINT("Error: invalid ident => %c%c%c%c != VBSP",
+		PRINTF("Error: invalid ident => %c%c%c%c != VBSP",
 				vbsp_header.ident[0], vbsp_header.ident[1], vbsp_header.ident[2], vbsp_header.ident[3]);
 		result = BSPLoadResult_ErrorFileFormat;
 		goto exit;
 	}
 
 	if (vbsp_header.version != 19 && vbsp_header.version != 20) {
-		PRINT("Error: invalid version: %d != 19 or 20", vbsp_header.version);
+		PRINTF("Error: invalid version: %d != 19 or 20", vbsp_header.version);
 		result = BSPLoadResult_ErrorFileFormat;
 		goto exit;
 	}
 
-	PRINT("VBSP version %u opened", vbsp_header.version);
+	PRINTF("VBSP version %u opened", vbsp_header.version);
 
 	struct Lumps lumps;
 	lumps.version = vbsp_header.version;
@@ -678,9 +683,9 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const c
 	LIST_LUMPS
 #undef BSPLUMP
 
-	result = bspLoadModel(context.model, context.pool, context.tmp, &lumps, 0);
+	result = bspLoadModel(context.collection, context.model, context.pool, context.tmp, &lumps, 0);
 	if (result != BSPLoadResult_Success)
-		PRINT("Error: bspLoadModel() => %s", R2S(result));
+		PRINTF("Error: bspLoadModel() => %s", R2S(result));
 
 exit:
 	tmpReturnToPosition(context.tmp, tmp_cursor);
