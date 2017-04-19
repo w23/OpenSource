@@ -90,7 +90,7 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 	return width * height * pixel_bits / 8;
 }
 
-static int textureLoad(struct IFile *file, Texture *tex, struct TemporaryPool *pool) {
+static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 	struct VTFHeader hdr;
 	size_t cursor = sizeof hdr;
 	if (file->read(file, 0, sizeof(hdr), &hdr) != sizeof(hdr)) {
@@ -117,15 +117,15 @@ static int textureLoad(struct IFile *file, Texture *tex, struct TemporaryPool *p
 					cursor += vtfImageSize(hdr.hires_format, hdr.width >> mip, hdr.height >> mip);
 
 	int retval = 0;
-	void *pre_alloc_cursor = tmpGetCursor(pool);
+	void *pre_alloc_cursor = stackGetCursor(tmp);
 	const int src_texture_size = vtfImageSize(hdr.hires_format, hdr.width, hdr.height);
-	void *src_texture = tmpAdvance(pool, src_texture_size);
+	void *src_texture = stackAlloc(tmp, src_texture_size);
 	if (!src_texture) {
 		PRINTF("Cannot allocate %d bytes for texture", src_texture_size);
 		goto exit;
 	}
 	const int dst_texture_size = 2 * hdr.width * hdr.height;
-	void *dst_texture = tmpAdvance(pool, dst_texture_size);
+	void *dst_texture = stackAlloc(tmp, dst_texture_size);
 	if (!dst_texture) {
 		PRINTF("Cannot allocate %d bytes for texture", dst_texture_size);
 		goto exit;
@@ -142,7 +142,7 @@ static int textureLoad(struct IFile *file, Texture *tex, struct TemporaryPool *p
 		.output = dst_texture
 	};
 	dxt1Unpack(dxt_ctx);
-	
+
 	const AGLTextureUploadData data = {
 		.x = 0,
 		.y = 0,
@@ -157,11 +157,11 @@ static int textureLoad(struct IFile *file, Texture *tex, struct TemporaryPool *p
 	retval = 1;
 
 exit:
-	tmpReturnToPosition(pool, pre_alloc_cursor);
+	stackFreeUpToPosition(tmp, pre_alloc_cursor);
 	return retval;
 }
 
-const Texture *textureGet(const char *name, struct ICollection *collection, struct TemporaryPool *pool) {
+const Texture *textureGet(const char *name, struct ICollection *collection, struct Stack *tmp) {
 	const Texture *tex = cacheGetTexture(name);
 	if (tex) return tex;
 
@@ -172,7 +172,7 @@ const Texture *textureGet(const char *name, struct ICollection *collection, stru
 	}
 
 	struct Texture localtex;
-	if (textureLoad(texfile, &localtex, pool) == 0) {
+	if (textureLoad(texfile, &localtex, tmp) == 0) {
 		PRINTF("Texture \"%s\" found, but could not be loaded", name);
 	} else {
 		tex = &localtex;

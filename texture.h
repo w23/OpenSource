@@ -2,10 +2,10 @@
 #include "atto/gl.h"
 
 struct ICollection;
-struct TemporaryPool;
+struct Stack;
 
 typedef struct Texture {
 	AGLTexture gltex;
 } Texture;
 
-const Texture *textureGet(const char *name, struct ICollection *collection, struct TemporaryPool *pool);
+const Texture *textureGet(const char *name, struct ICollection *collection, struct Stack *tmp);

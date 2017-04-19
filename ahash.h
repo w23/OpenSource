@@ -71,7 +71,7 @@ static struct AHashItemData_ a__hashGetItemData(const AHash *hash, void *item) {
 
 void aHashInit(AHash *hash) {
 #define AHASH_ALIGNED_SIZE(S,A) (((S+A-1)/A)*A)
-	hash->impl_.value_offset = AHASH_ALIGNED_SIZE(hash->key_size, 16);
+	hash->impl_.value_offset = AHASH_ALIGNED_SIZE(hash->key_size, AHASH_VALUE_ALIGNMENT);
 	hash->impl_.next_ptr_offset = hash->impl_.value_offset + AHASH_ALIGNED_SIZE(hash->value_size, sizeof(void*));
 	hash->impl_.item_size = hash->impl_.next_ptr_offset + sizeof(void*);
 	hash->impl_.buckets = hash->alloc(hash->alloc_param, sizeof(struct AHashBucket_) * hash->nbuckets);

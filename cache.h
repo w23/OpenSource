@@ -1,7 +1,8 @@
 #pragma once
 
-struct MemoryPool;
-void cacheInit(struct MemoryPool *pool);
+struct Stack;
+
+void cacheInit(struct Stack* persistent);
 
 struct Material;
 struct Texture;

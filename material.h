@@ -2,7 +2,7 @@
 
 struct ICollection;
 struct Texture;
-struct TemporaryPool;
+struct Stack;
 
 struct Material {
 	const struct Texture *base_texture[2];
@@ -15,4 +15,4 @@ struct Material {
 	 */
 };
 
-const struct Material *materialGet(const char *name, struct ICollection *collection, struct TemporaryPool *pool);
+const struct Material *materialGet(const char *name, struct ICollection *collection, struct Stack *tmp);

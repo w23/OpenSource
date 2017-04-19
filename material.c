@@ -109,7 +109,7 @@ static const char * const ignore_params[] = {
 	0
 };
 
-static int materialLoad(struct IFile *file, struct ICollection *coll, struct Material *output, struct TemporaryPool *pool) {
+static int materialLoad(struct IFile *file, struct ICollection *coll, struct Material *output, struct Stack *tmp) {
 	char buffer[8192]; /* most vmts are < 300, a few are almost 1000, max seen ~3200 */
 	if (file->size > sizeof(buffer) - 1) {
 		PRINTF("VMT is too large: %zu", file->size);
@@ -150,9 +150,9 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 		if (skip) continue;
 
 		if (strncasecmp("$basetexture", ctx.key, ctx.key_length) == 0) {
-			output->base_texture[0] = textureGet(ctx.value, coll, pool);
+			output->base_texture[0] = textureGet(ctx.value, coll, tmp);
 		} else if (strncasecmp("$basetexture2", ctx.key, ctx.key_length) == 0) {
-			output->base_texture[1] = textureGet(ctx.value, coll, pool);
+			output->base_texture[1] = textureGet(ctx.value, coll, tmp);
 		} else if (strncasecmp("$basetexturetransform", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$basetexturetransform2", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$detail", ctx.key, ctx.key_length) == 0) {
@@ -180,7 +180,7 @@ error:
 	return 0;
 }
 
-const struct Material *materialGet(const char *name, struct ICollection *collection, struct TemporaryPool *pool) {
+const struct Material *materialGet(const char *name, struct ICollection *collection, struct Stack *tmp) {
 	const struct Material *mat = cacheGetMaterial(name);
 	if (mat) return mat;
 
@@ -191,7 +191,7 @@ const struct Material *materialGet(const char *name, struct ICollection *collect
 	}
 
 	struct Material localmat;
-	if (materialLoad(matfile, collection, &localmat, pool) == 0) {
+	if (materialLoad(matfile, collection, &localmat, tmp) == 0) {
 		PRINTF("Material \"%s\" found, but could not be loaded", name);
 	} else {
 		mat = &localmat;

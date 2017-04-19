@@ -10,26 +10,19 @@
 #include "atto/gl.h"
 #include "atto/math.h"
 
-static char temp_data[64*1024*1024];
+static char temp_data[32*1024*1024];
+static char persistent_data[32*1024*1024];
 
-static struct TemporaryPool temp = {
+static struct Stack stack_temp = {
 	.storage = temp_data,
 	.size = sizeof(temp_data),
 	.cursor = 0
 };
 
-static void* stdpool_alloc(struct MemoryPool *pool, size_t size) {
-	(void)(pool);
-	return malloc(size);
-}
-static void stdpool_free(struct MemoryPool *pool, void *ptr) {
-	(void)(pool);
-	free(ptr);
-}
-
-static struct MemoryPool stdpool = {
-	.alloc = stdpool_alloc,
-	.free = stdpool_free
+static struct Stack stack_persistent = {
+	.storage = persistent_data,
+	.size = sizeof(persistent_data),
+	.cursor = 0
 };
 
 struct SimpleCamera {
@@ -322,12 +315,12 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 	}
 	fsquadInit();
 
-	cacheInit(&stdpool);
+	cacheInit(&stack_persistent);
 
 	struct BSPLoadModelContext loadctx = {
 		.collection = collection,
-		.pool = &stdpool,
-		.tmp = &temp,
+		.persistent = &stack_persistent,
+		.tmp = &stack_temp,
 		.model = &g.worldspawn
 	};
 	const enum BSPLoadResult result = bspLoadWorldspawn(loadctx, map);
@@ -536,7 +529,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			const char *value = a_app_state->argv[++i];
 
 			if (free_collection >= max_collections) {
-				aAppDebugPrintf("Too many fs collections specified: %s", value); 
+				aAppDebugPrintf("Too many fs collections specified: %s", value);
 				goto print_usage_and_exit;
 			}
 

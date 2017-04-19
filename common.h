@@ -5,3 +5,5 @@
 #define STR(m) STR1(m)
 #define PRINTF(fmt, ...) fprintf(stderr, __FILE__ ":" STR(__LINE__) ": " fmt "\n", __VA_ARGS__)
 #define PRINT(msg) fprintf(stderr, __FILE__ ":" STR(__LINE__) ": %s\n", msg)
+
+#define ASSERT(cond) if (!(cond)){PRINTF("%s failed", #cond); abort();}

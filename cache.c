@@ -10,9 +10,9 @@ static struct {
 	AHash textures;
 } g;
 
-static void initHash(AHash *hash, struct MemoryPool *pool, long item_size) {
+static void initHash(AHash *hash, struct Stack *pool, long item_size) {
 	hash->alloc_param = pool;
-	hash->alloc = pool->alloc;
+	hash->alloc = stackAlloc;
 	hash->nbuckets = 64;
 	hash->key_size = 64;
 	hash->value_size = item_size;
@@ -21,7 +21,7 @@ static void initHash(AHash *hash, struct MemoryPool *pool, long item_size) {
 	aHashInit(hash);
 }
 
-void cacheInit(struct MemoryPool *pool) {
+void cacheInit(struct Stack *pool) {
 	initHash(&g.materials, pool, sizeof(struct Material));
 	initHash(&g.textures, pool, sizeof(struct Texture));
 }

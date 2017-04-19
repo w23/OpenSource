@@ -41,12 +41,12 @@ struct BSPModel {
 
 struct ICollection;
 struct MemoryPool;
-struct TemporaryPool;
+struct Stack;
 
 struct BSPLoadModelContext {
 	struct ICollection *collection;
-	struct MemoryPool *pool;
-	struct TemporaryPool *tmp;
+	struct Stack *persistent;
+	struct Stack *tmp;
 
 	/* allocated by caller, populated by callee */
 	struct BSPModel *model;
