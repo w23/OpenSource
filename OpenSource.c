@@ -5,7 +5,7 @@
 #include "common.h"
 
 #include "atto/app.h"
-//#define ATTO_GL_DEBUG
+#define ATTO_GL_DEBUG
 #define ATTO_GL_H_IMPLEMENT
 #include "atto/gl.h"
 #include "atto/math.h"
@@ -414,7 +414,7 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 }
 
 static void drawBSPDraw(const struct BSPDraw *draw) {
-	g.source.primitive.index.data.offset = draw->start;
+	g.source.primitive.index.data.offset = sizeof(uint16_t) * draw->start;
 	g.source.primitive.count = draw->count;
 	g.attribs[AttribPos].buffer =
 		g.attribs[AttribNormal].buffer =
@@ -429,7 +429,7 @@ static void drawModel(const struct BSPModel *model) {
 	g.uniforms[UniformLightmapSize].value.pf = &lm_size.x;
 	g.source.primitive.index.buffer = &model->ibo;
 
-	for (unsigned int i = 0; i < model->draws_count; ++i)
+	for (int i = 0; i < model->draws_count; ++i)
 		drawBSPDraw(model->draws + i);
 }
 

@@ -35,7 +35,7 @@ struct BSPModel {
 	struct AABB aabb;
 	AGLTexture lightmap;
 	AGLBuffer ibo;
-	unsigned int draws_count;
+	int draws_count;
 	struct BSPDraw *draws;
 };
 

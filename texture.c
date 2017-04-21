@@ -37,6 +37,7 @@ const char *vtfFormatStr(enum VTFImageFormat fmt) {
 		case VTFImage_RGBA16: return "RGBA16";
 		case VTFImage_UVLX8: return "UVLX8";
 	}
+	return "None";
 }
 
 static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {

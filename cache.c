@@ -12,12 +12,12 @@ static struct {
 
 static void initHash(AHash *hash, struct Stack *pool, long item_size) {
 	hash->alloc_param = pool;
-	hash->alloc = stackAlloc;
+	hash->alloc = (AHashAllocFunc)stackAlloc;
 	hash->nbuckets = 64;
 	hash->key_size = 64;
 	hash->value_size = item_size;
 	hash->key_hash = aHashStringHash;
-	hash->key_compare = strcmp;
+	hash->key_compare = (AHashKeyCompareFunc)strcmp;
 	aHashInit(hash);
 }
 

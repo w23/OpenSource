@@ -126,7 +126,7 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 
 #define EXPECT_TOKEN(type) \
 	if (getNextToken(&ctx.tok) != type) { \
-		PRINTF("Unexpected token at position %ld, expecting %d; left: %s", ctx.tok.cursor - buffer, type, ctx.tok.cursor); \
+		PRINTF("Unexpected token at position %zd, expecting %d; left: %s", ctx.tok.cursor - buffer, type, ctx.tok.cursor); \
 		return 0; \
 	}
 

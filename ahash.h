@@ -4,6 +4,10 @@
 
 /* simplest possible insert-only single-linked hash table */
 
+typedef void *(*AHashAllocFunc)(void *alloc_param, size_t size);
+typedef unsigned long (*AHashKeyHashFunc)(const void *key);
+typedef int (*AHashKeyCompareFunc)(const void *left, const void *right);
+
 struct AHashBucket_;
 
 typedef struct {
@@ -14,9 +18,9 @@ typedef struct {
 	long value_size;
 	/* must return properly aligned (e.g. 16) regions */
 	void *alloc_param;
-	void *(*alloc)(void *alloc_param, size_t size);
-	unsigned long (*key_hash)(const void *key);
-	int (*key_compare)(const void *left, const void *right);
+	AHashAllocFunc alloc;
+	AHashKeyHashFunc key_hash;
+	AHashKeyCompareFunc key_compare;
 
 	struct {
 		long item_size;
@@ -89,13 +93,11 @@ void *aHashInsert(AHash *hash, const void *key, const void *value) {
 	const long index = hash->key_hash(key) % hash->nbuckets;
 	struct AHashBucket_ *const bucket = hash->impl_.buckets + index;
 
-	void *prev_item = 0;
 	void *item = bucket->items;
 	struct AHashItemData_ prev_item_data;
 	prev_item_data.next = &bucket->items;
 	while(item != 0) {
 		prev_item_data = a__hashGetItemData(hash, item);
-		prev_item = item;
 		item = *prev_item_data.next;
 	}
 
