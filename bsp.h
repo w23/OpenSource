@@ -3,6 +3,8 @@
 #include "atto/gl.h"
 #include "atto/math.h"
 
+struct Material;
+
 struct AABB { struct AVec3f min, max; };
 struct Plane { struct AVec3f n; float d; };
 
@@ -10,11 +12,12 @@ struct BSPModelVertex {
 	struct AVec3f vertex;
 	struct AVec3f normal;
 	struct AVec2f lightmap_uv;
+	struct AVec2f base0_uv;
 };
 
 struct BSPDraw {
 	AGLBuffer vbo;
-	AGLTexture texture;
+	const struct Material *material;
 	unsigned int start, count;
 	struct AVec4f model;
 };

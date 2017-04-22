@@ -3,9 +3,10 @@
 #include "collection.h"
 #include "mempools.h"
 #include "common.h"
+#include "texture.h"
 
 #include "atto/app.h"
-#define ATTO_GL_DEBUG
+//#define ATTO_GL_DEBUG
 #define ATTO_GL_H_IMPLEMENT
 #include "atto/gl.h"
 #include "atto/math.h"
@@ -267,29 +268,34 @@ static void aabbDraw(const struct AABBDraw *draw) {
 
 static const char vertex_src[] =
 	"attribute vec3 av3_pos, av3_normal;\n"
-	"attribute vec2 av2_lightmap;\n"
+	"attribute vec2 av2_lightmap, av2_base0_uv;\n"
 	"uniform mat4 um4_VP;\n"
-	"varying vec2 vv2_lightmap;\n"
+	"varying vec2 vv2_lightmap, vv2_base0_uv;\n"
 	"varying vec3 vv3_normal;\n"
 	"void main() {\n"
 		"vv2_lightmap = av2_lightmap;\n"
+		"vv2_base0_uv = av2_base0_uv;\n"
 		"vv3_normal = av3_normal;\n"
 		"gl_Position = um4_VP * vec4(av3_pos, 1.);\n"
 	"}\n";
 
 static const char fragment_src[] =
-	"uniform sampler2D us2_lightmap;\n"
+	"uniform sampler2D us2_lightmap, tex_base0;\n"
 	"uniform vec2 uv2_lightmap_size;\n"
-	"varying vec2 vv2_lightmap;\n"
+	"varying vec2 vv2_lightmap, vv2_base0_uv;\n"
 	"varying vec3 vv3_normal;\n"
 	"uniform float uf_lmn;\n"
 	"void main() {\n"
-		"gl_FragColor = mix(texture2D(us2_lightmap, vv2_lightmap), vec4(vv3_normal, 0.), uf_lmn);\n"
+		"gl_FragColor = mix(texture2D(us2_lightmap, vv2_lightmap)*texture2D(tex_base0, vv2_base0_uv), vec4(vv3_normal, 0.), uf_lmn);\n"
 		//"gl_FragColor = texture2D(us2_lightmap, vv2_lightmap);\n"
 	"}\n";
 
-enum { UniformM, UniformVP, UniformLightmap, UniformLightmapSize, UniformLMN, Uniform_COUNT };
-enum { AttribPos, AttribNormal, AttribLightmapUV, Attrib_COUNT };
+enum {
+	UniformM, UniformVP,
+	UniformLightmap, UniformLightmapSize,
+	UniformTextureBase0,
+	UniformLMN, Uniform_COUNT };
+enum { AttribPos, AttribNormal, AttribLightmapUV, AttribTextureUV, Attrib_COUNT };
 
 static struct {
 	struct SimpleCamera camera;
@@ -377,6 +383,13 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 	g.attribs[AttribLightmapUV].stride = sizeof(struct BSPModelVertex);
 	g.attribs[AttribLightmapUV].ptr = (void*)offsetof(struct BSPModelVertex, lightmap_uv);
 
+	g.attribs[AttribTextureUV].name = "av2_base0_uv";
+	g.attribs[AttribTextureUV].size = 2;
+	g.attribs[AttribTextureUV].type = GL_FLOAT;
+	g.attribs[AttribTextureUV].normalized = GL_FALSE;
+	g.attribs[AttribTextureUV].stride = sizeof(struct BSPModelVertex);
+	g.attribs[AttribTextureUV].ptr = (void*)offsetof(struct BSPModelVertex, base0_uv);
+
 	g.uniforms[UniformM].name = "um4_M";
 	g.uniforms[UniformM].type = AGLAT_Mat4;
 	g.uniforms[UniformM].count = 1;
@@ -394,6 +407,10 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 	g.uniforms[UniformLightmapSize].name = "uv2_lightmap_size";
 	g.uniforms[UniformLightmapSize].type = AGLAT_Vec2;
 	g.uniforms[UniformLightmapSize].count = 1;
+
+	g.uniforms[UniformTextureBase0].name = "tex_base0";
+	g.uniforms[UniformTextureBase0].type = AGLAT_Texture;
+	g.uniforms[UniformTextureBase0].count = 1;
 
 	g.uniforms[UniformLMN].name = "uf_lmn";
 	g.uniforms[UniformLMN].type = AGLAT_Float;
@@ -418,7 +435,11 @@ static void drawBSPDraw(const struct BSPDraw *draw) {
 	g.source.primitive.count = draw->count;
 	g.attribs[AttribPos].buffer =
 		g.attribs[AttribNormal].buffer =
+		g.attribs[AttribTextureUV].buffer =
 		g.attribs[AttribLightmapUV].buffer = &draw->vbo;
+
+	if (draw->material->base_texture[0])
+		g.uniforms[UniformTextureBase0].value.texture = &draw->material->base_texture[0]->gltex;
 
 	aGLDraw(&g.source, &g.merge, &g.screen);
 }
@@ -429,7 +450,7 @@ static void drawModel(const struct BSPModel *model) {
 	g.uniforms[UniformLightmapSize].value.pf = &lm_size.x;
 	g.source.primitive.index.buffer = &model->ibo;
 
-	for (int i = 0; i < model->draws_count; ++i)
+	for (int i = 0; i < model->draws_count /*&& i < 200*/; ++i)
 		drawBSPDraw(model->draws + i);
 }
 

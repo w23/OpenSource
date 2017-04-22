@@ -497,6 +497,13 @@ static void bspLoadFace(
 				tinfo->lightmap_vecs[1][0], tinfo->lightmap_vecs[1][1],
 				tinfo->lightmap_vecs[1][2], tinfo->lightmap_vecs[1][3] - vface->lightmap_min[1]);
 
+	const struct AVec4f tex_map_u = aVec4f(
+				tinfo->texture_vecs[0][0], tinfo->texture_vecs[0][1],
+				tinfo->texture_vecs[0][2], tinfo->texture_vecs[0][3]);
+	const struct AVec4f tex_map_v = aVec4f(
+				tinfo->texture_vecs[1][0], tinfo->texture_vecs[1][1],
+				tinfo->texture_vecs[1][2], tinfo->texture_vecs[1][3]);
+
 	const int32_t * const surfedges = ctx->lumps->surfedges.p + vface->first_edge;
 	for (int iedge = 0; iedge < vface->num_edges; ++iedge) {
 		const uint16_t vstart = (surfedges[iedge] >= 0)
@@ -507,10 +514,13 @@ static void bspLoadFace(
 		struct BSPModelVertex * const vertex = out_vertices + iedge;
 
 		vertex->vertex = aVec3f(lv->x, lv->y, lv->z);
-		vertex->normal = aVec3f(0.f, 0.f, 0.f);// FIXME normal;
+		vertex->normal = normal;
 		vertex->lightmap_uv = aVec2f(
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f),	lm_map_u),
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), lm_map_v));
+		vertex->base0_uv = aVec2f(
+			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_u),
+			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_v));
 
 		if (vertex->lightmap_uv.x < 0 || vertex->lightmap_uv.y < 0 || vertex->lightmap_uv.x > face->width || vertex->lightmap_uv.y > face->height)
 			PRINTF("Error: OOB LM F:V%u: x=%f y=%f z=%f u=%f v=%f w=%d h=%d", iedge, lv->x, lv->y, lv->z, vertex->lightmap_uv.x, vertex->lightmap_uv.y, face->width, face->height);
@@ -536,17 +546,20 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	uint16_t * const indices_buffer = stackAlloc(ctx->tmp, sizeof(uint16_t) * ctx->indices);
 	if (!indices_buffer) return BSPLoadResult_ErrorTempMemory;
 
-	size_t vertex_pos = 0;
-	size_t draw_indices_start = 0, indices_pos = 0;
+	AGLBuffer vbo = aGLBufferCreate(AGLBT_Vertex);
+
+	int vertex_pos = 0;
+	int draw_indices_start = 0, indices_pos = 0;
 
 	/*model->draws_count = ctx->draws_to_alloc;*/
 	model->draws_count = ctx->faces_count;
 	model->draws = stackAlloc(persistent, sizeof(struct BSPDraw) * model->draws_count);
 
 	int idraw = 0;
-	for (int iface = 0; iface < ctx->faces_count /* + 1*/; ++iface) {
+	for (int iface = 0; iface < ctx->faces_count/* + 1*/; ++iface) {
 		const struct Face *face = ctx->faces + iface;
 
+#if 0
 		/*if (iface == ctx->faces_count || face->vertices + vertex_pos >= c_max_draw_vertices) {*/
 		if (iface > 0) {
 			struct BSPDraw *draw = model->draws + idraw;
@@ -556,15 +569,16 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 
 			PRINTF("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
 
-			draw->vbo = aGLBufferCreate(AGLBT_Vertex);
-			aGLBufferUpload(&draw->vbo, sizeof(struct BSPModelVertex) * vertex_pos, vertices_buffer);
+			draw->vbo = vbo;
+			draw->material = face->material;
 
 			if (iface == ctx->faces_count) break;
-			vertex_pos = 0;
+			//vertex_pos = 0;
 			draw_indices_start = indices_pos;
 			++idraw;
 			ASSERT(idraw < model->draws_count);
 		}
+#endif
 
 		if (face->dispinfo) {
 			bspLoadDisplacement(ctx, face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos);
@@ -574,10 +588,29 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 
 		vertex_pos += face->vertices;
 		indices_pos += face->indices;
+
+#if 1
+		struct BSPDraw *draw = model->draws + idraw;
+		memset(draw, 0, sizeof *draw);
+		draw->count = indices_pos - draw_indices_start;
+		draw->start = draw_indices_start;
+
+		PRINTF("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
+
+		draw->vbo = vbo;
+		draw->material = face->material;
+
+		//vertex_pos = 0;
+		draw_indices_start = indices_pos;
+		++idraw;
+		ASSERT(idraw <= model->draws_count);
+#endif
 	}
 
 	PRINTF("%d %d", idraw, model->draws_count);
-	ASSERT(idraw == (model->draws_count - 1));
+	ASSERT(idraw == model->draws_count);
+
+	aGLBufferUpload(&vbo, sizeof(struct BSPModelVertex) * vertex_pos, vertices_buffer);
 
 	model->ibo = aGLBufferCreate(AGLBT_Index);
 	aGLBufferUpload(&model->ibo, sizeof(uint16_t) * ctx->indices, indices_buffer);
