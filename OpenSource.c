@@ -6,13 +6,13 @@
 #include "texture.h"
 
 #include "atto/app.h"
-//#define ATTO_GL_DEBUG
+#define ATTO_GL_DEBUG
 #define ATTO_GL_H_IMPLEMENT
 #include "atto/gl.h"
 #include "atto/math.h"
 
-static char temp_data[32*1024*1024];
 static char persistent_data[32*1024*1024];
+static char temp_data[32*1024*1024];
 
 static struct Stack stack_temp = {
 	.storage = temp_data,
@@ -280,20 +280,28 @@ static const char vertex_src[] =
 	"}\n";
 
 static const char fragment_src[] =
-	"uniform sampler2D us2_lightmap, tex_base0;\n"
+	"uniform sampler2D us2_lightmap, tex_base0, tex_base1;\n"
 	"uniform vec2 uv2_lightmap_size;\n"
+	"uniform vec2 tex_base0_size, tex_base1_size;\n"
 	"varying vec2 vv2_lightmap, vv2_base0_uv;\n"
 	"varying vec3 vv3_normal;\n"
 	"uniform float uf_lmn;\n"
 	"void main() {\n"
-		"gl_FragColor = mix(texture2D(us2_lightmap, vv2_lightmap)*texture2D(tex_base0, vv2_base0_uv), vec4(vv3_normal, 0.), uf_lmn);\n"
+		"vec3 tc = vec3(fract(vv2_base0_uv/tex_base0_size), 0.);\n"
+		//"vec4 albedo = vec4(fract(vv2_base0_uv/tex_base1_size), 0., 1.);\n"
+		"vec4 albedo = texture2D(tex_base0, vv2_base0_uv/tex_base0_size);\n"
+		//	"+ texture2D(tex_base1, vv2_base0_uv/tex_base1_size);\n"
+		"vec3 lm = texture2D(us2_lightmap, vv2_lightmap).xyz;\n"
+		"vec3 color = albedo.xyz * lm;\n"
+		"gl_FragColor = vec4(mix(color, tc, uf_lmn), 1.);\n"
 		//"gl_FragColor = texture2D(us2_lightmap, vv2_lightmap);\n"
 	"}\n";
 
 enum {
 	UniformM, UniformVP,
 	UniformLightmap, UniformLightmapSize,
-	UniformTextureBase0,
+	UniformTextureBase0, UniformTextureBase0Size,
+	UniformTextureBase1, UniformTextureBase1Size,
 	UniformLMN, Uniform_COUNT };
 enum { AttribPos, AttribNormal, AttribLightmapUV, AttribTextureUV, Attrib_COUNT };
 
@@ -322,6 +330,22 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 	fsquadInit();
 
 	cacheInit(&stack_persistent);
+
+	{
+		Texture tex_placeholder;
+		const uint16_t pixels[] = {
+			0xf81f, 0x07e0, 0x07e0, 0xf81f
+		};
+		tex_placeholder.gltex = aGLTextureCreate();
+		AGLTextureUploadData up = {
+			.width = 2,
+			.height = 2,
+			.format = AGLTF_U565_RGB,
+			.pixels = pixels
+		};
+		aGLTextureUpload(&tex_placeholder.gltex, &up);
+		cachePutTexture("opensource/placeholder", &tex_placeholder);
+	}
 
 	struct BSPLoadModelContext loadctx = {
 		.collection = collection,
@@ -412,6 +436,18 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 	g.uniforms[UniformTextureBase0].type = AGLAT_Texture;
 	g.uniforms[UniformTextureBase0].count = 1;
 
+	g.uniforms[UniformTextureBase0Size].name = "tex_base0_size";
+	g.uniforms[UniformTextureBase0Size].type = AGLAT_Vec2;
+	g.uniforms[UniformTextureBase0Size].count = 1;
+
+	g.uniforms[UniformTextureBase1].name = "tex_base1";
+	g.uniforms[UniformTextureBase1].type = AGLAT_Texture;
+	g.uniforms[UniformTextureBase1].count = 1;
+
+	g.uniforms[UniformTextureBase1Size].name = "tex_base1_size";
+	g.uniforms[UniformTextureBase1Size].type = AGLAT_Vec2;
+	g.uniforms[UniformTextureBase1Size].count = 1;
+
 	g.uniforms[UniformLMN].name = "uf_lmn";
 	g.uniforms[UniformLMN].type = AGLAT_Float;
 	g.uniforms[UniformLMN].count = 1;
@@ -438,8 +474,23 @@ static void drawBSPDraw(const struct BSPDraw *draw) {
 		g.attribs[AttribTextureUV].buffer =
 		g.attribs[AttribLightmapUV].buffer = &draw->vbo;
 
-	if (draw->material->base_texture[0])
-		g.uniforms[UniformTextureBase0].value.texture = &draw->material->base_texture[0]->gltex;
+	struct AVec2f tex0_size = aVec2f(1.f, 1.f);
+	struct AVec2f tex1_size = aVec2f(1.f, 1.f);
+	
+	const struct Texture *texture = draw->material->base_texture[0];
+	if (!texture)
+		texture = cacheGetTexture("opensource/placeholder");
+
+	g.uniforms[UniformTextureBase0Size].value.pf = &tex0_size.x;
+	tex0_size = aVec2f(texture->gltex.width, texture->gltex.height);
+	g.uniforms[UniformTextureBase0].value.texture = &texture->gltex;
+
+	texture = draw->material->base_texture[1];
+	if (!texture)
+		texture = cacheGetTexture("opensource/placeholder");
+	tex1_size = aVec2f(texture->gltex.width, texture->gltex.height);
+	g.uniforms[UniformTextureBase1Size].value.pf = &tex1_size.x;
+	g.uniforms[UniformTextureBase1].value.texture = &texture->gltex;
 
 	aGLDraw(&g.source, &g.merge, &g.screen);
 }

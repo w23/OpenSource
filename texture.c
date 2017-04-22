@@ -75,7 +75,7 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 			break;
 		case VTFImage_DXT3:
 		case VTFImage_DXT5:
-			pixel_bits = 8;
+			pixel_bits = 4;
 			break;
 		case VTFImage_DXT1:
 		case VTFImage_DXT1_A1:
@@ -93,7 +93,8 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 
 static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 	struct VTFHeader hdr;
-	size_t cursor = sizeof hdr;
+	size_t cursor = 0;
+	int retval = 0;
 	if (file->read(file, 0, sizeof(hdr), &hdr) != sizeof(hdr)) {
 		PRINT("Cannot read texture");
 		return 0;
@@ -108,16 +109,33 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 	PRINTF("Texture: %dx%d, %s",
 		hdr.width, hdr.height, vtfFormatStr(hdr.hires_format));
 
-	cursor += vtfImageSize(hdr.lores_format, hdr.lores_width, hdr.lores_height);
+	if (hdr.hires_format != VTFImage_DXT1 && hdr.hires_format != VTFImage_DXT5) {
+		PRINTF("Not implemented texture format: %s", vtfFormatStr(hdr.hires_format));
+		goto exitNoStack;
+	}
+
+	cursor += hdr.header_size;
+
+	if (hdr.lores_format != (unsigned)VTFImage_None)
+		cursor += vtfImageSize(hdr.lores_format, hdr.lores_width, hdr.lores_height);
+
+	/*
+	PRINTF("Texture lowres: %dx%d, %s; mips %d; header_size: %u",
+		hdr.lores_width, hdr.lores_height, vtfFormatStr(hdr.lores_format), hdr.mipmap_count, hdr.header_size);
+	*/
 
 	/* TODO don't skip all mipmaps */
-	for (int mip = hdr.mipmap_count; mip > 0; --mip)
-		for (int frame = hdr.first_frame; frame < hdr.frames; ++frame)
-			for (int face = 0; face < 1; ++face)
-				for (int z = 0; z < 1; ++z)
-					cursor += vtfImageSize(hdr.hires_format, hdr.width >> mip, hdr.height >> mip);
+	for (int mip = hdr.mipmap_count - 1; mip > 0; --mip) {
+		const unsigned int mip_width = hdr.width >> mip;
+		const unsigned int mip_height = hdr.height >> mip;
+		const int mip_image_size = vtfImageSize(hdr.hires_format, mip_width, mip_height);
+		cursor += mip_image_size * hdr.frames;
 
-	int retval = 0;
+		/*PRINTF("cur: %d; size: %d, mip: %d, %dx%d",
+				cursor, mip_image_size, mip, mip_width, mip_height);
+		*/
+	}
+
 	void *pre_alloc_cursor = stackGetCursor(tmp);
 	const int src_texture_size = vtfImageSize(hdr.hires_format, hdr.width, hdr.height);
 	void *src_texture = stackAlloc(tmp, src_texture_size);
@@ -125,13 +143,13 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 		PRINTF("Cannot allocate %d bytes for texture", src_texture_size);
 		goto exit;
 	}
-	const int dst_texture_size = 2 * hdr.width * hdr.height;
+	const int dst_texture_size = sizeof(uint16_t) * hdr.width * hdr.height;
 	void *dst_texture = stackAlloc(tmp, dst_texture_size);
 	if (!dst_texture) {
 		PRINTF("Cannot allocate %d bytes for texture", dst_texture_size);
 		goto exit;
 	}
-	if (src_texture_size != (int)file->read(file, 0, src_texture_size, src_texture)) {
+	if (src_texture_size != (int)file->read(file, cursor, src_texture_size, src_texture)) {
 		PRINT("Cannot read texture data");
 		goto exit;
 	}
@@ -142,7 +160,10 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 		.packed = src_texture,
 		.output = dst_texture
 	};
-	dxt1Unpack(dxt_ctx);
+	if (hdr.hires_format == VTFImage_DXT1)
+		dxt1Unpack(dxt_ctx);
+	else
+		dxt5Unpack(dxt_ctx);
 
 	const AGLTextureUploadData data = {
 		.x = 0,
@@ -159,6 +180,8 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 
 exit:
 	stackFreeUpToPosition(tmp, pre_alloc_cursor);
+
+exitNoStack:
 	return retval;
 }
 
@@ -176,8 +199,8 @@ const Texture *textureGet(const char *name, struct ICollection *collection, stru
 	if (textureLoad(texfile, &localtex, tmp) == 0) {
 		PRINTF("Texture \"%s\" found, but could not be loaded", name);
 	} else {
-		tex = &localtex;
-		cachePutTexture(name, tex);
+		cachePutTexture(name, &localtex);
+		tex = cacheGetTexture(name);
 	}
 
 	texfile->close(texfile);

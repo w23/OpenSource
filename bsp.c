@@ -5,6 +5,9 @@
 #include "mempools.h"
 #include "common.h"
 
+// DEBUG
+#include "texture.h"
+
 #define R2S(r) bspLoadResultString(r)
 
 const char *bspLoadResultString(enum BSPLoadResult result) {
@@ -412,6 +415,13 @@ static void bspLoadDisplacement(
 			aVec3fLength(aVec3fSub(vec[1], vec[0])),
 			aVec3fLength(aVec3fSub(vec[2], vec[3])));
 
+	const struct AVec4f tex_map_u = aVec4f(
+				tinfo->texture_vecs[0][0], tinfo->texture_vecs[0][1],
+				tinfo->texture_vecs[0][2], tinfo->texture_vecs[0][3]);
+	const struct AVec4f tex_map_v = aVec4f(
+				tinfo->texture_vecs[1][0], tinfo->texture_vecs[1][1],
+				tinfo->texture_vecs[1][2], tinfo->texture_vecs[1][3]);
+
 #ifdef DEBUG_DISP_LIGHTMAP
 	const int swap = shouldSwapUV(
 				aVec3f(tinfo->lightmap_vecs[0][0], tinfo->lightmap_vecs[0][1], tinfo->lightmap_vecs[0][2]),
@@ -448,6 +458,9 @@ static void bspLoadDisplacement(
 
 			v->vertex = aVec3fMix(vl, vr, tx);
 			v->lightmap_uv = aVec2f(tx * length_lm_u, ty * length_lm_v);
+			v->base0_uv = aVec2f(
+				aVec4fDot(aVec4f3(v->vertex, 1.f), tex_map_u),
+				aVec4fDot(aVec4f3(v->vertex, 1.f), tex_map_v));
 			v->vertex = aVec3fAdd(aVec3fMix(vl, vr, tx), aVec3fMulf(aVec3f(dv->x, dv->y, dv->z), dv->dist));
 
 			if (v->lightmap_uv.x < 0 || v->lightmap_uv.y < 0 || v->lightmap_uv.x > face->width || v->lightmap_uv.y > face->height)
@@ -599,6 +612,12 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 
 		draw->vbo = vbo;
 		draw->material = face->material;
+
+		/*
+		PRINTF("Got texture size %dx%d",
+				draw->material->base_texture[0]->gltex.width,
+				draw->material->base_texture[0]->gltex.height);
+		*/
 
 		//vertex_pos = 0;
 		draw_indices_start = indices_pos;

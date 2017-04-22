@@ -156,13 +156,16 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 		} else if (strncasecmp("$basetexturetransform", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$basetexturetransform2", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$detail", ctx.key, ctx.key_length) == 0) {
+			output->detail = textureGet(ctx.value, coll, tmp);
 		} else if (strncasecmp("$detailscale", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$detailblendfactor", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$detailblendmode", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$parallaxmap", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$parallaxmapscale", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$bumpmap", ctx.key, ctx.key_length) == 0) {
+			output->bump = textureGet(ctx.value, coll, tmp);
 		} else if (strncasecmp("$envmap", ctx.key, ctx.key_length) == 0) {
+			output->envmap = textureGet(ctx.value, coll, tmp);
 		} else if (strncasecmp("$fogenable", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$fogcolor", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$alphatest", ctx.key, ctx.key_length) == 0) {
@@ -191,11 +194,12 @@ const struct Material *materialGet(const char *name, struct ICollection *collect
 	}
 
 	struct Material localmat;
+	memset(&localmat, 0, sizeof localmat);
 	if (materialLoad(matfile, collection, &localmat, tmp) == 0) {
 		PRINTF("Material \"%s\" found, but could not be loaded", name);
 	} else {
-		mat = &localmat;
-		cachePutMaterial(name, mat);
+		cachePutMaterial(name, &localmat);
+		mat = cacheGetMaterial(name);
 	}
 
 	matfile->close(matfile);
