@@ -351,6 +351,8 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 	upload.pixels = pixels;
 	aGLTextureUpload(&ctx->lightmap.texture, &upload);
 
+	ctx->lightmap.texture.min_filter = AGLTmF_Nearest;
+
 	/* pixels buffer is not needed anymore */
 	stackFreeUpToPosition(ctx->tmp, pixels);
 

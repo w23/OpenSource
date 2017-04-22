@@ -91,6 +91,60 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 	return width * height * pixel_bits / 8;
 }
 
+static int textureUploadMipmap(struct Stack *tmp, struct IFile *file, size_t cursor,
+		const struct VTFHeader *hdr, int miplevel, AGLTexture *tex) {
+	for (int mip = hdr->mipmap_count - 1; mip > miplevel; --mip) {
+		const unsigned int mip_width = hdr->width >> mip;
+		const unsigned int mip_height = hdr->height >> mip;
+		const int mip_image_size = vtfImageSize(hdr->hires_format, mip_width, mip_height);
+		cursor += mip_image_size * hdr->frames;
+
+		/*PRINTF("cur: %d; size: %d, mip: %d, %dx%d",
+				cursor, mip_image_size, mip, mip_width, mip_height);
+		*/
+	}
+
+	const int src_texture_size = vtfImageSize(hdr->hires_format, hdr->width, hdr->height);
+	void *src_texture = stackAlloc(tmp, src_texture_size);
+	if (!src_texture) {
+		PRINTF("Cannot allocate %d bytes for texture", src_texture_size);
+		return 0;
+	}
+	const int dst_texture_size = sizeof(uint16_t) * hdr->width * hdr->height;
+	void *dst_texture = stackAlloc(tmp, dst_texture_size);
+	if (!dst_texture) {
+		PRINTF("Cannot allocate %d bytes for texture", dst_texture_size);
+		return 0;
+	}
+	if (src_texture_size != (int)file->read(file, cursor, src_texture_size, src_texture)) {
+		PRINT("Cannot read texture data");
+		return 0;
+	}
+
+	const struct DXTUnpackContext dxt_ctx = {
+		.width = hdr->width,
+		.height = hdr->height,
+		.packed = src_texture,
+		.output = dst_texture
+	};
+	if (hdr->hires_format == VTFImage_DXT1)
+		dxt1Unpack(dxt_ctx);
+	else
+		dxt5Unpack(dxt_ctx);
+
+	const AGLTextureUploadData data = {
+		.x = 0,
+		.y = 0,
+		.width = hdr->width,
+		.height = hdr->height,
+		.format = AGLTF_U565_RGB,
+		.pixels = dst_texture
+	};
+
+	aGLTextureUpload(tex, &data);
+	return 1;
+}
+
 static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 	struct VTFHeader hdr;
 	size_t cursor = 0;
@@ -111,7 +165,7 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 
 	if (hdr.hires_format != VTFImage_DXT1 && hdr.hires_format != VTFImage_DXT5) {
 		PRINTF("Not implemented texture format: %s", vtfFormatStr(hdr.hires_format));
-		goto exitNoStack;
+		return 0;
 	}
 
 	cursor += hdr.header_size;
@@ -124,64 +178,14 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 		hdr.lores_width, hdr.lores_height, vtfFormatStr(hdr.lores_format), hdr.mipmap_count, hdr.header_size);
 	*/
 
-	/* TODO don't skip all mipmaps */
-	for (int mip = hdr.mipmap_count - 1; mip > 0; --mip) {
-		const unsigned int mip_width = hdr.width >> mip;
-		const unsigned int mip_height = hdr.height >> mip;
-		const int mip_image_size = vtfImageSize(hdr.hires_format, mip_width, mip_height);
-		cursor += mip_image_size * hdr.frames;
-
-		/*PRINTF("cur: %d; size: %d, mip: %d, %dx%d",
-				cursor, mip_image_size, mip, mip_width, mip_height);
-		*/
-	}
-
-	void *pre_alloc_cursor = stackGetCursor(tmp);
-	const int src_texture_size = vtfImageSize(hdr.hires_format, hdr.width, hdr.height);
-	void *src_texture = stackAlloc(tmp, src_texture_size);
-	if (!src_texture) {
-		PRINTF("Cannot allocate %d bytes for texture", src_texture_size);
-		goto exit;
-	}
-	const int dst_texture_size = sizeof(uint16_t) * hdr.width * hdr.height;
-	void *dst_texture = stackAlloc(tmp, dst_texture_size);
-	if (!dst_texture) {
-		PRINTF("Cannot allocate %d bytes for texture", dst_texture_size);
-		goto exit;
-	}
-	if (src_texture_size != (int)file->read(file, cursor, src_texture_size, src_texture)) {
-		PRINT("Cannot read texture data");
-		goto exit;
-	}
-
-	const struct DXTUnpackContext dxt_ctx = {
-		.width = hdr.width,
-		.height = hdr.height,
-		.packed = src_texture,
-		.output = dst_texture
-	};
-	if (hdr.hires_format == VTFImage_DXT1)
-		dxt1Unpack(dxt_ctx);
-	else
-		dxt5Unpack(dxt_ctx);
-
-	const AGLTextureUploadData data = {
-		.x = 0,
-		.y = 0,
-		.width = hdr.width,
-		.height = hdr.height,
-		.format = AGLTF_U565_RGB,
-		.pixels = dst_texture
-	};
-
 	tex->gltex = aGLTextureCreate();
-	aGLTextureUpload(&tex->gltex, &data);
-	retval = 1;
-
-exit:
+	void *pre_alloc_cursor = stackGetCursor(tmp);
+	retval = textureUploadMipmap(tmp, file, cursor, &hdr, 0, &tex->gltex);
 	stackFreeUpToPosition(tmp, pre_alloc_cursor);
 
-exitNoStack:
+	if(!retval)
+		aGLTextureDestroy(&tex->gltex);
+
 	return retval;
 }
 
