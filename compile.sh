@@ -6,6 +6,7 @@ CFLAGS=${CFLAGS:-}
 LDFLAGS=${LDFLAGS:-}
 
 ASAN=
+CROSS=
 DEBUG=
 RPI=
 RPI_ROOT=${RPI_ROOT:-'/opt/raspberry-pi'}
@@ -17,6 +18,7 @@ CFLAGS="-D_GNU_SOURCE $CFLAGS"
 while [ $# -gt 0 ]
 do
 	case "$1" in
+		-C) CROSS=1;;
 		-D) DEBUG=1;;
 		-P) RPI=1;;
 		-S) ASAN=1;;
@@ -39,11 +41,16 @@ fi
 
 if [ $RPI ]
 then
-	RPI_TOOLCHAIN=${RPI_TOOLCHAIN:-"gcc-linaro-arm-linux-gnueabihf-raspbian-x64"}
-	RPI_TOOLCHAINDIR=${RPI_TOOLCHAINDIR:-"$RPI_ROOT/raspberry-tools/arm-bcm2708/$RPI_TOOLCHAIN"}
-	RPI_VCDIR=${RPI_VCDIR:-"$RPI_ROOT/raspberry-firmware/hardfp/opt/vc"}
-
-	CC=${CC:-"$RPI_TOOLCHAINDIR/bin/arm-linux-gnueabihf-gcc"}
+	if [ $CROSS ]
+	then
+		RPI_TOOLCHAIN=${RPI_TOOLCHAIN:-"gcc-linaro-arm-linux-gnueabihf-raspbian-x64"}
+		RPI_TOOLCHAINDIR=${RPI_TOOLCHAINDIR:-"$RPI_ROOT/raspberry-tools/arm-bcm2708/$RPI_TOOLCHAIN"}
+		RPI_VCDIR=${RPI_VCDIR:-"$RPI_ROOT/raspberry-firmware/hardfp/opt/vc"}
+		CC=${CC:-"$RPI_TOOLCHAINDIR/bin/arm-linux-gnueabihf-gcc"}
+	else
+		RPI_VCDIR=${RPI_VCDIR:-"/opt/vc"}
+		CC=${CC:-cc}
+	fi
 
 	CFLAGS="-std=gnu99 -Wall -Wextra $WERROR $CFLAGS"
 	CFLAGS="-I$RPI_VCDIR/include -I$RPI_VCDIR/include/interface/vcos/pthreads $CFLAGS"
