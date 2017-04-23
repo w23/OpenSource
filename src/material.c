@@ -176,6 +176,9 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 		}
 	} /* for all properties */
 
+	if (!output->base_texture[0])
+		output->base_texture[0] = cacheGetTexture("opensource/placeholder");
+
 	return 1;
 
 error:

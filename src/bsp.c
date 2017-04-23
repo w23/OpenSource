@@ -605,7 +605,7 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 		draw->count = indices_pos - draw_indices_start;
 		draw->start = draw_indices_start;
 
-		PRINTF("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
+		//PRINTF("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
 
 		draw->material = face->material;
 

@@ -75,6 +75,7 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 	}
 
 	int skip_end = 0;
+	int max_skip = name_len;
 	for (;;) {
 		char *c = buffer;
 		for (int i = 0; i < fsc->path_len; ++i) *c++ = fsc->path[i];
@@ -89,6 +90,7 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 			if (start) {
 				memmove(name_start, start + 1, c - start);
 				c -= start - name_start;
+				max_skip -= start - name_start;
 			}
 		}
 		c -= skip_end;
@@ -96,9 +98,10 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 		*c = '\0';
 
 		if (AFile_Success != filesystemCollectionFile_Open(f, buffer)) {
-			if (type == File_Material) {
+			//if (type == File_Material)
+			{
 				skip_end++;
-				if (skip_end < name_len)
+				if (skip_end < max_skip)
 					continue;
 			}
 			return CollectionOpen_NotFound;

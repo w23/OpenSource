@@ -1,6 +1,7 @@
 #include "render.h"
 #include "texture.h"
 #include "bsp.h"
+#include "cache.h"
 #include "common.h"
 #include "atto/app.h"
 
@@ -202,7 +203,7 @@ static const char lmgen_fragment_src[] =
 		"vec4 albedo = texture2D(u_tex0, v_tex_uv/u_tex0_size);\n"
 		"albedo = mix(albedo, texture2D(u_tex1, v_tex_uv/u_tex1_size), .0);\n"
 		"vec3 lm = texture2D(u_lightmap, v_lightmap_uv).xyz;\n"
-		"vec3 color = albedo.xyz * lm;\n"
+		"vec3 color = albedo.xyz * (vec3(.1) + lm);\n"
 		"gl_FragColor = vec4(mix(color, tc, u_lmn), 1.);\n"
 	"}\n";
 
@@ -279,6 +280,20 @@ int renderInit() {
 
 	renderLocateAttribs(r.lmgen_program, lmgen_attribs);
 	renderLocateUniforms(r.lmgen_program, lmgen_uniforms);
+
+	struct Texture default_texture;
+	RTextureCreateParams params;
+	params.format = RTexFormat_RGB565;
+	params.width = 1;
+	params.height = 1;
+	params.pixels = (uint16_t[]){0xffff};
+	renderTextureCreate(&default_texture.texture, params);
+	cachePutTexture("opensource/placeholder", &default_texture);
+
+	struct Material default_material;
+	memset(&default_material, 0, sizeof default_material);
+	default_material.base_texture[0] = cacheGetTexture("opensource/placeholder");
+	cachePutMaterial("opensource/placeholder", &default_material);
 
 	GL_CALL(glEnable(GL_DEPTH_TEST));
 	GL_CALL(glEnable(GL_CULL_FACE));
@@ -362,6 +377,6 @@ void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel 
 }
 
 void renderClear() {
-	glClearColor(0,0,0,0);
+	glClearColor(.5,.4,.2,0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }

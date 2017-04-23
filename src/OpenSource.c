@@ -91,6 +91,8 @@ static struct {
 	int frame;
 	ATimeUs last_print_time;
 	ATimeUs profiler_time;
+	ATimeUs frame_deltas, last_frame;
+	int counted_frame;
 } profiler;
 
 static void profilerInit() {
@@ -98,6 +100,8 @@ static void profilerInit() {
 	profiler.frame = 0;
 	profiler.last_print_time = 0;
 	profiler.profiler_time = 0;
+	profiler.frame_deltas = profiler.last_frame = 0;
+	profiler.counted_frame = 0;
 }
 
 void profileEvent(const char *msg, ATimeUs delta) {
@@ -115,8 +119,11 @@ typedef struct {
 	ATimeUs max_time;
 } ProfilerLocation;
 
-static void profilerFrame() {
+static int profilerFrame() {
+	int retval = 0;
 	const ATimeUs start = aAppTime();
+	profiler.frame_deltas += start - profiler.last_frame;
+	
 	void *tmp_cursor = stackGetCursor(&stack_temp);
 	const int max_array_size = stackGetFree(&stack_temp) / sizeof(ProfilerLocation);
 	int array_size = 0;
@@ -147,9 +154,13 @@ static void profilerFrame() {
 		if (delta > loc->max_time) loc->max_time = delta;
 	}
 
+	++profiler.counted_frame;
 	++profiler.frame;
 
 	if (start - profiler.last_print_time > 1000000) {
+		PRINT("=================================================");
+		const ATimeUs dt = profiler.frame_deltas / profiler.counted_frame;
+		PRINTF("avg frame = %dus (fps = %f)", dt, 1000000. / dt);
 		PRINTF("PROF: frame=%d, total_frame_time=%d total_prof_time=%d, avg_prof_time=%d events=%d unique=%d",
 			profiler.frame, total_time, profiler.profiler_time, profiler.profiler_time / profiler.frame,
 			profiler.cursor, array_size);
@@ -197,11 +208,16 @@ static void profilerFrame() {
 #endif
 
 		profiler.last_print_time = start;
+		profiler.counted_frame = 0;
+		profiler.frame_deltas = 0;
+		retval = 1;
 	}
 
+	profiler.last_frame = start;
 	profiler.profiler_time += aAppTime() - start;
 	profiler.cursor = 0;
 	profileEvent("PROFILER", aAppTime() - start);
+	return retval;
 }
 
 #if 0
@@ -414,12 +430,13 @@ static struct {
 } g;
 
 static void opensrcInit(struct ICollection *collection, const char *map) {
+	cacheInit(&stack_persistent);
+
 	if (!renderInit()) {
 		PRINT("Failed to initialize render");
 		aAppTerminate(-1);
 	}
 
-	cacheInit(&stack_persistent);
 
 #if 0
 	g.source.program = aGLProgramCreateSimple(vertex_src, fragment_src);
@@ -671,7 +688,13 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 
 	renderModelDraw(&g.camera.view_projection, g.lmn, &g.worldspawn);
 
-	profilerFrame();
+	if (profilerFrame()) {
+		int triangles = 0;
+		for (int i = 0; i < g.worldspawn.draws_count; ++i) {
+			triangles += g.worldspawn.draws[i].count / 3;
+		}
+		PRINTF("Total triangles: %d", triangles);
+	}
 }
 
 static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
