@@ -49,15 +49,15 @@ then
 	CFLAGS="-I$RPI_VCDIR/include -I$RPI_VCDIR/include/interface/vcos/pthreads $CFLAGS"
 	CFLAGS="-I$RPI_VCDIR/include/interface/vmcs_host/linux -DATTO_PLATFORM_RPI $CFLAGS"
 	LDFLAGS="-lGLESv2 -lEGL -lbcm_host -lvcos -lvchiq_arm -L$RPI_VCDIR/lib -lrt -lm $LDFLAGS"
-	SOURCES+=' 3p/atto/src/app_linux.c 3p/atto/src/app_rpi.c'
+	SOURCES+=' src/atto/src/app_linux.c src/atto/src/app_rpi.c'
 else
 	CC=${CC:-clang}
 	CFLAGS="-std=c99 -Wall -Wextra -pedantic $WERROR $CFLAGS"
 	LDFLAGS="-lm -lGL -lX11 -lXfixes $LDFLAGS"
-	SOURCES+=' 3p/atto/src/app_linux.c 3p/atto/src/app_x11.c'
+	SOURCES+=' src/atto/src/app_linux.c src/atto/src/app_x11.c'
 fi
 
-CFLAGS="-I3p/atto -fPIE -pie $CFLAGS"
+CFLAGS="-Isrc/atto -fPIE -pie $CFLAGS"
 
 echo $CC $CFLAGS $SOURCES $LDFLAGS -o OpenSource
 $CC $CFLAGS $SOURCES $LDFLAGS -o OpenSource
