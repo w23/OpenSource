@@ -45,7 +45,7 @@ static void filesystemCollectionClose(struct ICollection *collection) {
 static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *collection,
 			const char *name, enum FileType type, struct IFile **out_file) {
 	struct FilesystemCollection *fsc = (struct FilesystemCollection*)collection;
-	char buffer[512];
+	char buffer[512] = {0};
 	const char *subdir = "/";
 	const char *suffix = "";
 
@@ -74,18 +74,39 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 		return CollectionOpen_NotFound;
 	}
 
-	char *c = buffer;
-	for (int i = 0; i < fsc->path_len; ++i) *c++ = fsc->path[i];
-	for (int i = 0; i < subdir_len; ++i) *c++ = subdir[i];
-	for (int i = 0; i < name_len; ++i) {
-		char C = tolower(name[i]);
-		*c++ = (C == '\\') ? '/' : C;
-	}
-	for (int i = 0; i < suffix_len; ++i) *c++ = suffix[i];
-	*c = '\0';
+	int skip_end = 0;
+	for (;;) {
+		char *c = buffer;
+		for (int i = 0; i < fsc->path_len; ++i) *c++ = fsc->path[i];
+		for (int i = 0; i < subdir_len; ++i) *c++ = subdir[i];
+		char *name_start = c;
+		for (int i = 0; i < name_len; ++i) {
+			char C = tolower(name[i]);
+			*c++ = (C == '\\') ? '/' : C;
+		}
+		if (strstr(name_start, "maps/") == name_start) {
+			char *start = strchr(name_start + 6, '/');
+			if (start) {
+				memmove(name_start, start + 1, c - start);
+				c -= start - name_start;
+			}
+		}
+		c -= skip_end;
+		for (int i = 0; i < suffix_len; ++i) *c++ = suffix[i];
+		*c = '\0';
 
-	if (AFile_Success != filesystemCollectionFile_Open(f, buffer))
-		return CollectionOpen_NotFound;
+		if (AFile_Success != filesystemCollectionFile_Open(f, buffer)) {
+			if (type == File_Material) {
+				skip_end++;
+				if (skip_end < name_len)
+					continue;
+			}
+			return CollectionOpen_NotFound;
+		}
+
+		break;
+	}
+
 	*out_file = &f->head;
 	return CollectionOpen_Success;
 }

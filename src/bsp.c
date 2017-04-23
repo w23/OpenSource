@@ -625,8 +625,27 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	PRINTF("%d %d", idraw, model->draws_count);
 	ASSERT(idraw == model->draws_count);
 
+	if (1) {
+		renderModelOptimize(model);
+
+		uint16_t *tmp_indices = stackAlloc(ctx->tmp, sizeof(uint16_t) * ctx->indices);
+		if (!tmp_indices) {
+			return BSPLoadResult_ErrorTempMemory;
+		}
+		int tmp_indices_offset = 0;
+		for (int i = 0; i < model->draws_count; ++i) {
+			struct BSPDraw *d = model->draws + i;
+			memcpy(tmp_indices + tmp_indices_offset, indices_buffer + d->start, sizeof(uint16_t) * d->count);
+			d->start = tmp_indices_offset;
+			tmp_indices_offset += d->count;
+		}
+		ASSERT(tmp_indices_offset == ctx->indices);
+		renderBufferCreate(&model->ibo, RBufferType_Index, sizeof(uint16_t) * ctx->indices, tmp_indices);
+	} else {
+		renderBufferCreate(&model->ibo, RBufferType_Index, sizeof(uint16_t) * ctx->indices, indices_buffer);
+	}
+
 	renderBufferCreate(&model->vbo, RBufferType_Vertex, sizeof(struct BSPModelVertex) * vertex_pos, vertices_buffer);
-	renderBufferCreate(&model->ibo, RBufferType_Index, sizeof(uint16_t) * ctx->indices, indices_buffer);
 	return BSPLoadResult_Success;
 }
 

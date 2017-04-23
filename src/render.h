@@ -39,6 +39,7 @@
 #endif /* if !defined(ATTO_GL_HEADERS_INCLUDED) */
 
 int renderInit();
+void renderClear();
 
 typedef enum {
 	RTexFormat_RGB565
@@ -72,5 +73,5 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 
 struct BSPModel;
 
-void renderClear();
+void renderModelOptimize(struct BSPModel *model);
 void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel *model);

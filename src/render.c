@@ -5,6 +5,7 @@
 #include "atto/app.h"
 
 #define RENDER_ERRORCHECK
+//#define ATTO_GL_TRACE
 
 #define ATTO_GL_PROFILE_FUNC profileEvent
 void profileEvent(const char *msg, ATimeUs delta);
@@ -18,7 +19,7 @@ void profileEvent(const char *msg, ATimeUs delta);
 #endif /* ifndef ATTO_ASSERT */
 
 #ifdef ATTO_GL_PROFILE_FUNC
-#define ATTO_GL_PROFILE_PREAMBLE const ATimeUs start = aAppTime();
+#define ATTO_GL_PROFILE_PREAMBLE const ATimeUs profile_time_start__ = aAppTime();
 #define ATTO_GL_PROFILE_START const ATimeUs agl_profile_start_ = aAppTime();
 #define ATTO_GL_PROFILE_END ATTO_GL_PROFILE_FUNC(__FUNCTION__, aAppTime() - agl_profile_start_);
 #define ATTO_GL_PROFILE_END_NAME(name) ATTO_GL_PROFILE_FUNC(name, aAppTime() - agl_profile_start_);
@@ -51,6 +52,14 @@ static void a__GlPrintError(const char *message, int error) {
 	};
 	PRINTF("%s %s (%#x)", message, errstr, error);
 }
+#define RENDER_GL_GETERROR(f) \
+		const int glerror = glGetError(); \
+		if (glerror != GL_NO_ERROR) { \
+			a__GlPrintError(__FILE__ ":" ATTO__GL_STR(__LINE__) ": " #f " returned ", glerror); \
+			abort(); \
+		}
+#else
+#define RENDER_GL_GETERROR(f)
 #endif
 #define ATTO__GL_STR__(s) #s
 #define ATTO__GL_STR(s) ATTO__GL_STR__(s)
@@ -63,16 +72,9 @@ static void a__GlPrintError(const char *message, int error) {
 		ATTO_GL_TRACE_PRINT("%s", #f); \
 		ATTO_GL_PROFILE_PREAMBLE \
 		f; \
-		ATTO_GL_PROFILE_FUNC(#f, aAppTime() - start); \
-	}while(0)
-/*
-		const int glerror = glGetError(); \
-		if (glerror != GL_NO_ERROR) { \
-			a__GlPrintError(__FILE__ ":" ATTO__GL_STR(__LINE__) ": " #f " returned ", glerror); \
-			abort(); \
-		} \
-	}while(0)
-*/
+		ATTO_GL_PROFILE_FUNC(#f, aAppTime() - profile_time_start__); \
+		RENDER_GL_GETERROR(f) \
+	} while(0)
 #endif /* ATTO_GL_DEBUG */
 
 typedef GLint RProgram;
@@ -284,7 +286,21 @@ int renderInit() {
 	return 1;
 }
 
+static int drawCompare(const void *left, const void *right) {
+	const struct BSPDraw *l = left, *r = right;
+	const ptrdiff_t diff = l->material - r->material;
+	if (diff == 0) {
+		return l->material->base_texture[0] - r->material->base_texture[0];
+	}
+	return diff;
+}
+
+void renderModelOptimize(struct BSPModel *model) {
+	qsort(model->draws, model->draws_count, sizeof(struct BSPDraw), drawCompare);
+}
+
 void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel *model) {
+	if (!model->draws_count) return;
 	GL_CALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model->ibo.gl_name));
 	GL_CALL(glUseProgram(r.lmgen_program));
 	GL_CALL(glActiveTexture(GL_TEXTURE0));
@@ -300,21 +316,49 @@ void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel 
 
 	GL_CALL(glActiveTexture(GL_TEXTURE0 + 1));
 
-	for (int i = 0; i < model->draws_count; ++i) {
-		const struct BSPDraw *d = model->draws + i;
-		const struct Material *m = d->material;
+	int start = model->draws[0].start;
+	int count = model->draws[0].count;
 
-		if (m->base_texture[0]) {
-			const RTexture *t = &m->base_texture[0]->texture;
-			if (t != r.current_tex0) {
-				GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
-				GL_CALL(glUniform2f(lmgen_uniforms[4].location, t->width, t->height));
-				r.current_tex0 = t;
+	const struct Material *m = model->draws[0].material;
+	if (m->base_texture[0]) {
+		const RTexture *t = &m->base_texture[0]->texture;
+		if (t != r.current_tex0) {
+			GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
+			GL_CALL(glUniform2f(lmgen_uniforms[4].location, t->width, t->height));
+			r.current_tex0 = t;
+		}
+	}
+
+	for (int i = 1; i < model->draws_count; ++i) {
+		const struct BSPDraw *d = model->draws + i;
+
+		if (drawCompare(d - 1, d) != 0) {
+			GL_CALL(glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * start)));
+			//PRINTF("DRAW start=%d, count=%d", start, count);
+
+			const struct Material *m = d->material;
+			if (m->base_texture[0]) {
+				const RTexture *t = &m->base_texture[0]->texture;
+				if (t != r.current_tex0) {
+					GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
+					GL_CALL(glUniform2f(lmgen_uniforms[4].location, t->width, t->height));
+					r.current_tex0 = t;
+				}
 			}
+			start = d->start;
+			count = d->count;
+		} else {
+			//PRINTF("start=%d, count=%d; d->start=%d, d->count=%d", start, count, d->start, d->count);
+			ASSERT(start + count == (int)d->start);
+			count += d->count;
 		}
 
-		GL_CALL(glDrawElements(GL_TRIANGLES, d->count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * d->start)));
+		//GL_CALL(glDrawElements(GL_TRIANGLES, d->count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * d->start)));
 	}
+
+	//PRINTF("start=%d, count=%d", start, count);
+	if (count)
+		GL_CALL(glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * start)));
 }
 
 void renderClear() {
