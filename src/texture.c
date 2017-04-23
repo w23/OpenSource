@@ -92,7 +92,7 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 }
 
 static int textureUploadMipmap(struct Stack *tmp, struct IFile *file, size_t cursor,
-		const struct VTFHeader *hdr, int miplevel, AGLTexture *tex) {
+		const struct VTFHeader *hdr, int miplevel, RTexture *tex) {
 	for (int mip = hdr->mipmap_count - 1; mip > miplevel; --mip) {
 		const unsigned int mip_width = hdr->width >> mip;
 		const unsigned int mip_height = hdr->height >> mip;
@@ -132,16 +132,14 @@ static int textureUploadMipmap(struct Stack *tmp, struct IFile *file, size_t cur
 	else
 		dxt5Unpack(dxt_ctx);
 
-	const AGLTextureUploadData data = {
-		.x = 0,
-		.y = 0,
+	const RTextureCreateParams params = {
 		.width = hdr->width,
 		.height = hdr->height,
-		.format = AGLTF_U565_RGB,
+		.format = RTexFormat_RGB565,
 		.pixels = dst_texture
 	};
 
-	aGLTextureUpload(tex, &data);
+	renderTextureCreate(tex, params);
 	return 1;
 }
 
@@ -178,13 +176,9 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 		hdr.lores_width, hdr.lores_height, vtfFormatStr(hdr.lores_format), hdr.mipmap_count, hdr.header_size);
 	*/
 
-	tex->gltex = aGLTextureCreate();
 	void *pre_alloc_cursor = stackGetCursor(tmp);
-	retval = textureUploadMipmap(tmp, file, cursor, &hdr, 0, &tex->gltex);
+	retval = textureUploadMipmap(tmp, file, cursor, &hdr, 0, &tex->texture);
 	stackFreeUpToPosition(tmp, pre_alloc_cursor);
-
-	if(!retval)
-		aGLTextureDestroy(&tex->gltex);
 
 	return retval;
 }

@@ -7,13 +7,13 @@
 
 #include "atto/app.h"
 
-static void profileEvent(const char *msg, ATimeUs delta);
-#define ATTO_GL_PROFILE_FUNC profileEvent
+void profileEvent(const char *msg, ATimeUs delta);
 
+//#define ATTO_GL_PROFILE_FUNC profileEvent
 //#define ATTO_GL_TRACE
 //#define ATTO_GL_DEBUG
-#define ATTO_GL_H_IMPLEMENT
-#include "atto/gl.h"
+//#define ATTO_GL_H_IMPLEMENT
+//#include "atto/gl.h"
 #include "atto/math.h"
 
 static char persistent_data[32*1024*1024];
@@ -100,7 +100,7 @@ static void profilerInit() {
 	profiler.profiler_time = 0;
 }
 
-static void profileEvent(const char *msg, ATimeUs delta) {
+void profileEvent(const char *msg, ATimeUs delta) {
 	ATTO_ASSERT(profiler.cursor < 65536);
 	profiler.event[profiler.cursor].msg = msg;
 	profiler.event[profiler.cursor].delta = delta;
@@ -204,6 +204,7 @@ static void profilerFrame() {
 	profileEvent("PROFILER", aAppTime() - start);
 }
 
+#if 0
 static const float fsquad_vertices[] = {
 	-1.f, 1.f, -1.f, -1.f, 1.f, 1.f, 1.f, -1.f
 };
@@ -392,45 +393,7 @@ static void aabbDraw(const struct AABBDraw *draw) {
 
 	aGLDraw(&source, &merge, draw->target);
 }
-
-static const char vertex_src[] =
-	"attribute vec3 av3_pos, av3_normal;\n"
-	"attribute vec2 av2_lightmap, av2_base0_uv;\n"
-	"uniform mat4 um4_VP;\n"
-	"varying vec2 vv2_lightmap, vv2_base0_uv;\n"
-	"varying vec3 vv3_normal;\n"
-	"void main() {\n"
-		"vv2_lightmap = av2_lightmap;\n"
-		"vv2_base0_uv = av2_base0_uv;\n"
-		"vv3_normal = av3_normal;\n"
-		"gl_Position = um4_VP * vec4(av3_pos, 1.);\n"
-	"}\n";
-
-static const char fragment_src[] =
-	"uniform sampler2D us2_lightmap, tex_base0, tex_base1;\n"
-	"uniform vec2 uv2_lightmap_size;\n"
-	"uniform vec2 tex_base0_size, tex_base1_size;\n"
-	"varying vec2 vv2_lightmap, vv2_base0_uv;\n"
-	"varying vec3 vv3_normal;\n"
-	"uniform float uf_lmn;\n"
-	"void main() {\n"
-		"vec3 tc = vec3(fract(vv2_base0_uv/tex_base0_size), 0.);\n"
-		//"vec4 albedo = vec4(fract(vv2_base0_uv/tex_base1_size), 0., 1.);\n"
-		"vec4 albedo = texture2D(tex_base0, vv2_base0_uv/tex_base0_size);\n"
-		//	"+ texture2D(tex_base1, vv2_base0_uv/tex_base1_size);\n"
-		"vec3 lm = texture2D(us2_lightmap, vv2_lightmap).xyz;\n"
-		"vec3 color = albedo.xyz * lm;\n"
-		"gl_FragColor = vec4(mix(color, tc, uf_lmn), 1.);\n"
-		//"gl_FragColor = texture2D(us2_lightmap, vv2_lightmap);\n"
-	"}\n";
-
-enum {
-	UniformM, UniformVP,
-	UniformLightmap, UniformLightmapSize,
-	UniformTextureBase0, UniformTextureBase0Size,
-	UniformTextureBase1, UniformTextureBase1Size,
-	UniformLMN, Uniform_COUNT };
-enum { AttribPos, AttribNormal, AttribLightmapUV, AttribTextureUV, Attrib_COUNT };
+#endif
 
 static struct {
 	struct SimpleCamera camera;
@@ -439,24 +402,32 @@ static struct {
 	float R;
 	float lmn;
 
+#if 0
 	AGLDrawTarget screen;
 	AGLDrawSource source;
 	AGLDrawMerge merge;
 	AGLAttribute attribs[Attrib_COUNT];
 	AGLProgramUniform uniforms[Uniform_COUNT];
+#endif
 	struct BSPModel worldspawn;
 	struct AMat4f model;
 } g;
 
 static void opensrcInit(struct ICollection *collection, const char *map) {
+	if (!renderInit()) {
+		PRINT("Failed to initialize render");
+		aAppTerminate(-1);
+	}
+
+	cacheInit(&stack_persistent);
+
+#if 0
 	g.source.program = aGLProgramCreateSimple(vertex_src, fragment_src);
 	if (g.source.program < 1) {
 		aAppDebugPrintf("Shader compilation error: %s", a_gl_error);
 		aAppTerminate(-1);
 	}
 	fsquadInit();
-
-	cacheInit(&stack_persistent);
 
 	{
 		Texture tex_placeholder;
@@ -473,6 +444,7 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 		aGLTextureUpload(&tex_placeholder.gltex, &up);
 		cachePutTexture("opensource/placeholder", &tex_placeholder);
 	}
+#endif
 
 	struct BSPLoadModelContext loadctx = {
 		.collection = collection,
@@ -502,6 +474,7 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 
 	g.model = aMat4fIdentity();
 
+#if 0
 	g.source.primitive.mode = GL_TRIANGLES;
 	g.source.primitive.first = 0;
 	g.source.primitive.cull_mode = AGLCM_Back;
@@ -583,13 +556,14 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 	aGLUniformLocate(g.source.program, g.uniforms, Uniform_COUNT);
 	aGLAttributeLocate(g.source.program, g.attribs, Attrib_COUNT);
 
-	g.lmn = 0;
-
 	g.merge.blend.enable = 0;
 	g.merge.depth.mode = AGLDM_TestAndWrite;
 	g.merge.depth.func = AGLDF_Less;
 
 	g.screen.framebuffer = 0;
+
+	g.lmn = 0;
+#endif
 
 	const float t = 0;
 	simplecamLookAt(&g.camera,
@@ -597,6 +571,7 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 			g.center, aVec3f(0.f, 0.f, 1.f));
 }
 
+#if 0
 static void drawBSPDraw(const struct BSPDraw *draw) {
 	const ATimeUs start = aAppTime();
 	g.source.primitive.index.data.offset = sizeof(uint16_t) * draw->start;
@@ -639,12 +614,16 @@ static void drawModel(const struct BSPModel *model) {
 		drawBSPDraw(model->draws + i);
 	profileEvent("drawModel", aAppTime() - start);
 }
+#endif
 
 static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int old_h) {
 	(void)(timestamp); (void)(old_w); (void)(old_h);
+#if 0
 	g.screen.viewport.x = g.screen.viewport.y = 0;
 	g.screen.viewport.w = a_app_state->width;
 	g.screen.viewport.h = a_app_state->height;
+#endif
+	glViewport(0, 0, a_app_state->width, a_app_state->height);
 
 	simplecamProjection(&g.camera, 1.f, g.R * 10.f, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
 	simplecamRecalc(&g.camera);
@@ -664,6 +643,7 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 		simplecamRecalc(&g.camera);
 	}
 
+#if 0
 	AGLClearParams clear;
 	clear.r = clear.g = clear.b = 0;
 	clear.depth = 1.f;
@@ -685,6 +665,11 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 		};
 		aabbDraw(&aabb);
 	}
+#endif
+
+	renderClear();
+
+	renderModelDraw(&g.camera.view_projection, g.lmn, &g.worldspawn);
 
 	profilerFrame();
 }
@@ -723,7 +708,7 @@ static void opensrcPointer(ATimeUs timestamp, int dx, int dy, unsigned int btndi
 
 void attoAppInit(struct AAppProctable *proctable) {
 	profilerInit();
-	aGLInit();
+	//aGLInit();
 	const int max_collections = 16;
 	struct FilesystemCollection collections[max_collections];
 	int free_collection = 0;

@@ -10,7 +10,7 @@ DEBUG=
 RPI=
 RPI_ROOT=${RPI_ROOT:-'/opt/raspberry-pi'}
 
-SOURCES='src/OpenSource.c src/bsp.c src/atlas.c src/filemap.c src/collection.c src/material.c src/texture.c src/cache.c src/dxt.c'
+SOURCES='src/OpenSource.c src/bsp.c src/atlas.c src/filemap.c src/collection.c src/material.c src/texture.c src/cache.c src/dxt.c src/render.c'
 WERROR='-Werror'
 CFLAGS="-D_GNU_SOURCE $CFLAGS"
 

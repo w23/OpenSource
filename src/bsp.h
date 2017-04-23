@@ -1,6 +1,6 @@
 #pragma once
 #include "material.h"
-#include "atto/gl.h"
+#include "render.h"
 #include "atto/math.h"
 
 struct Material;
@@ -12,14 +12,12 @@ struct BSPModelVertex {
 	struct AVec3f vertex;
 	struct AVec3f normal;
 	struct AVec2f lightmap_uv;
-	struct AVec2f base0_uv;
+	struct AVec2f tex_uv;
 };
 
 struct BSPDraw {
-	AGLBuffer vbo;
 	const struct Material *material;
 	unsigned int start, count;
-	struct AVec4f model;
 };
 
 /* TODO
@@ -36,8 +34,8 @@ struct BSPNode {
 
 struct BSPModel {
 	struct AABB aabb;
-	AGLTexture lightmap;
-	AGLBuffer ibo;
+	RTexture lightmap;
+	RBuffer vbo, ibo;
 	int draws_count;
 	struct BSPDraw *draws;
 };

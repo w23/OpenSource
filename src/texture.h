@@ -1,11 +1,11 @@
 #pragma once
-#include "atto/gl.h"
+#include "render.h"
 
 struct ICollection;
 struct Stack;
 
 typedef struct Texture {
-	AGLTexture gltex;
+	RTexture texture;
 } Texture;
 
 const Texture *textureGet(const char *name, struct ICollection *collection, struct Stack *tmp);

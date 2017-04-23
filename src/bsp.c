@@ -95,7 +95,7 @@ struct LoadModelContext {
 		int pixels;
 		int max_width;
 		int max_height;
-		AGLTexture texture;
+		RTexture texture;
 	} lightmap;
 	int draws_to_alloc;
 };
@@ -342,16 +342,13 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 		} /* for y */
 	} /* fot all visible faces */
 
-	ctx->lightmap.texture = aGLTextureCreate();
-	AGLTextureUploadData upload;
-	upload.x = upload.y = 0;
+	RTextureCreateParams upload;
 	upload.width = atlas_context.width;
 	upload.height = atlas_context.height;
-	upload.format = AGLTF_U565_RGB;
+	upload.format = RTexFormat_RGB565;
 	upload.pixels = pixels;
-	aGLTextureUpload(&ctx->lightmap.texture, &upload);
-
-	ctx->lightmap.texture.min_filter = AGLTmF_Nearest;
+	renderTextureCreate(&ctx->lightmap.texture, upload);
+	//ctx->lightmap.texture.min_filter = RTmF_Nearest;
 
 	/* pixels buffer is not needed anymore */
 	stackFreeUpToPosition(ctx->tmp, pixels);
@@ -460,7 +457,7 @@ static void bspLoadDisplacement(
 
 			v->vertex = aVec3fMix(vl, vr, tx);
 			v->lightmap_uv = aVec2f(tx * length_lm_u, ty * length_lm_v);
-			v->base0_uv = aVec2f(
+			v->tex_uv = aVec2f(
 				aVec4fDot(aVec4f3(v->vertex, 1.f), tex_map_u),
 				aVec4fDot(aVec4f3(v->vertex, 1.f), tex_map_v));
 			v->vertex = aVec3fAdd(aVec3fMix(vl, vr, tx), aVec3fMulf(aVec3f(dv->x, dv->y, dv->z), dv->dist));
@@ -533,7 +530,7 @@ static void bspLoadFace(
 		vertex->lightmap_uv = aVec2f(
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f),	lm_map_u),
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), lm_map_v));
-		vertex->base0_uv = aVec2f(
+		vertex->tex_uv = aVec2f(
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_u),
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_v));
 
@@ -560,8 +557,6 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	/* each vertex after second in a vface is a new triangle */
 	uint16_t * const indices_buffer = stackAlloc(ctx->tmp, sizeof(uint16_t) * ctx->indices);
 	if (!indices_buffer) return BSPLoadResult_ErrorTempMemory;
-
-	AGLBuffer vbo = aGLBufferCreate(AGLBT_Vertex);
 
 	int vertex_pos = 0;
 	int draw_indices_start = 0, indices_pos = 0;
@@ -612,7 +607,6 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 
 		PRINTF("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
 
-		draw->vbo = vbo;
 		draw->material = face->material;
 
 		/*
@@ -631,10 +625,8 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	PRINTF("%d %d", idraw, model->draws_count);
 	ASSERT(idraw == model->draws_count);
 
-	aGLBufferUpload(&vbo, sizeof(struct BSPModelVertex) * vertex_pos, vertices_buffer);
-
-	model->ibo = aGLBufferCreate(AGLBT_Index);
-	aGLBufferUpload(&model->ibo, sizeof(uint16_t) * ctx->indices, indices_buffer);
+	renderBufferCreate(&model->vbo, RBufferType_Vertex, sizeof(struct BSPModelVertex) * vertex_pos, vertices_buffer);
+	renderBufferCreate(&model->ibo, RBufferType_Index, sizeof(uint16_t) * ctx->indices, indices_buffer);
 	return BSPLoadResult_Success;
 }
 
@@ -668,7 +660,7 @@ static enum BSPLoadResult bspLoadModel(
 	/* Step 3. Generate draw operations data */
 	result = bspLoadModelDraws(&context, persistent, model);
 	if (result != BSPLoadResult_Success) {
-		aGLTextureDestroy(&context.lightmap.texture);
+		//aGLTextureDestroy(&context.lightmap.texture);
 		return result;
 	}
 
