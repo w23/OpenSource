@@ -3,16 +3,6 @@
 #include <stdint.h>
 
 static uint16_t dxtColorSum(int m1, uint16_t c1, int m2, uint16_t c2, int add, int denom) {
-	/*
-	const int mask_rb = 0xf81f, mask_g = 0x07e0;
-	const uint32_t
-		rb1 = c1 & mask_rb, g1 = c1 & mask_g,
-		rb2 = c2 & mask_rb, g2 = c2 & mask_g;
-	add |= (add << 5) | (add << 11);
-	return
-		(((m1 * rb1 + m2 * rb2 + add) / denom) & mask_rb) |
-		(((m1 * g1 + m2 * g2 + add) / denom) & mask_g);
-	*/
 	const int mask_r = 0xf800, shift_r = 11;
 	const int mask_g = 0x07e0, shift_g = 5;
 	const int mask_b = 0x001f, shift_b = 0;
