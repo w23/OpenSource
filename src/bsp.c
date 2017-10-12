@@ -3,6 +3,7 @@
 #include "vbsp.h"
 #include "collection.h"
 #include "mempools.h"
+#include "vmfparser.h"
 #include "common.h"
 
 // DEBUG
@@ -569,27 +570,6 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	for (int iface = 0; iface < ctx->faces_count/* + 1*/; ++iface) {
 		const struct Face *face = ctx->faces + iface;
 
-#if 0
-		/*if (iface == ctx->faces_count || face->vertices + vertex_pos >= c_max_draw_vertices) {*/
-		if (iface > 0) {
-			struct BSPDraw *draw = model->draws + idraw;
-			memset(draw, 0, sizeof *draw);
-			draw->count = indices_pos - draw_indices_start;
-			draw->start = draw_indices_start;
-
-			PRINTF("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
-
-			draw->vbo = vbo;
-			draw->material = face->material;
-
-			if (iface == ctx->faces_count) break;
-			//vertex_pos = 0;
-			draw_indices_start = indices_pos;
-			++idraw;
-			ASSERT(idraw < model->draws_count);
-		}
-#endif
-
 		if (face->dispinfo) {
 			bspLoadDisplacement(ctx, face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos);
 		} else {
@@ -599,7 +579,6 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 		vertex_pos += face->vertices;
 		indices_pos += face->indices;
 
-#if 1
 		struct BSPDraw *draw = model->draws + idraw;
 		memset(draw, 0, sizeof *draw);
 		draw->count = indices_pos - draw_indices_start;
@@ -619,7 +598,6 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 		draw_indices_start = indices_pos;
 		++idraw;
 		ASSERT(idraw <= model->draws_count);
-#endif
 	}
 
 	PRINTF("%d %d", idraw, model->draws_count);
@@ -692,6 +670,121 @@ static enum BSPLoadResult bspLoadModel(
 	model->aabb.max.z = context.model->max.z;
 
 	return BSPLoadResult_Success;
+} // bspLoadModel()
+
+struct EntityProp {
+	const char *name;
+	const char *value;
+	int value_length;
+};
+
+enum BSPLoadResult bspReadEntityProps(struct TokenContext *tctx, struct EntityProp* props, int prop_count) {
+	// TODO: what if this entity for some reason has nested entities
+	// should count curlies then
+	for (;;) {
+		const enum TokenType type = getNextToken(tctx);
+		switch (type) {
+		case Token_String:
+			for (int i = 0; i < prop_count; ++i) {
+				if (strncmp(props[i].name, tctx->str_start, tctx->str_length) == 0) {
+					const enum TokenType type = getNextToken(tctx);
+					if (type == Token_Error)
+						return BSPLoadResult_ErrorFileFormat;
+
+					if (type != Token_String) {
+						PRINTF("Warning: expected string, got %d", type);
+						continue;
+					}
+
+					props[i].value = tctx->str_start;
+					props[i].value_length = tctx->str_length;
+					break;
+				} // if prop match found
+			} // for all props
+			break;
+		case Token_CurlyClose:
+			for (int i = 0; i < prop_count; ++i) {
+				PRINTF("prop[%i] '%s' = '%.*s'", i,
+					props[i].name, props[i].value_length, props[i].value);
+			}
+			return BSPLoadResult_Success;
+		default:
+			PRINTF("Illegal token: %d", type);
+			return BSPLoadResult_ErrorFileFormat;
+		}
+	} // forever
+}
+
+enum BSPLoadResult bspReadEntityInfoLandmark(struct TokenContext* tctx) {
+	struct EntityProp props[] = {
+		{"targetname", NULL, 0},
+		{"origin", NULL, 0}
+	};
+
+	const enum BSPLoadResult result = bspReadEntityProps(tctx, props, COUNTOF(props));
+	
+	if (result != BSPLoadResult_Success)
+		return result;
+
+	// ...
+
+	return BSPLoadResult_Success;
+}
+
+enum BSPLoadResult bspReadEntityTriggerChangelevel(struct TokenContext* tctx) {
+	struct EntityProp props[] = {
+		{"landmark", NULL, 0},
+		{"map", NULL, 0}
+	};
+
+	const enum BSPLoadResult result = bspReadEntityProps(tctx, props, COUNTOF(props));
+	
+	if (result != BSPLoadResult_Success)
+		return result;
+
+	// ...
+
+	return BSPLoadResult_Success;
+}
+
+enum BSPLoadResult bspReadEntities(const char* str, int length) {
+	struct TokenContext tctx;
+	tctx.cursor = str;
+	tctx.end = str + length;
+
+	int loop = 1;
+	const char* curlyOpen = NULL;
+	while(loop) {
+		switch(getNextToken(&tctx)) {
+		case Token_CurlyOpen:
+			curlyOpen = tctx.cursor;
+			break;
+		case Token_String:
+			//PRINTF("%.*s", (int)tctx.str_length, tctx.str_start);
+#define LOAD_ENTITY(name, func) \
+			if (strncmp(name, tctx.str_start, tctx.str_length) == 0) { \
+				tctx.cursor = curlyOpen; \
+				const enum BSPLoadResult result = func(&tctx); \
+				if (result != BSPLoadResult_Success) { \
+					PRINTF("Failed at loading " name "@%p", curlyOpen); \
+					return result; \
+				} \
+				continue; \
+			}
+			LOAD_ENTITY("info_landmark", bspReadEntityInfoLandmark);
+			LOAD_ENTITY("trigger_changelevel", bspReadEntityTriggerChangelevel);
+			break;
+		case Token_Error:
+			return BSPLoadResult_ErrorFileFormat;
+		case Token_End:
+			loop = 0;
+			break;
+		default:
+			break;
+		}
+	}
+
+	return BSPLoadResult_Success;
 }
 
 static int lumpRead(const char *name, const struct VBSPLumpHeader *header,
@@ -762,8 +855,14 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const c
 #undef BSPLUMP
 
 	result = bspLoadModel(context.collection, context.model, context.persistent, context.tmp, &lumps, 0);
-	if (result != BSPLoadResult_Success)
+	if (result != BSPLoadResult_Success) {
 		PRINTF("Error: bspLoadModel() => %s", R2S(result));
+		goto exit;
+	}
+
+	result = bspReadEntities(lumps.entities.p, lumps.entities.n);
+	if (result != BSPLoadResult_Success)
+		PRINTF("Errro: bspReadEntities() => %s", R2S(result));
 
 exit:
 	stackFreeUpToPosition(context.tmp, tmp_cursor);

@@ -2,57 +2,8 @@
 #include "texture.h"
 #include "cache.h"
 #include "collection.h"
+#include "vmfparser.h"
 #include "common.h"
-
-enum TokenType {
-	Token_Skip,
-	Token_String,
-	Token_CurlyOpen,
-	Token_CurlyClose,
-	Token_Error,
-	Token_End
-};
-struct TokenContext {
-	const char *start;
-	int length;
-	const char *cursor;
-};
-
-static enum TokenType getNextToken(struct TokenContext *tok) {
-	enum TokenType type = Token_Skip;
-	const char *c = tok->cursor;
-
-	while (type == Token_Skip) {
-		while(*c != '\0' && isspace(*c)) ++c;
-		if (*c == '\0') return Token_End;
-
-		tok->start = c;
-		tok->length = 0;
-		switch(*c) {
-			case '\"':
-				tok->start = ++c;
-				while(*c != '\0' && *c != '\"') ++c;
-				type = (*c == '\"') ? Token_String : Token_Error;
-				break;
-			case '{': type = Token_CurlyOpen; break;
-			case '}': type = Token_CurlyClose; break;
-			case '/':
-				if (*++c == '/') {
-					while(*c != '\0' && *c != '\n') ++c;
-					type = Token_Skip;
-				} else
-					type = Token_Error;
-				break;
-			default:
-				while (*c != '\0' && isgraph(*c)) ++c;
-				type = (c == tok->start) ? Token_Error : Token_String;
-		} /* switch(*c) */
-	} /* while skip */
-
-	tok->length = c - tok->start;
-	tok->cursor = c + 1;
-	return type;
-}
 
 struct MaterialContext {
 	struct Material *mat;
@@ -69,8 +20,8 @@ static enum KeyValueResult getNextKeyValue(struct MaterialContext *ctx) {
 		if (type == Token_End || type == Token_CurlyClose) return KeyValue_End;
 		if (type != Token_String) return KeyValue_Error;
 
-		ctx->key = ctx->tok.start;
-		ctx->key_length = ctx->tok.length;
+		ctx->key = ctx->tok.str_start;
+		ctx->key_length = ctx->tok.str_length;
 
 		type = getNextToken(&ctx->tok);
 		if (type == Token_CurlyOpen) {
@@ -91,12 +42,12 @@ static enum KeyValueResult getNextKeyValue(struct MaterialContext *ctx) {
 		} else if (type != Token_String) {
 			return KeyValue_Error;
 		} else {
-			if (ctx->tok.length > (int)sizeof(ctx->value) - 1) {
-				PRINTF("Value is too long: %d", ctx->tok.length);
+			if (ctx->tok.str_length > (int)sizeof(ctx->value) - 1) {
+				PRINTF("Value is too long: %d", ctx->tok.str_length);
 				return KeyValue_Error;
 			}
-			memcpy(ctx->value, ctx->tok.start, ctx->tok.length);
-			ctx->value[ctx->tok.length] = '\0';
+			memcpy(ctx->value, ctx->tok.str_start, ctx->tok.str_length);
+			ctx->value[ctx->tok.str_length] = '\0';
 			return KeyValue_Read;
 		}
 	} /* loop until key value pair found */
@@ -123,6 +74,7 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 	struct MaterialContext ctx;
 	ctx.mat = output;
 	ctx.tok.cursor = buffer;
+	ctx.tok.end = NULL;
 
 #define EXPECT_TOKEN(type) \
 	if (getNextToken(&ctx.tok) != type) { \
@@ -131,8 +83,8 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 	}
 
 	EXPECT_TOKEN(Token_String);
-	const char *shader = ctx.tok.start;
-	const int shader_length = ctx.tok.length;
+	const char *shader = ctx.tok.str_start;
+	const int shader_length = ctx.tok.str_length;
 
 	EXPECT_TOKEN(Token_CurlyOpen);
 

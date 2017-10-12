@@ -24,6 +24,7 @@ TOOL_SRCS = \
 	src/atlas.c \
 	src/filemap.c \
 	src/collection.c \
+	src/vmfparser.c \
 	src/material.c \
 	src/texture.c \
 	src/cache.c \

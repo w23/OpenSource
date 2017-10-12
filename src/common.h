@@ -7,3 +7,5 @@
 #define PRINT(msg) fprintf(stderr, __FILE__ ":" STR(__LINE__) ": %s\n", msg)
 
 #define ASSERT(cond) if (!(cond)){PRINTF("%s failed", #cond); abort();}
+
+#define COUNTOF(a) (sizeof(a) / sizeof(*(a)))

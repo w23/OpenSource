@@ -7,7 +7,7 @@ RPI_FLAGS = [
     '-DATTO_PLATFORM_RPI',
     '-D_POSIX_C_SOURCE=200809L',
     '-std=gnu99']
-COMMON_FLAGS = ['-Wall', '-Wextra', '-pedantic', '-std=c99', '-I.', '-I./atto']
+COMMON_FLAGS = ['-Wall', '-Wextra', '-pedantic', '-std=c99', '-I.', '-I../atto']
 
 def FlagsForFile(filename, **kwargs):
     flags = COMMON_FLAGS
