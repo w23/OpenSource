@@ -32,12 +32,25 @@ struct BSPNode {
 };
 */
 
+#define BSP_LANDMARK_NAME_LENGTH 32
+#define BSP_MAX_LANDMARKS 8
+
+struct BSPLandmark {
+	char name[BSP_LANDMARK_NAME_LENGTH];
+	struct AVec3f origin;
+};
+
 struct BSPModel {
 	struct AABB aabb;
 	RTexture lightmap;
 	RBuffer vbo, ibo;
 	int draws_count;
 	struct BSPDraw *draws;
+
+	struct BSPLandmark landmarks[BSP_MAX_LANDMARKS];
+	int landmarks_count;
+
+	struct AVec3f player_start;
 };
 
 struct ICollection;
@@ -63,3 +76,5 @@ enum BSPLoadResult {
 };
 
 enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const char *mapname);
+
+void opensrcAddMap(const char* mapname, int mapname_length);

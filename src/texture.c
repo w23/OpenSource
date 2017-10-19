@@ -158,8 +158,8 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 		return 0;
 	}
 
-	PRINTF("Texture: %dx%d, %s",
-		hdr.width, hdr.height, vtfFormatStr(hdr.hires_format));
+	//PRINTF("Texture: %dx%d, %s",
+	//	hdr.width, hdr.height, vtfFormatStr(hdr.hires_format));
 
 	if (hdr.hires_format != VTFImage_DXT1 && hdr.hires_format != VTFImage_DXT5) {
 		PRINTF("Not implemented texture format: %s", vtfFormatStr(hdr.hires_format));

@@ -685,6 +685,8 @@ enum BSPLoadResult bspReadEntityProps(struct TokenContext *tctx, struct EntityPr
 		const enum TokenType type = getNextToken(tctx);
 		switch (type) {
 		case Token_String:
+			if (!prop_count)
+				PRINTF("%.*s", tctx->str_length, tctx->str_start);
 			for (int i = 0; i < prop_count; ++i) {
 				if (strncmp(props[i].name, tctx->str_start, tctx->str_length) == 0) {
 					const enum TokenType type = getNextToken(tctx);
@@ -715,7 +717,7 @@ enum BSPLoadResult bspReadEntityProps(struct TokenContext *tctx, struct EntityPr
 	} // forever
 }
 
-enum BSPLoadResult bspReadEntityInfoLandmark(struct TokenContext* tctx) {
+enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
 	struct EntityProp props[] = {
 		{"targetname", NULL, 0},
 		{"origin", NULL, 0}
@@ -726,12 +728,45 @@ enum BSPLoadResult bspReadEntityInfoLandmark(struct TokenContext* tctx) {
 	if (result != BSPLoadResult_Success)
 		return result;
 
-	// ...
+	for (int i = 0; i < COUNTOF(props); ++i)
+		if (props[i].value == NULL || props[i].value_length == 0) {
+			PRINTF("Property %s is empty, skipping this landmark", props[i].name);
+			return BSPLoadResult_Success;
+		}
+
+	struct BSPModel *model = ctx->model;
+	if (model->landmarks_count == BSP_MAX_LANDMARKS) {
+		PRINT("Too many landmarks");
+		return BSPLoadResult_ErrorMemory;
+	}
+
+	struct BSPLandmark *landmark = model->landmarks + model->landmarks_count;
+	if (props[0].value_length >= (int)sizeof(landmark->name)) {
+		PRINTF("Landmark name \"%.*s\" is too long",
+			props[0].value_length, props[0].value);
+		return BSPLoadResult_ErrorMemory;
+	}
+
+	memcpy(landmark->name, props[0].value, props[0].value_length);
+	landmark->name[props[0].value_length] = '\0';
+
+	// FIXME props[1].value is not null-terminated suman
+	if (3 != sscanf(props[1].value, "%f %f %f",
+			&landmark->origin.x,
+			&landmark->origin.y,
+			&landmark->origin.z))
+	{
+		PRINTF("Cannot read x, y, z from origin=\"%.*s\"",
+			props[1].value_length, props[1].value);
+		return BSPLoadResult_ErrorFileFormat;
+	}
+
+	++model->landmarks_count;
 
 	return BSPLoadResult_Success;
 }
 
-enum BSPLoadResult bspReadEntityTriggerChangelevel(struct TokenContext* tctx) {
+enum BSPLoadResult bspReadEntityTriggerChangelevel(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
 	struct EntityProp props[] = {
 		{"landmark", NULL, 0},
 		{"map", NULL, 0}
@@ -742,12 +777,18 @@ enum BSPLoadResult bspReadEntityTriggerChangelevel(struct TokenContext* tctx) {
 	if (result != BSPLoadResult_Success)
 		return result;
 
-	// ...
+	openSourceAddMap(props[1].value, props[1].value_length);
 
 	return BSPLoadResult_Success;
 }
 
-enum BSPLoadResult bspReadEntities(const char* str, int length) {
+enum BSPLoadResult bspReadEntityAndDumpProps(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
+	return bspReadEntityProps(tctx, NULL, 0);
+}
+
+enum BSPLoadResult bspReadEntities(struct BSPLoadModelContext *ctx, const char *str, int length) {
+	ctx->model->landmarks_count = 0;
+
 	struct TokenContext tctx;
 	tctx.cursor = str;
 	tctx.end = str + length;
@@ -764,7 +805,7 @@ enum BSPLoadResult bspReadEntities(const char* str, int length) {
 #define LOAD_ENTITY(name, func) \
 			if (strncmp(name, tctx.str_start, tctx.str_length) == 0) { \
 				tctx.cursor = curlyOpen; \
-				const enum BSPLoadResult result = func(&tctx); \
+				const enum BSPLoadResult result = func(ctx, &tctx); \
 				if (result != BSPLoadResult_Success) { \
 					PRINTF("Failed at loading " name "@%p", curlyOpen); \
 					return result; \
@@ -773,6 +814,8 @@ enum BSPLoadResult bspReadEntities(const char* str, int length) {
 			}
 			LOAD_ENTITY("info_landmark", bspReadEntityInfoLandmark);
 			LOAD_ENTITY("trigger_changelevel", bspReadEntityTriggerChangelevel);
+			LOAD_ENTITY("worldspawn", bspReadEntityAndDumpProps);
+			LOAD_ENTITY("info_player_start", bspReadEntityAndDumpProps);
 			break;
 		case Token_Error:
 			return BSPLoadResult_ErrorFileFormat;
@@ -860,7 +903,7 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const c
 		goto exit;
 	}
 
-	result = bspReadEntities(lumps.entities.p, lumps.entities.n);
+	result = bspReadEntities(&context, lumps.entities.p, lumps.entities.n);
 	if (result != BSPLoadResult_Success)
 		PRINTF("Errro: bspReadEntities() => %s", R2S(result));
 

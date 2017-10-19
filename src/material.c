@@ -144,7 +144,7 @@ const struct Material *materialGet(const char *name, struct ICollection *collect
 
 	struct IFile *matfile;
 	if (CollectionOpen_Success != collectionChainOpen(collection, name, File_Material, &matfile)) {
-		PRINTF("Material \"%s\" not found", name);
+		//PRINTF("Material \"%s\" not found", name);
 		return cacheGetMaterial("opensource/placeholder");
 	}
 

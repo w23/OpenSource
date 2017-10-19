@@ -80,8 +80,6 @@ static void simplecamRotatePitch(struct SimpleCamera *cam, float pitch) {
 	cam->dir = aVec3fMulMat(rot, cam->dir);
 }
 
-#define COUNTOF(v) (sizeof(v) / sizeof(*(v)))
-
 static struct {
 	int cursor;
 	struct {
@@ -220,6 +218,16 @@ static int profilerFrame() {
 	return retval;
 }
 
+#define MAX_MAP_NAME_LENGTH 32
+struct Map {
+	char name[MAX_MAP_NAME_LENGTH];
+	int loaded;
+	struct AVec3f offset;
+	struct BSPModel model;
+};
+
+#define MAX_MAP_COUNT 32
+
 static struct {
 	struct SimpleCamera camera;
 	int forward, right, run;
@@ -227,9 +235,87 @@ static struct {
 	float R;
 	float lmn;
 
-	struct BSPModel worldspawn;
-	struct AMat4f model;
+	struct Map maps[MAX_MAP_COUNT];
+	int maps_count;
 } g;
+
+void openSourceAddMap(const char* mapname, int mapname_length) {
+	for (int i = 0; i < g.maps_count; ++i)
+		if (strncmp(g.maps[i].name, mapname, mapname_length) == 0)
+			return;
+
+	if (g.maps_count >= MAX_MAP_COUNT) {
+		PRINTF("No slots left for map %.*s", mapname_length, mapname);
+		return;
+	}
+
+	if (mapname_length >= MAX_MAP_NAME_LENGTH) {
+		PRINTF("Map name \"%.*s\" is too long", mapname_length, mapname);
+		return;
+	}
+
+	memcpy(g.maps[g.maps_count].name, mapname, mapname_length);
+
+	++g.maps_count;
+
+	PRINTF("Added new map to the queue: %.*s", mapname_length, mapname);
+}
+
+static enum BSPLoadResult loadMap(int index, struct ICollection *collection) {
+	struct Map *map = g.maps + index;
+	struct BSPLoadModelContext loadctx = {
+		.collection = collection,
+		.persistent = &stack_persistent,
+		.tmp = &stack_temp,
+		.model = &map->model
+	};
+
+	const enum BSPLoadResult result = bspLoadWorldspawn(loadctx, map->name);
+	if (result != BSPLoadResult_Success) {
+		PRINTF("Cannot load map \"%s\": %d", map->name, result);
+		return result;
+	}
+
+	aAppDebugPrintf("Loaded %s to %u draw calls", map->name, map->model.draws_count);
+	aAppDebugPrintf("AABB (%f, %f, %f) - (%f, %f, %f)",
+			map->model.aabb.min.x,
+			map->model.aabb.min.y,
+			map->model.aabb.min.z,
+			map->model.aabb.max.x,
+			map->model.aabb.max.y,
+			map->model.aabb.max.z);
+
+	PRINTF("Landmarks: %d", map->model.landmarks_count);
+	for (int i = 0; i < map->model.landmarks_count; ++i) {
+		struct BSPLandmark *lm = map->model.landmarks + i;
+		PRINTF("\t%d: %s -> (%f, %f, %f)", i + 1, lm->name,
+			lm->origin.x, lm->origin.y, lm->origin.z);
+	}
+
+	map->loaded = 1;
+
+	if (index != 0 && map->model.landmarks_count != 0) {
+		for (int i = 0; i < index; ++i) {
+			const struct Map *map2 = g.maps + i;
+			if (map2->loaded == 1) {
+				for (int j = 0; j < map2->model.landmarks_count; ++j) {
+					const struct BSPLandmark *m2 = map2->model.landmarks + j;
+					for (int k = 0; k < map->model.landmarks_count; ++k) {
+						const struct BSPLandmark *m1 = map->model.landmarks + k;
+						if (strcmp(m1->name, m2->name) == 0) {
+							map->offset = aVec3fAdd(map2->offset, aVec3fSub(m2->origin, m1->origin));
+							PRINTF("Map %s offset %f, %f, %f", 
+								map->name, map->offset.x, map->offset.y, map->offset.z);
+							return BSPLoadResult_Success;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return BSPLoadResult_Success;
+}
 
 static void opensrcInit(struct ICollection *collection, const char *map) {
 	cacheInit(&stack_persistent);
@@ -239,33 +325,20 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 		aAppTerminate(-1);
 	}
 
-	struct BSPLoadModelContext loadctx = {
-		.collection = collection,
-		.persistent = &stack_persistent,
-		.tmp = &stack_temp,
-		.model = &g.worldspawn
-	};
-	const enum BSPLoadResult result = bspLoadWorldspawn(loadctx, map);
-	if (result != BSPLoadResult_Success) {
-		aAppDebugPrintf("Cannot load map \"%s\": %d", map, result);
-		aAppTerminate(-2);
-	}
+	g.maps_count = 1;
+	memset(g.maps, 0, sizeof(g.maps));
+	strncpy(g.maps[0].name, map, sizeof(g.maps[0].name)-1);
 
-	aAppDebugPrintf("Loaded %s to %u draw calls", map, g.worldspawn.draws_count);
-	aAppDebugPrintf("AABB (%f, %f, %f) - (%f, %f, %f)",
-			g.worldspawn.aabb.min.x,
-			g.worldspawn.aabb.min.y,
-			g.worldspawn.aabb.min.z,
-			g.worldspawn.aabb.max.x,
-			g.worldspawn.aabb.max.y,
-			g.worldspawn.aabb.max.z);
+	for (int i = 0; i < g.maps_count; ++i)
+		if (BSPLoadResult_Success != loadMap(i, collection) && i == 0)
+			aAppTerminate(-2);
 
-	g.center = aVec3fMulf(aVec3fAdd(g.worldspawn.aabb.min, g.worldspawn.aabb.max), .5f);
-	g.R = aVec3fLength(aVec3fSub(g.worldspawn.aabb.max, g.worldspawn.aabb.min)) * .5f;
+	PRINTF("Maps loaded: %d", g.maps_count);
+
+	g.center = aVec3fMulf(aVec3fAdd(g.maps[0].model.aabb.min, g.maps[0].model.aabb.max), .5f);
+	g.R = aVec3fLength(aVec3fSub(g.maps[0].model.aabb.max, g.maps[0].model.aabb.min)) * .5f;
 
 	aAppDebugPrintf("Center %f, %f, %f, R~=%f", g.center.x, g.center.y, g.center.z, g.R);
-
-	g.model = aMat4fIdentity();
 
 	const float t = 0;
 	simplecamLookAt(&g.camera,
@@ -297,14 +370,22 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 
 	renderClear();
 
-	renderModelDraw(&g.camera.view_projection, g.lmn, &g.worldspawn);
+	for (int i = 0; i < g.maps_count; ++i) {
+		struct Map *map = g.maps + i;
+		if (!map->loaded)
+			continue;
 
-	if (profilerFrame()) {
-		int triangles = 0;
-		for (int i = 0; i < g.worldspawn.draws_count; ++i) {
-			triangles += g.worldspawn.draws[i].count / 3;
+		const struct AMat4f mvp = aMat4fMul(g.camera.view_projection, aMat4fTranslation(map->offset));
+
+		renderModelDraw(&mvp, g.lmn, &map->model);
+
+		if (profilerFrame()) {
+			int triangles = 0;
+			for (int i = 0; i < map->model.draws_count; ++i) {
+				triangles += map->model.draws[i].count / 3;
+			}
+			PRINTF("Total triangles: %d", triangles);
 		}
-		PRINTF("Total triangles: %d", triangles);
 	}
 }
 
