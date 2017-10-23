@@ -1,5 +1,6 @@
 #pragma once
 #include "filemap.h"
+#include "mempools.h"
 #include <stddef.h>
 
 struct IFile {
@@ -53,3 +54,20 @@ struct FilesystemCollection {
 };
 
 void filesystemCollectionCreate(struct FilesystemCollection *collection, const char *dir);
+
+#define MAX_VPK_ARCHIVES 16
+
+struct VPKFileMetadata;
+
+struct VPKCollection {
+	struct ICollection head;
+	struct AFileMap directory;
+	struct AFile archives[MAX_VPK_ARCHIVES];
+	struct VPKFileMetadata *files;
+	int files_count;
+};
+
+void vpkCollectionCreate(struct VPKCollection *collection, const char *dir_filename, struct Stack *persistent, struct Stack *temp);
+
+
+

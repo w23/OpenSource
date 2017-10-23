@@ -10,13 +10,12 @@ MAP ?= d1_trainstation_01
 DEPFLAGS = -MMD -MP
 COMPILE.c = $(CC) -std=gnu99 $(CFLAGS) $(DEPFLAGS) -MT $@ -MF $@.d
 
-all: run
-
 $(OBJDIR)/%.c.o: %.c
 	@mkdir -p $(dir $@)
 	$(COMPILE.c) -c $< -o $@
 
 TOOL_EXE = $(OBJDIR)/OpenSource
+all: $(TOOL_EXE)
 TOOL_SRCS = \
 	src/atto/src/app_linux.c \
 	src/atto/src/app_x11.c \
@@ -43,9 +42,9 @@ clean:
 	rm -f $(TOOL_OBJS) $(TOOL_DEPS) $(TOOL_EXE)
 
 run: $(TOOL_EXE)
-	$(TOOL_EXE) -d mnt/hl2_misc -d mnt/hl2_pak -d mnt/hl2_textures -d ~/.local/share/Steam/steamapps/common/Half-Life\ 2/hl2 $(MAP)
+	$(TOOL_EXE) -p ~/.local/share/Steam/steamapps/common/Half-Life\ 2/hl2/hl2_textures_dir.vpk -d mnt/hl2_misc -d mnt/hl2_pak -d mnt/hl2_textures -d ~/.local/share/Steam/steamapps/common/Half-Life\ 2/hl2 $(MAP)
 
 debug: $(TOOL_EXE)
-	gdb --args $(TOOL_EXE) -d mnt/hl2_misc -d mnt/hl2_pak -d mnt/hl2_textures -d ~/.local/share/Steam/steamapps/common/Half-Life\ 2/hl2 $(MAP)
+	gdb --args $(TOOL_EXE) -p ~/.local/share/Steam/steamapps/common/Half-Life\ 2/hl2/hl2_textures_dir.vpk -d mnt/hl2_misc -d mnt/hl2_pak -d mnt/hl2_textures -d ~/.local/share/Steam/steamapps/common/Half-Life\ 2/hl2 $(MAP)
 
 .PHONY: all clean run_tool debug_tool

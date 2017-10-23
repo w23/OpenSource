@@ -431,7 +431,21 @@ void attoAppInit(struct AAppProctable *proctable) {
 
 	for (int i = 1; i < a_app_state->argc; ++i) {
 		const char *argv = a_app_state->argv[i];
-		if (strcmp(argv, "-d") == 0) {
+		if (strcmp(argv, "-p") == 0) {
+			if (i == a_app_state->argc - 1) {
+				aAppDebugPrintf("-p requires an argument");
+				goto print_usage_and_exit;
+			}
+			const char *value = a_app_state->argv[++i];
+
+			if (free_collection >= max_collections) {
+				aAppDebugPrintf("Too many collections specified: %s", value);
+				goto print_usage_and_exit;
+			}
+
+			struct VPKCollection vc;
+			vpkCollectionCreate(&vc, value, &stack_persistent, &stack_temp);
+		} else if (strcmp(argv, "-d") == 0) {
 			if (i == a_app_state->argc - 1) {
 				aAppDebugPrintf("-d requires an argument");
 				goto print_usage_and_exit;
@@ -439,7 +453,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			const char *value = a_app_state->argv[++i];
 
 			if (free_collection >= max_collections) {
-				aAppDebugPrintf("Too many fs collections specified: %s", value);
+				aAppDebugPrintf("Too many collections specified: %s", value);
 				goto print_usage_and_exit;
 			}
 
