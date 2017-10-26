@@ -77,4 +77,4 @@ enum BSPLoadResult {
 
 enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const char *mapname);
 
-void opensrcAddMap(const char* mapname, int mapname_length);
+void openSourceAddMap(const char* mapname, int mapname_length);

@@ -728,7 +728,7 @@ enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, st
 	if (result != BSPLoadResult_Success)
 		return result;
 
-	for (int i = 0; i < COUNTOF(props); ++i)
+	for (int i = 0; i < (int)COUNTOF(props); ++i)
 		if (props[i].value == NULL || props[i].value_length == 0) {
 			PRINTF("Property %s is empty, skipping this landmark", props[i].name);
 			return BSPLoadResult_Success;
@@ -767,6 +767,7 @@ enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, st
 }
 
 enum BSPLoadResult bspReadEntityTriggerChangelevel(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
+	(void)ctx;
 	struct EntityProp props[] = {
 		{"landmark", NULL, 0},
 		{"map", NULL, 0}
@@ -783,6 +784,7 @@ enum BSPLoadResult bspReadEntityTriggerChangelevel(struct BSPLoadModelContext *c
 }
 
 enum BSPLoadResult bspReadEntityAndDumpProps(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
+	(void)ctx;
 	return bspReadEntityProps(tctx, NULL, 0);
 }
 
@@ -807,7 +809,7 @@ enum BSPLoadResult bspReadEntities(struct BSPLoadModelContext *ctx, const char *
 				tctx.cursor = curlyOpen; \
 				const enum BSPLoadResult result = func(ctx, &tctx); \
 				if (result != BSPLoadResult_Success) { \
-					PRINTF("Failed at loading " name "@%p", curlyOpen); \
+					PRINTF("Failed at loading " name "@%d", (int)(tctx.cursor - str)); \
 					return result; \
 				} \
 				continue; \
