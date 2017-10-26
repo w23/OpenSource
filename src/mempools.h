@@ -32,3 +32,8 @@ static inline void stackFreeUpToPosition(struct Stack *stack, void *marker) {
 	ASSERT(marker_pos <= stack->cursor);
 	stackFree(stack, stack->cursor - marker_pos);
 }
+
+struct Memories {
+	struct Stack *temp;
+	struct Stack *persistent;
+};

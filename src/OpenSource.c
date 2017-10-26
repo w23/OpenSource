@@ -421,13 +421,28 @@ static void opensrcPointer(ATimeUs timestamp, int dx, int dy, unsigned int btndi
 		aAppGrabInput(1);
 }
 
+static struct ICollection *addToCollectionChain(struct ICollection *chain, struct ICollection *next) {
+	if (chain) {
+		struct ICollection *coll = chain;
+		while (coll->next)
+			coll = coll->next;
+		coll->next = next;
+		return chain;
+	}
+
+	return next;
+}
+
 void attoAppInit(struct AAppProctable *proctable) {
 	profilerInit();
 	//aGLInit();
-	const int max_collections = 16;
-	struct FilesystemCollection collections[max_collections];
-	int free_collection = 0;
+	struct ICollection *collection_chain = NULL;
 	const char *map = 0;
+
+	struct Memories mem = {
+		&stack_temp,
+		&stack_persistent
+	};
 
 	for (int i = 1; i < a_app_state->argc; ++i) {
 		const char *argv = a_app_state->argv[i];
@@ -438,13 +453,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			}
 			const char *value = a_app_state->argv[++i];
 
-			if (free_collection >= max_collections) {
-				aAppDebugPrintf("Too many collections specified: %s", value);
-				goto print_usage_and_exit;
-			}
-
-			struct VPKCollection vc;
-			vpkCollectionCreate(&vc, value, &stack_persistent, &stack_temp);
+			collection_chain = addToCollectionChain(collection_chain, collectionCreateVPK(&mem, value));
 		} else if (strcmp(argv, "-d") == 0) {
 			if (i == a_app_state->argc - 1) {
 				aAppDebugPrintf("-d requires an argument");
@@ -452,12 +461,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			}
 			const char *value = a_app_state->argv[++i];
 
-			if (free_collection >= max_collections) {
-				aAppDebugPrintf("Too many collections specified: %s", value);
-				goto print_usage_and_exit;
-			}
-
-			filesystemCollectionCreate(collections + (free_collection++), value);
+			collection_chain = addToCollectionChain(collection_chain, collectionCreateFilesystem(&mem, value));
 		} else {
 			if (map) {
 				aAppDebugPrintf("Only one map can be specified");
@@ -467,15 +471,12 @@ void attoAppInit(struct AAppProctable *proctable) {
 		}
 	}
 
-	if (!map || !free_collection) {
+	if (!map || !collection_chain) {
 		aAppDebugPrintf("At least one map and one collection required");
 		goto print_usage_and_exit;
 	}
 
-	for (int i = 0; i < free_collection - 1; ++i)
-		collections[i].head.next = &collections[i+1].head;
-
-	opensrcInit(&collections[0].head, map);
+	opensrcInit(collection_chain, map);
 
 	proctable->resize = opensrcResize;
 	proctable->paint = opensrcPaint;

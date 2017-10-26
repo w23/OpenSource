@@ -19,118 +19,125 @@ enum CollectionOpenResult collectionChainOpen(struct ICollection *collection,
 	return CollectionOpen_NotFound;
 }
 
-static enum AFileResult filesystemCollectionFile_Open(struct FilesystemCollectionFile_ *f, const char *filename) {
-	const enum AFileResult result = aFileOpen(&f->file, filename);
-	f->opened = result == AFile_Success;
-	f->head.size = f->file.size;
-	return result;
-}
+struct FilesystemCollectionFile {
+	struct IFile head;
+	struct AFile file;
+	struct Stack *temp;
+};
+
+struct FilesystemCollection {
+	struct ICollection head;
+	struct Memories mem;
+	char *prefix;
+};
 
 static size_t filesystemCollectionFile_Read(struct IFile *file, size_t offset, size_t size, void *buffer) {
-	struct FilesystemCollectionFile_ *f = (void*)file;
+	struct FilesystemCollectionFile *f = (void*)file;
 	const size_t result = aFileReadAtOffset(&f->file, offset, size, buffer);
 	return result != AFileError ? result : 0;
 }
 
 static void filesystemCollectionFile_Close(struct IFile *file) {
-	struct FilesystemCollectionFile_ *f = (void*)file;
+	struct FilesystemCollectionFile *f = (void*)file;
 	aFileClose(&f->file);
-	f->head.size = 0;
-	f->opened = 0;
+	stackFreeUpToPosition(f->temp, f);
 }
 
 static void filesystemCollectionClose(struct ICollection *collection) {
 	(void)(collection);
 	/* TODO ensure all files are closed */
+	/* TODO free memory */
+}
+
+static char *makeResourceFilename(struct Stack *temp, const char *prefix, const char *name, enum FileType type) {
+	const char *subdir = NULL;
+	const char *suffix = NULL;
+
+	switch (type) {
+		case File_Map: subdir = "maps/"; suffix = ".bsp"; break;
+		case File_Material: subdir = "materials/"; suffix = ".vmt"; break;
+		case File_Texture: subdir = "materials/"; suffix = ".vtf"; break;
+		case File_Model: subdir = "models/"; suffix = ".mdl"; break;
+	}
+
+	const int prefix_len = prefix ? strlen(prefix) : 0;
+	const int subdir_len = strlen(subdir);
+	const int name_len = strlen(name);
+	const int suffix_len = strlen(suffix);
+	const int name_length = prefix_len + subdir_len + name_len + suffix_len + 1;
+
+	char *output = stackAlloc(temp, name_length);
+	if (!output) return NULL;
+
+	char *c = output;
+	if (prefix)
+		for (int i = 0; i < prefix_len; ++i)
+			*c++ = prefix[i];
+
+	for (int i = 0; i < subdir_len; ++i)
+		*c++ = subdir[i];
+
+	for (int i = 0; i < name_len; ++i) {
+		char C = tolower(name[i]);
+		*c++ = (C == '\\') ? '/' : C;
+	}
+
+	for (int i = 0; i < suffix_len; ++i)
+		*c++ = suffix[i];
+
+	*c = '\0';
+
+	return output;
 }
 
 static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *collection,
 			const char *name, enum FileType type, struct IFile **out_file) {
 	struct FilesystemCollection *fsc = (struct FilesystemCollection*)collection;
-	char buffer[512] = {0};
-	const char *subdir = "/";
-	const char *suffix = "";
 
-	*out_file = 0;
+	*out_file = NULL;
 
-	int fileslot = 0;
-	for(; fileslot < FilesystemCollectionFileSlots; ++fileslot)
-		if (fsc->files[fileslot].head.read) break;
-	if (fileslot >= FilesystemCollectionFileSlots)
-		return CollectionOpen_TooManyFiles;
-	struct FilesystemCollectionFile_ *f = fsc->files + fileslot;
+	struct FilesystemCollectionFile *file = stackAlloc(fsc->mem.temp, sizeof(*file));
+	char *filename = makeResourceFilename(fsc->mem.temp, fsc->prefix, name, type);
 
-	switch (type) {
-		case File_Map: subdir = "/maps/"; suffix = ".bsp"; break;
-		case File_Material: subdir = "/materials/"; suffix = ".vmt"; break;
-		case File_Texture: subdir = "/materials/"; suffix = ".vtf"; break;
-		case File_Model: subdir = "/models/"; suffix = ".mdl"; break;
+	if (!file || !filename) {
+		PRINTF("Not enough memory for file %s", name);
+		return CollectionOpen_NotEnoughMemory;
 	}
 
-	const int subdir_len = strlen(subdir);
-	const int name_len = strlen(name);
-	const int suffix_len = strlen(suffix);
-
-	if (fsc->path_len + subdir_len + name_len + suffix_len >= (int)sizeof(buffer)) {
-		PRINTF("Resource \"%s\" path is too long", name);
+	if (aFileOpen(&file->file, filename) != AFile_Success) {
+		stackFreeUpToPosition(fsc->mem.temp, file);
 		return CollectionOpen_NotFound;
+		
 	}
 
-	int skip_end = 0;
-	int max_skip = name_len;
-	for (;;) {
-		char *c = buffer;
-		for (int i = 0; i < fsc->path_len; ++i) *c++ = fsc->path[i];
-		for (int i = 0; i < subdir_len; ++i) *c++ = subdir[i];
-		char *name_start = c;
-		for (int i = 0; i < name_len; ++i) {
-			char C = tolower(name[i]);
-			*c++ = (C == '\\') ? '/' : C;
-		}
-		if (strstr(name_start, "maps/") == name_start) {
-			char *start = strchr(name_start + 6, '/');
-			if (start) {
-				memmove(name_start, start + 1, c - start);
-				c -= start - name_start;
-				max_skip -= start - name_start;
-			}
-		}
-		c -= skip_end;
-		for (int i = 0; i < suffix_len; ++i) *c++ = suffix[i];
-		*c = '\0';
+	file->head.size = file->file.size;
+	file->head.read = filesystemCollectionFile_Read;
+	file->head.close = filesystemCollectionFile_Close;
+	file->temp = fsc->mem.temp;
+	*out_file = &file->head;
 
-		if (AFile_Success != filesystemCollectionFile_Open(f, buffer)) {
-			//if (type == File_Material)
-			{
-				skip_end++;
-				if (skip_end < max_skip)
-					continue;
-			}
-			return CollectionOpen_NotFound;
-		}
-
-		break;
-	}
-
-	*out_file = &f->head;
+	stackFreeUpToPosition(fsc->mem.temp, filename);
 	return CollectionOpen_Success;
 }
 
-void filesystemCollectionCreate(struct FilesystemCollection *collection, const char *dir) {
-	memset(collection, 0, sizeof *collection);
-	/* TODO length check? dir exists check? */
-	collection->path_len = strlen(dir);
-	strncpy(collection->path, dir, sizeof(collection->path) - 1);
+struct ICollection *collectionCreateFilesystem(struct Memories *mem, const char *dir) {
+	int dir_len = strlen(dir);
+	struct FilesystemCollection *collection = stackAlloc(mem->persistent, sizeof(*collection) + dir_len + 2);
 
-	for (int i = 0; i < FilesystemCollectionFileSlots; ++i) {
-		struct FilesystemCollectionFile_ *f = collection->files + i;
-		aFileReset(&f->file);
-		f->head.read = filesystemCollectionFile_Read;
-		f->head.close = filesystemCollectionFile_Close;
-	}
+	if (!collection)
+		return NULL;
+
+	memset(collection, 0, sizeof *collection);
+	collection->mem = *mem;
+	collection->prefix = (char*)(collection + 1);
+
+	memcpy(collection->prefix, dir, dir_len);
+	collection->prefix[dir_len] = '/';
+	collection->prefix[dir_len+1] = '\0';
 
 	collection->head.open = filesystemCollectionOpen;
 	collection->head.close = filesystemCollectionClose;
+	return &collection->head;
 }
 
 struct StringView {
@@ -149,36 +156,119 @@ static struct StringView readString(const char **c, const char *end) {
 	return ret;
 }
 
-enum { VPKFilePartDir = 0, VPKFilePartArchive = 1, VPKFilePart_MAX };
-
 struct VPKFileMetadata {
 	struct StringView filename;
 	int archive;
 	struct {
 		size_t off, size;
-	} parts[VPKFilePart_MAX];
+	} dir, arc;
+};
+
+#define MAX_VPK_ARCHIVES 16
+
+struct VPKCollection {
+	struct ICollection head;
+	struct Memories mem;
+	struct AFileMap directory;
+	struct AFile archives[MAX_VPK_ARCHIVES];
+	struct VPKFileMetadata *files;
+	int files_count;
+};
+
+struct VPKCollectionFile {
+	struct IFile head;
+	const struct VPKFileMetadata *metadata;
+	struct VPKCollection *collection;
 };
 
 static void vpkCollectionClose(struct ICollection *collection) {
 	(void)(collection);
-	/* FIXME close handles */
+	/* FIXME close handles and free memory */
 }
 
-static enum CollectionOpenResult vpkCollectionOpen(struct ICollection *collection,
+static size_t vpkCollectionFileRead(struct IFile *file, size_t offset, size_t size, void *buffer) {
+	struct VPKCollectionFile *f = (struct VPKCollectionFile*)file;
+	const struct VPKFileMetadata *meta = f->metadata;
+
+	size_t size_read = 0;
+	if (offset < meta->dir.size) {
+		const void *begin = ((char*)f->collection->directory.map) + offset + meta->dir.off;
+		const size_t dir_size_left = meta->dir.size - offset;
+		if (size < dir_size_left) {
+			memcpy(buffer, begin, size);
+			return size;
+		}
+
+		const size_t size_to_read = size - dir_size_left;
+		memcpy(buffer, begin, size_to_read);
+
+		buffer = ((char*)buffer) + size_to_read;
+		offset += size_to_read;
+		size -= size_to_read;
+		size_read += size_to_read;
+	}
+
+	offset -= meta->dir.size;
+
+	if (offset < meta->arc.size)
+		size_read += aFileReadAtOffset(&f->collection->archives[meta->archive], meta->arc.off + offset, size, buffer);
+
+	return size_read;
+}
+
+static void vpkCollectionFileClose(struct IFile *file) {
+	struct VPKCollectionFile *f = (void*)file;
+	stackFreeUpToPosition(f->collection->mem.temp, f);
+}
+
+static enum CollectionOpenResult vpkCollectionFileOpen(struct ICollection *collection,
 		const char *name, enum FileType type, struct IFile **out_file) {
 	struct VPKCollection *vpkc = (struct VPKCollection*)collection;
 
+	*out_file = NULL;
+
+	struct VPKCollectionFile *file = stackAlloc(vpkc->mem.temp, sizeof(*file));
+	char *filename = makeResourceFilename(vpkc->mem.temp, NULL, name, type);
+
+	if (!file || !filename) {
+		PRINTF("Not enough memory for file %s", name);
+		return CollectionOpen_NotEnoughMemory;
+	}
+
+	// TODO replace linear search by sorted array and binary search
+	for (int i = 0; i < vpkc->files_count; ++i) {
+		const struct VPKFileMetadata *meta = vpkc->files + i;
+		if (strcmp(meta->filename.s, filename) == 0) {
+			file->metadata = meta;
+			file->collection = vpkc;
+			file->head.size = meta->arc.size + meta->dir.size;
+			file->head.read = vpkCollectionFileRead;
+			file->head.close = vpkCollectionFileClose;
+			*out_file = &file->head;
+			stackFreeUpToPosition(vpkc->mem.temp, filename);
+			return CollectionOpen_Success;
+		}
+	}
+
+	stackFreeUpToPosition(vpkc->mem.temp, file);
 	return CollectionOpen_NotFound;
 }
 
-void vpkCollectionCreate(struct VPKCollection *collection, const char *dir_filename, struct Stack *persistent, struct Stack *temp) {
-	PRINTF("Opening collection %s", dir_filename);
+struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dirfile) {
+	PRINTF("Opening collection %s", dirfile);
+	struct VPKCollection *collection = stackAlloc(mem->persistent, sizeof(*collection));
 
-	void *const temp_stack_top = stackGetCursor(temp);
+	if (!collection)
+		return NULL;
 
-	collection->directory = aFileMapOpen(dir_filename);
+	memset(collection, 0, sizeof *collection);
+	collection->mem = *mem;
+
+	void *const temp_stack_top = stackGetCursor(mem->temp);
+
+	collection->directory = aFileMapOpen(dirfile);
 	if (!collection->directory.map) {
-		PRINTF("Cannot open %s", dir_filename);
+		PRINTF("Cannot open %s", dirfile);
 		exit(-1);
 	}
 
@@ -202,7 +292,7 @@ void vpkCollectionCreate(struct VPKCollection *collection, const char *dir_filen
 		exit(-1);
 	}
 
-	struct VPKFileMetadata *files_begin = stackGetCursor(persistent), *files_end = files_begin;
+	struct VPKFileMetadata *files_begin = stackGetCursor(mem->persistent), *files_end = files_begin;
 
 	int max_archives = -1;
 	const char *const end = dir + size;
@@ -239,7 +329,7 @@ void vpkCollectionCreate(struct VPKCollection *collection, const char *dir_filen
 				}
 
 				const int filename_len = 3 + path.len + filename.len + ext.len;
-				char *filename_temp = stackAlloc(temp, filename_len);
+				char *filename_temp = stackAlloc(mem->temp, filename_len);
 				if (!filename_temp) {
 					PRINT("Not enough temp memory");
 					exit(-1);
@@ -258,7 +348,7 @@ void vpkCollectionCreate(struct VPKCollection *collection, const char *dir_filen
 					entry->preloadBytes, entry->archive, entry->archive,
 					entry->archiveOffset, entry->archiveLength);
 
-				struct VPKFileMetadata *file = stackAlloc(persistent, sizeof(struct VPKFileMetadata));
+				struct VPKFileMetadata *file = stackAlloc(mem->persistent, sizeof(struct VPKFileMetadata));
 				if (!file) {
 					PRINT("Not enough persistent memory");
 					exit(-1);
@@ -268,20 +358,21 @@ void vpkCollectionCreate(struct VPKCollection *collection, const char *dir_filen
 				file->filename.s = filename_temp;
 				file->filename.len = filename_len - 1;
 				if (entry->preloadBytes) {
-					file->parts[VPKFilePartDir].off = c - (char*)dir;
-					file->parts[VPKFilePartDir].size = entry->preloadBytes;
+					file->dir.off = c - (char*)dir;
+					file->dir.size = entry->preloadBytes;
 				}
 
 				if (entry->archiveLength) {
 					file->archive = entry->archive != 0x7fff ? entry->archive : -1;
-					file->parts[VPKFilePartArchive].off = entry->archiveOffset;
-					file->parts[VPKFilePartArchive].size = entry->archiveLength;
+					file->arc.off = entry->archiveOffset;
+					file->arc.size = entry->archiveLength;
 				}
 
 				if (file->archive > max_archives)
 					max_archives = file->archive;
 
 				files_end = file + 1;
+				++collection->files_count;
 
 				c += entry->preloadBytes;
 			} // for filenames
@@ -292,7 +383,7 @@ void vpkCollectionCreate(struct VPKCollection *collection, const char *dir_filen
 	
 	// store filenames in persistent memory
 	for (struct VPKFileMetadata *file = files_begin; file != files_end; ++file) {
-		char *string = stackAlloc(persistent, file->filename.len + 1);
+		char *string = stackAlloc(mem->persistent, file->filename.len + 1);
 		if (!string) {
 			PRINT("Not enough persistent memory");
 			exit(-1);
@@ -308,22 +399,25 @@ void vpkCollectionCreate(struct VPKCollection *collection, const char *dir_filen
 		exit(-1);
 	}
 
-	const int dir_filename_len = strlen(dir_filename) + 1;
-	char *arcname = alloca(dir_filename_len);
-	if (!arcname || dir_filename_len < 8) {
+	const int dirfile_len = strlen(dirfile) + 1;
+	char *arcname = alloca(dirfile_len);
+	if (!arcname || dirfile_len < 8) {
 		PRINT("WTF");
 		exit(-1);
 	}
-	memcpy(arcname, dir_filename, dir_filename_len);
-	for (int i = 0; i < max_archives; ++i) {
-		sprintf(arcname + dir_filename_len - 8, "%03d.vpk", i);
+	memcpy(arcname, dirfile, dirfile_len);
+	for (int i = 0; i <= max_archives; ++i) {
+		sprintf(arcname + dirfile_len - 8, "%03d.vpk", i);
 		if (AFile_Success != aFileOpen(collection->archives+i, arcname)) {
 			PRINTF("Cannot open archive %s", arcname);
 			exit(-1);
 		}
 	}
 
-	stackFreeUpToPosition(temp, temp_stack_top);
-	collection->head.open = vpkCollectionOpen;
+	stackFreeUpToPosition(mem->temp, temp_stack_top);
+	collection->head.open = vpkCollectionFileOpen;
 	collection->head.close = vpkCollectionClose;
+	collection->files = files_begin;
+
+	return &collection->head;
 }

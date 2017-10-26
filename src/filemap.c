@@ -61,7 +61,8 @@ size_t aFileRead(struct AFile *file, size_t size, void *buffer) {
 
 size_t aFileReadAtOffset(struct AFile *file, size_t off, size_t size, void *buffer) {
 	ssize_t rd = pread(file->impl_.fd, buffer, size, off);
-	if (rd < 0) perror("pread(fd)");
+	if (rd < 0)
+		perror("pread(fd)");
 	return rd;
 }
 
