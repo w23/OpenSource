@@ -121,7 +121,7 @@ static int profilerFrame() {
 	int retval = 0;
 	const ATimeUs start = aAppTime();
 	profiler.frame_deltas += start - profiler.last_frame;
-	
+
 	void *tmp_cursor = stackGetCursor(&stack_temp);
 	const int max_array_size = stackGetFree(&stack_temp) / sizeof(ProfilerLocation);
 	int array_size = 0;
@@ -226,7 +226,7 @@ struct Map {
 	struct BSPModel model;
 };
 
-#define MAX_MAP_COUNT 32
+#define MAX_MAP_COUNT 1
 
 static struct {
 	struct SimpleCamera camera;

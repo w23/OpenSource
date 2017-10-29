@@ -685,8 +685,8 @@ enum BSPLoadResult bspReadEntityProps(struct TokenContext *tctx, struct EntityPr
 		const enum TokenType type = getNextToken(tctx);
 		switch (type) {
 		case Token_String:
-			if (!prop_count)
-				PRINTF("%.*s", tctx->str_length, tctx->str_start);
+			/*if (!prop_count)
+				PRINTF("%.*s", tctx->str_length, tctx->str_start);*/
 			for (int i = 0; i < prop_count; ++i) {
 				if (strncmp(props[i].name, tctx->str_start, tctx->str_length) == 0) {
 					const enum TokenType type = getNextToken(tctx);
@@ -705,10 +705,12 @@ enum BSPLoadResult bspReadEntityProps(struct TokenContext *tctx, struct EntityPr
 			} // for all props
 			break;
 		case Token_CurlyClose:
+			/*
 			for (int i = 0; i < prop_count; ++i) {
 				PRINTF("prop[%i] '%s' = '%.*s'", i,
 					props[i].name, props[i].value_length, props[i].value);
 			}
+			*/
 			return BSPLoadResult_Success;
 		default:
 			PRINTF("Illegal token: %d", type);
@@ -724,7 +726,7 @@ enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, st
 	};
 
 	const enum BSPLoadResult result = bspReadEntityProps(tctx, props, COUNTOF(props));
-	
+
 	if (result != BSPLoadResult_Success)
 		return result;
 
@@ -774,7 +776,7 @@ enum BSPLoadResult bspReadEntityTriggerChangelevel(struct BSPLoadModelContext *c
 	};
 
 	const enum BSPLoadResult result = bspReadEntityProps(tctx, props, COUNTOF(props));
-	
+
 	if (result != BSPLoadResult_Success)
 		return result;
 

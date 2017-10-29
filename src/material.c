@@ -26,7 +26,8 @@ static enum KeyValueResult getNextKeyValue(struct MaterialContext *ctx) {
 		type = getNextToken(&ctx->tok);
 		if (type == Token_CurlyOpen) {
 			/* skip unsupported proxies and DX-level specifics */
-			PRINTF("Skipping section %.*s", ctx->key_length, ctx->key);
+			if (strncmp(ctx->key, "replace", ctx->key_length) != 0)
+				PRINTF("Skipping section %.*s", ctx->key_length, ctx->key);
 
 			int depth = 1;
 			for (;;) {
@@ -57,18 +58,19 @@ static const char * const ignore_params[] = {
 	"$surfaceprop", "$surfaceprop2", "$tooltexture",
 	"%tooltexture", "%keywords", "%compilewater", "%detailtype",
 	"%compilenolight", "%compilepassbullets",
+	"replace", /* TODO implement */
 	0
 };
 
 static int materialLoad(struct IFile *file, struct ICollection *coll, struct Material *output, struct Stack *tmp) {
-	char buffer[8192]; /* most vmts are < 300, a few are almost 1000, max seen ~3200 */
-	if (file->size > sizeof(buffer) - 1) {
-		PRINTF("VMT is too large: %zu", file->size);
+	char *buffer = stackAlloc(tmp, file->size + 1);
+	int retval = 0;
+	if (!buffer) {
+		PRINT("Out of temp memory");
 		return 0;
 	}
 
 	if (file->size != file->read(file, 0, file->size, buffer)) return 0;
-
 	buffer[file->size] = '\0';
 
 	struct MaterialContext ctx;
@@ -79,7 +81,7 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 #define EXPECT_TOKEN(type) \
 	if (getNextToken(&ctx.tok) != type) { \
 		PRINTF("Unexpected token at position %zd, expecting %d; left: %s", ctx.tok.cursor - buffer, type, ctx.tok.cursor); \
-		return 0; \
+		goto exit; \
 	}
 
 	EXPECT_TOKEN(Token_String);
@@ -90,8 +92,12 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 
 	for (;;) {
 		const enum KeyValueResult result = getNextKeyValue(&ctx);
-		if (result == KeyValue_End) break;
-		if (result != KeyValue_Read) goto error;
+		if (result == KeyValue_End)
+			break;
+		if (result != KeyValue_Read) {
+			retval = -1;
+			goto exit;
+		}
 
 		int skip = 0;
 		for (const char *const *ignore = ignore_params; ignore[0] != 0; ++ignore)
@@ -115,13 +121,23 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 		} else if (strncasecmp("$parallaxmap", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$parallaxmapscale", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$bumpmap", ctx.key, ctx.key_length) == 0) {
-			output->bump = textureGet(ctx.value, coll, tmp);
+			/* output->bump = textureGet(ctx.value, coll, tmp); */
 		} else if (strncasecmp("$envmap", ctx.key, ctx.key_length) == 0) {
-			output->envmap = textureGet(ctx.value, coll, tmp);
+			/* output->envmap = textureGet(ctx.value, coll, tmp); */
 		} else if (strncasecmp("$fogenable", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$fogcolor", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$alphatest", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$translucent", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$envmapcontrast", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$envmapsaturation", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$envmaptint", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$normalmapalphaenvmapmask", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$envmapmask", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$nodiffusebumplighting", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$AlphaTestReference", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$basealphaenvmapmask", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$selfillum", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("$reflectivity", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("include", ctx.key, ctx.key_length) == 0) {
 			char *vmt = strstr(ctx.value, ".vmt");
 			if (vmt)
@@ -134,14 +150,20 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 		}
 	} /* for all properties */
 
-	if (!output->base_texture[0])
+	if (!output->base_texture[0]) {
+		PRINT("Material doesn't have base texture");
 		output->base_texture[0] = cacheGetTexture("opensource/placeholder");
+	}
 
-	return 1;
+	retval = 1;
 
-error:
-	PRINTF("Error parsing material with shader %.*s: %s", shader_length, shader, ctx.tok.cursor);
-	return 0;
+exit:
+	if (retval == -1)
+		PRINTF("Error parsing material with shader %.*s: %s", shader_length, shader, ctx.tok.cursor);
+
+	stackFreeUpToPosition(tmp, buffer);
+
+	return retval;
 }
 
 const struct Material *materialGet(const char *name, struct ICollection *collection, struct Stack *tmp) {
