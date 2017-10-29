@@ -73,15 +73,13 @@ static void simplecamRotatePitch(struct SimpleCamera *cam, float pitch) {
 	cam->dir = aVec3fMulMat(rot, cam->dir);
 }
 
-#define MAX_MAP_NAME_LENGTH 32
 struct Map {
-	char name[MAX_MAP_NAME_LENGTH];
+	char *name;
 	int loaded;
 	struct AVec3f offset;
 	struct BSPModel model;
+	struct Map *next;
 };
-
-#define MAX_MAP_COUNT 1
 
 static struct {
 	struct SimpleCamera camera;
@@ -90,34 +88,50 @@ static struct {
 	float R;
 	float lmn;
 
-	struct Map maps[MAX_MAP_COUNT];
-	int maps_count;
+	struct Map *maps_begin, *maps_end;
+	int maps_count, maps_limit;
 } g;
 
 void openSourceAddMap(const char* mapname, int mapname_length) {
-	for (int i = 0; i < g.maps_count; ++i)
-		if (strncmp(g.maps[i].name, mapname, mapname_length) == 0)
+	if (g.maps_count >= g.maps_limit) {
+		PRINTF("Map limit reached, not trying to add map %.*s",
+				mapname_length, mapname);
+		return;
+	}
+
+	struct Map *map = g.maps_begin;
+	while (map) {
+		if (strncmp(map->name, mapname, mapname_length) == 0)
 			return;
+		map = map->next;
+	}
 
-	if (g.maps_count >= MAX_MAP_COUNT) {
-		PRINTF("No slots left for map %.*s", mapname_length, mapname);
+	char *mem = stackAlloc(&stack_persistent, sizeof(struct Map) + mapname_length + 1);
+	if (!mem) {
+		PRINT("Not enough memory");
 		return;
 	}
 
-	if (mapname_length >= MAX_MAP_NAME_LENGTH) {
-		PRINTF("Map name \"%.*s\" is too long", mapname_length, mapname);
-		return;
-	}
+	memcpy(mem, mapname, mapname_length);
+	mem[mapname_length] = '\0';
 
-	memcpy(g.maps[g.maps_count].name, mapname, mapname_length);
+	map = (void*)(mem + mapname_length + 1);
+	memset(map, 0, sizeof(*map));
+	map->name = mem;
+
+	if (!g.maps_end)
+		g.maps_begin = map;
+	else
+		g.maps_end->next = map;
+
+	g.maps_end = map;
 
 	++g.maps_count;
 
 	PRINTF("Added new map to the queue: %.*s", mapname_length, mapname);
 }
 
-static enum BSPLoadResult loadMap(int index, struct ICollection *collection) {
-	struct Map *map = g.maps + index;
+static enum BSPLoadResult loadMap(struct Map *map, struct ICollection *collection) {
 	struct BSPLoadModelContext loadctx = {
 		.collection = collection,
 		.persistent = &stack_persistent,
@@ -149,30 +163,30 @@ static enum BSPLoadResult loadMap(int index, struct ICollection *collection) {
 
 	map->loaded = 1;
 
-	if (index != 0 && map->model.landmarks_count != 0) {
-		for (int i = 0; i < index; ++i) {
-			const struct Map *map2 = g.maps + i;
-			if (map2->loaded == 1) {
-				for (int j = 0; j < map2->model.landmarks_count; ++j) {
-					const struct BSPLandmark *m2 = map2->model.landmarks + j;
-					for (int k = 0; k < map->model.landmarks_count; ++k) {
-						const struct BSPLandmark *m1 = map->model.landmarks + k;
-						if (strcmp(m1->name, m2->name) == 0) {
-							map->offset = aVec3fAdd(map2->offset, aVec3fSub(m2->origin, m1->origin));
-							PRINTF("Map %s offset %f, %f, %f", 
-								map->name, map->offset.x, map->offset.y, map->offset.z);
-							return BSPLoadResult_Success;
-						}
-					}
-				}
-			}
-		}
-	}
+	if (map != g.maps_begin && map->model.landmarks_count != 0) {
+		for (struct Map *map2 = g.maps_begin; map2; map2 = map2->next) {
+			if (map2->loaded != 1)
+				continue;
+
+			for (int j = 0; j < map2->model.landmarks_count; ++j) {
+				const struct BSPLandmark *m2 = map2->model.landmarks + j;
+				for (int k = 0; k < map->model.landmarks_count; ++k) {
+					const struct BSPLandmark *m1 = map->model.landmarks + k;
+					if (strcmp(m1->name, m2->name) == 0) {
+						map->offset = aVec3fAdd(map2->offset, aVec3fSub(m2->origin, m1->origin));
+						PRINTF("Map %s offset %f, %f, %f",
+							map->name, map->offset.x, map->offset.y, map->offset.z);
+						return BSPLoadResult_Success;
+					} // if landmarks match
+				} // for all landmarks of map 1
+			} // for all landmarks of map 2
+		} // for all maps (2)
+	} // if neet to position map
 
 	return BSPLoadResult_Success;
 }
 
-static void opensrcInit(struct ICollection *collection, const char *map) {
+static void opensrcInit(struct ICollection *collection, const char *map, int max_maps) {
 	cacheInit(&stack_persistent);
 
 	if (!renderInit()) {
@@ -180,18 +194,18 @@ static void opensrcInit(struct ICollection *collection, const char *map) {
 		aAppTerminate(-1);
 	}
 
-	g.maps_count = 1;
-	memset(g.maps, 0, sizeof(g.maps));
-	strncpy(g.maps[0].name, map, sizeof(g.maps[0].name)-1);
+	g.maps_limit = max_maps > 0 ? max_maps : 1;
+	g.maps_count = 0;
+	openSourceAddMap(map, strlen(map));
 
-	for (int i = 0; i < g.maps_count; ++i)
-		if (BSPLoadResult_Success != loadMap(i, collection) && i == 0)
+	for(struct Map *map = g.maps_begin; map; map = map->next)
+		if (BSPLoadResult_Success != loadMap(map, collection) && map == g.maps_begin)
 			aAppTerminate(-2);
 
 	PRINTF("Maps loaded: %d", g.maps_count);
 
-	g.center = aVec3fMulf(aVec3fAdd(g.maps[0].model.aabb.min, g.maps[0].model.aabb.max), .5f);
-	g.R = aVec3fLength(aVec3fSub(g.maps[0].model.aabb.max, g.maps[0].model.aabb.min)) * .5f;
+	g.center = aVec3fMulf(aVec3fAdd(g.maps_begin->model.aabb.min, g.maps_begin->model.aabb.max), .5f);
+	g.R = aVec3fLength(aVec3fSub(g.maps_begin->model.aabb.max, g.maps_begin->model.aabb.min)) * .5f;
 
 	aAppDebugPrintf("Center %f, %f, %f, R~=%f", g.center.x, g.center.y, g.center.z, g.R);
 
@@ -225,8 +239,7 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 
 	renderClear();
 
-	for (int i = 0; i < g.maps_count; ++i) {
-		struct Map *map = g.maps + i;
+	for (struct Map *map = g.maps_begin; map; map = map->next) {
 		if (!map->loaded)
 			continue;
 
@@ -293,6 +306,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 	//aGLInit();
 	struct ICollection *collection_chain = NULL;
 	const char *map = 0;
+	int max_maps = 1;
 
 	struct Memories mem = {
 		&stack_temp,
@@ -317,6 +331,14 @@ void attoAppInit(struct AAppProctable *proctable) {
 			const char *value = a_app_state->argv[++i];
 
 			collection_chain = addToCollectionChain(collection_chain, collectionCreateFilesystem(&mem, value));
+		} else if (strcmp(argv, "-n") == 0) {
+			if (i == a_app_state->argc - 1) {
+				aAppDebugPrintf("-p requires an argument");
+				goto print_usage_and_exit;
+			}
+			const char *value = a_app_state->argv[++i];
+
+			max_maps = atoi(value);
 		} else {
 			if (map) {
 				aAppDebugPrintf("Only one map can be specified");
@@ -331,7 +353,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 		goto print_usage_and_exit;
 	}
 
-	opensrcInit(collection_chain, map);
+	opensrcInit(collection_chain, map, max_maps);
 
 	proctable->resize = opensrcResize;
 	proctable->paint = opensrcPaint;
