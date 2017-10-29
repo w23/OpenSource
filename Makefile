@@ -78,7 +78,9 @@ SOURCES += \
 	src/texture.c \
 	src/cache.c \
 	src/dxt.c \
-	src/render.c
+	src/render.c \
+	src/profiler.c \
+
 OBJECTS = $(SOURCES:%=$(OBJDIR)/%.o)
 DEPS = $(OBJECTS:%=%.d)
 

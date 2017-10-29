@@ -3,13 +3,13 @@
 #include "bsp.h"
 #include "cache.h"
 #include "common.h"
+#include "profiler.h"
 #include "atto/app.h"
 
 #define RENDER_ERRORCHECK
 //#define ATTO_GL_TRACE
 
 #define ATTO_GL_PROFILE_FUNC profileEvent
-void profileEvent(const char *msg, ATimeUs delta);
 
 #ifndef ATTO_ASSERT
 #define ATTO_ASSERT(cond) \
