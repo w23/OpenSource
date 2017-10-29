@@ -235,23 +235,43 @@ static enum CollectionOpenResult vpkCollectionFileOpen(struct ICollection *colle
 		return CollectionOpen_NotEnoughMemory;
 	}
 
-	// TODO replace linear search by sorted array and binary search
-	for (int i = 0; i < vpkc->files_count; ++i) {
-		const struct VPKFileMetadata *meta = vpkc->files + i;
-		if (strcmp(meta->filename.s, filename) == 0) {
-			file->metadata = meta;
-			file->collection = vpkc;
-			file->head.size = meta->arc.size + meta->dir.size;
-			file->head.read = vpkCollectionFileRead;
-			file->head.close = vpkCollectionFileClose;
-			*out_file = &file->head;
-			stackFreeUpToPosition(vpkc->mem.temp, filename);
-			return CollectionOpen_Success;
+	// binary search
+	{
+		const struct VPKFileMetadata *begin = vpkc->files;
+		int count = vpkc->files_count;
+
+		while (count > 0) {
+			int item = count / 2;
+
+			const struct VPKFileMetadata *meta = begin + item;
+			const int comparison = strcmp(filename, meta->filename.s);
+			if (comparison == 0) {
+				file->metadata = meta;
+				file->collection = vpkc;
+				file->head.size = meta->arc.size + meta->dir.size;
+				file->head.read = vpkCollectionFileRead;
+				file->head.close = vpkCollectionFileClose;
+				*out_file = &file->head;
+				stackFreeUpToPosition(vpkc->mem.temp, filename);
+				return CollectionOpen_Success;
+			}
+
+			if (comparison < 0) {
+				count = item;
+			} else {
+				count = count - item - 1;
+				begin += item + 1;
+			}
 		}
 	}
 
 	stackFreeUpToPosition(vpkc->mem.temp, file);
 	return CollectionOpen_NotFound;
+}
+
+static int vpkMetadataCompare(const void *a, const void *b) {
+	const struct VPKFileMetadata *am = a, *bm = b;
+	return strcmp(am->filename.s, bm->filename.s);
 }
 
 struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dirfile) {
@@ -342,11 +362,13 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dirfil
 				memcpy(filename_temp + path.len + 1 + filename.len + 1, ext.s, ext.len);
 				filename_temp[filename_len-1] = '\0';
 
+				/*
 				PRINTF("%s crc=%08x pre=%d arc=%d(%04x) off=%d len=%d",
 					filename_temp,
 					entry->crc,
 					entry->preloadBytes, entry->archive, entry->archive,
 					entry->archiveOffset, entry->archiveLength);
+				*/
 
 				struct VPKFileMetadata *file = stackAlloc(mem->persistent, sizeof(struct VPKFileMetadata));
 				if (!file) {
@@ -379,7 +401,8 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dirfil
 		} // for paths
 	} // for extensions
 
-	// TODO sort
+	// sort
+	qsort(files_begin, files_end - files_begin, sizeof(*files_begin), vpkMetadataCompare);
 	
 	// store filenames in persistent memory
 	for (struct VPKFileMetadata *file = files_begin; file != files_end; ++file) {
