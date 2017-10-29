@@ -863,6 +863,7 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const c
 	}
 
 	void *tmp_cursor = stackGetCursor(context.tmp);
+	struct ICollection *pakfile = NULL;
 
 	struct VBSPHeader vbsp_header;
 	size_t bytes = file->read(file, 0, sizeof vbsp_header, &vbsp_header);
@@ -899,7 +900,14 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const c
 	LIST_LUMPS
 #undef BSPLUMP
 
-	result = bspLoadModel(context.collection, context.model, context.persistent, context.tmp, &lumps, 0);
+	if (lumps.pakfile.n > 0) {
+		struct Memories memories = { context.tmp, context.tmp };
+		pakfile = collectionCreatePakfile(&memories, lumps.pakfile.p, lumps.pakfile.n);
+		if (pakfile)
+			pakfile->next = context.collection;
+	}
+
+	result = bspLoadModel(pakfile ? pakfile : context.collection, context.model, context.persistent, context.tmp, &lumps, 0);
 	if (result != BSPLoadResult_Success) {
 		PRINTF("Error: bspLoadModel() => %s", R2S(result));
 		goto exit;
@@ -907,9 +915,12 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const c
 
 	result = bspReadEntities(&context, lumps.entities.p, lumps.entities.n);
 	if (result != BSPLoadResult_Success)
-		PRINTF("Errro: bspReadEntities() => %s", R2S(result));
+		PRINTF("Error: bspReadEntities() => %s", R2S(result));
 
 exit:
+	if (pakfile)
+		pakfile->close(pakfile);
+
 	stackFreeUpToPosition(context.tmp, tmp_cursor);
 	if (file) file->close(file);
 	return result;

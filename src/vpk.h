@@ -1,5 +1,4 @@
 #pragma once
-
 #include <stdint.h>
 
 #pragma pack(1)

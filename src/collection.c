@@ -1,6 +1,7 @@
 #include "collection.h"
 #include "common.h"
 #include "vpk.h"
+#include "zip.h"
 #include <alloca.h>
 
 enum CollectionOpenResult collectionChainOpen(struct ICollection *collection,
@@ -444,3 +445,222 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dirfil
 
 	return &collection->head;
 }
+
+struct PakfileFileMetadata {
+	struct StringView filename;
+	const void *data;
+	uint32_t size;
+};
+
+struct PakfileCollection {
+	struct ICollection head;
+	struct Memories mem;
+	struct PakfileFileMetadata *files;
+	int files_count;
+};
+
+struct PakfileCollectionFile {
+	struct IFile head;
+	const struct PakfileFileMetadata *metadata;
+	struct Stack *stack;
+};
+
+static void pakfileCollectionClose(struct ICollection *collection) {
+	struct PakfileCollection *pc = (void*)collection;
+	stackFreeUpToPosition(pc->mem.persistent, pc->files);
+}
+
+static size_t pakfileCollectionFileRead(struct IFile *file, size_t offset, size_t size, void *buffer) {
+	struct PakfileCollectionFile *f = (struct PakfileCollectionFile*)file;
+	const struct PakfileFileMetadata *meta = f->metadata;
+
+	if (offset > meta->size)
+		return 0;
+	if (offset + size > meta->size)
+		size = meta->size - offset;
+	memcpy(buffer, (const char*)meta->data + offset, size);
+	return size;
+}
+
+static void pakfileCollectionFileClose(struct IFile *file) {
+	struct PakfileCollectionFile *f = (void*)file;
+	stackFreeUpToPosition(f->stack, f);
+}
+
+static enum CollectionOpenResult pakfileCollectionFileOpen(struct ICollection *collection,
+		const char *name, enum FileType type, struct IFile **out_file) {
+	struct PakfileCollection *pakfilec = (struct PakfileCollection*)collection;
+
+	*out_file = NULL;
+
+	struct PakfileCollectionFile *file = stackAlloc(pakfilec->mem.temp, sizeof(*file));
+	char *filename = makeResourceFilename(pakfilec->mem.temp, NULL, name, type);
+
+	if (!file || !filename) {
+		PRINTF("Not enough memory for file %s", name);
+		return CollectionOpen_NotEnoughMemory;
+	}
+
+	// binary search
+	{
+		const struct PakfileFileMetadata *begin = pakfilec->files;
+		int count = pakfilec->files_count;
+
+		while (count > 0) {
+			int item = count / 2;
+
+			const struct PakfileFileMetadata *meta = begin + item;
+			const int comparison = strncmp(filename, meta->filename.s, meta->filename.len);
+			if (comparison == 0) {
+				file->metadata = meta;
+				file->stack = pakfilec->mem.temp;
+				file->head.size = meta->size;
+				file->head.read = pakfileCollectionFileRead;
+				file->head.close = pakfileCollectionFileClose;
+				*out_file = &file->head;
+				stackFreeUpToPosition(pakfilec->mem.temp, filename);
+				return CollectionOpen_Success;
+			}
+
+			if (comparison < 0) {
+				count = item;
+			} else {
+				count = count - item - 1;
+				begin += item + 1;
+			}
+		}
+	}
+
+	stackFreeUpToPosition(pakfilec->mem.temp, file);
+	return CollectionOpen_NotFound;
+}
+
+static int pakfileMetadataCompare(const void *a, const void *b) {
+	const struct PakfileFileMetadata *am = a, *bm = b;
+	return strncmp(am->filename.s, bm->filename.s,
+			am->filename.len < bm->filename.len ?
+			am->filename.len : bm->filename.len);
+}
+
+struct ICollection *collectionCreatePakfile(struct Memories *mem, const void *pakfile, uint32_t size) {
+
+	(void)mem;
+
+	// 1. need to find zip end of directory 
+	if (size < (int)sizeof(struct ZipEndOfDirectory)) {
+		PRINT("Invalid pakfile size");
+		return NULL;
+	}
+
+	int eod_offset = size - sizeof(struct ZipEndOfDirectory);
+	const struct ZipEndOfDirectory *eod;
+	for (;;) {
+		eod = (void*)((const char*)pakfile + eod_offset);
+		// TODO what if comment contain signature?
+		if (eod->signature == ZipEndOfDirectory_Signature)
+			break;
+
+		--eod_offset;
+	}
+
+	if (!eod) {
+		PRINT("End-of-directory not found");
+		return NULL;
+	}
+
+	if (eod->dir_offset > size || eod->dir_size > size || eod->dir_size + eod->dir_offset > size) {
+		PRINTF("Wrong pakfile directory sizes; size=%d, dir_offset=%d, dir_size=%d",
+				size, eod->dir_offset, eod->dir_size);
+		return NULL;
+	}
+
+	struct PakfileFileMetadata *metadata_start = stackGetCursor(mem->persistent);
+	int files_count = 0;
+
+	const char *dir = (const char*)pakfile + eod->dir_offset, *dir_end = dir + eod->dir_size;
+	for (;;) {
+		if (dir == dir_end)
+			break;
+
+		if (dir_end - dir < (long)sizeof(struct ZipFileHeader)) {
+			PRINT("Corrupted directory");
+			break;
+		}
+
+		const struct ZipFileHeader *fileheader = (void*)dir;
+		if (fileheader->signature != ZipFileHeader_Signature) {
+			PRINTF("Wrong file header signature: %08x", fileheader->signature);
+			break;
+		}
+
+		// TODO overflow
+		const char *next_dir = dir + sizeof(struct ZipFileHeader) + fileheader->filename_length + fileheader->extra_field_length + fileheader->file_comment_length;
+		if (dir > dir_end) {
+			PRINT("Corrupted directory");
+			break;
+		}
+
+		if (fileheader->compression != 0 || fileheader->uncompressed_size != fileheader->compressed_size) {
+			PRINTF("Compression method %d is not supported", fileheader->compression);
+		} else {
+			const char *filename = dir + sizeof(struct ZipFileHeader);
+
+			const char *local = (const char*)pakfile + fileheader->local_offset;
+			if (size - (local - (const char*)pakfile) < (long)sizeof(struct ZipLocalFileHeader)) {
+				PRINT("Local file header OOB");
+				break;
+			}
+
+			const struct ZipLocalFileHeader *localheader = (void*)local;
+			if (localheader->signature != ZipLocalFileHeader_Signature) {
+				PRINTF("Invalid local file header signature %08x", localheader->signature);
+				break;
+			}
+
+			// TODO overflow
+			local += sizeof(*localheader) + localheader->filename_length + localheader->extra_field_length;
+
+			if ((local - (const char*)pakfile) + fileheader->compressed_size > size) {
+				PRINT("File data OOB");
+				break;
+			}
+
+			struct PakfileFileMetadata *metadata = stackAlloc(mem->persistent, sizeof(*metadata));
+			if (!metadata) {
+				PRINT("Not enough memory");
+				exit(-1);
+			}
+
+			metadata->data = local;
+			metadata->size = fileheader->uncompressed_size;
+			metadata->filename.s = filename;
+			metadata->filename.len = fileheader->filename_length;
+			++files_count;
+
+			/*
+			PRINTF("FILE \""PRI_SV"\" size=%d offset=%d",
+				PASS_SV(metadata->filename), fileheader->uncompressed_size, fileheader->local_offset);
+			*/
+		}
+
+		dir = next_dir;
+	}
+
+	if (dir != dir_end) {
+		PRINT("Something went wrong");
+		exit(-1);
+	}
+
+	// sort
+	qsort(metadata_start, files_count, sizeof(*metadata_start), pakfileMetadataCompare);
+
+	struct PakfileCollection *collection = stackAlloc(mem->persistent, sizeof(*collection));
+	collection->mem = *mem;
+	collection->files = metadata_start;
+	collection->files_count = files_count;
+	collection->head.open = pakfileCollectionFileOpen;
+	collection->head.close = pakfileCollectionClose;
+
+	return &collection->head;
+}
+

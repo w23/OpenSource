@@ -40,4 +40,5 @@ enum CollectionOpenResult collectionChainOpen(struct ICollection *collection,
 
 struct ICollection *collectionCreateFilesystem(struct Memories *mem, const char *dir);
 struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_filename);
+struct ICollection *collectionCreatePakfile(struct Memories *mem, const void *pakfile, uint32_t size);
 

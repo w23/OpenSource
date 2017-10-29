@@ -122,6 +122,12 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 		} else if (strncasecmp("$fogcolor", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$alphatest", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$translucent", ctx.key, ctx.key_length) == 0) {
+		} else if (strncasecmp("include", ctx.key, ctx.key_length) == 0) {
+			char *vmt = strstr(ctx.value, ".vmt");
+			if (vmt)
+				*vmt = '\0';
+			if (strstr(ctx.value, "materials/") == ctx.value)
+				*output = *materialGet(ctx.value + 10, coll, tmp);
 		} else {
 			PRINTF("Material shader:%.*s, unknown param %.*s = %s",
 					shader_length, shader, ctx.key_length, ctx.key, ctx.value);
@@ -144,7 +150,7 @@ const struct Material *materialGet(const char *name, struct ICollection *collect
 
 	struct IFile *matfile;
 	if (CollectionOpen_Success != collectionChainOpen(collection, name, File_Material, &matfile)) {
-		//PRINTF("Material \"%s\" not found", name);
+		PRINTF("Material \"%s\" not found", name);
 		return cacheGetMaterial("opensource/placeholder");
 	}
 
