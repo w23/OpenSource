@@ -228,6 +228,27 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 
 const int c_max_draw_vertices = 65536;
 
+/*
+static float clamp(float x, float min, float max) {
+	return x < min ? min : (x > max ? max : x);
+}
+*/
+
+static int scaleLightmapColor(int c, int exp) {
+#if 0
+	c = 255.f * pow(c * powf(2.f, exp) / 255.f, 1.0f / 2.2f) * .5f;
+#elif 0
+	c = 255.f * sqrtf(c * powf(2.f, exp) / 255.f) * .5f;
+#elif 1
+	c = 255.f * sqrtf(c/255.f) * powf(2.f, exp/2.f - 1.f);
+#else
+	c = sqrtf(c / 255.f) * 255.f;
+	exp = exp / 2 - 1;
+	c = (exp >= 0) ? c << exp : c >> -exp;
+#endif
+	return c < 255 ? c : 255;
+}
+
 static enum BSPLoadResult bspLoadModelPreloadFaces(struct LoadModelContext *ctx) {
 	ctx->faces = stackGetCursor(ctx->tmp);
 
@@ -318,24 +339,10 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 			for (int x = 0; x < face->width; ++x) {
 				const struct VBSPLumpLightMap *const pixel = face->samples + x + y * face->width;
 
-				unsigned int
-					r = pixel->r,
-					g = pixel->g,
-					b = pixel->b;
-
-				if (pixel->exponent >= 0) {
-					r <<= pixel->exponent;
-					g <<= pixel->exponent;
-					b <<= pixel->exponent;
-				} else {
-					r >>= -pixel->exponent;
-					g >>= -pixel->exponent;
-					b >>= -pixel->exponent;
-				}
-
-				(r > 255) ? r = 255 : 0;
-				(g > 255) ? g = 255 : 0;
-				(b > 255) ? b = 255 : 0;
+				const unsigned int
+					r = scaleLightmapColor(pixel->r, pixel->exponent),
+					g = scaleLightmapColor(pixel->g, pixel->exponent),
+					b = scaleLightmapColor(pixel->b, pixel->exponent);
 
 				pixels[face->atlas_x + x + (face->atlas_y + y) * atlas_context.width]
 					= ((r&0xf8) << 8) | ((g&0xfc) << 3) | (b >> 3);
