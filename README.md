@@ -13,10 +13,10 @@ It supports:
 - DXT1 textures
 - Linux/X11 and Raspberry Pi (w/o X11)
 - reading VPK files
+- reading materials from pakfile lumps (to a degree)
 
 Issues:
 - displacement lightmap coordinates are sometimes off
-- no pakfile lump support (a lot of materials are missing)
 - no water shaders
 - no transparency
-- DXT5 textures are broken
+- some textures are broken
