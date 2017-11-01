@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/w23/OpenSource.png)](https://travis-ci.org/w23/OpenSource)
+
 OpenSource
 ==========
 A utility for loading and rendering many Source VBSP maps together as a single giant mesh. It can be used to see how big the game world is, just for amusement.
