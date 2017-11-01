@@ -88,7 +88,7 @@ DEPS = $(OBJECTS:%=%.d)
 -include $(DEPS)
 
 $(EXE): $(OBJECTS)
-	$(CC) $(LIBS) $^ -o $@
+	$(CC) $^ $(LIBS) -o $@
 
 clean:
 	rm -f $(OBJECTS) $(DEPS) $(EXE)
