@@ -23,3 +23,14 @@ If you wish, you could check out the *old* branch for the 5 years old version th
   - DXT1 textures
   - Reading VPK files
   - Reading materials from pakfile lumps
+
+## Streaming
+Development is done almost entirely live. I usually stream **every Thursday at 22:00 NOVT (15:00 GMT)**, but there are also some  occasional sudden and unplanned streams.
+
+Stream links:
+- [Twitch/w23_ru](https://twitch.tv/w23_ru)
+- [YouTube](https://www.youtube.com/c/IvanAvdeev/live)
+- [Goodgame.ru/w23](https://goodgame.ru/channel/w23/)
+- [Peka2](http://peka2.tv/w23)
+
+You can also check out [previous streams recordings](https://www.youtube.com/playlist?list=PLP0z1CQXyu5DjL_3-7lukQmKGYq2LhxKA) and [stuff planned for next streams](https://github.com/w23/OpenSource/projects/1).
