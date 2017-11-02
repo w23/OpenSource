@@ -11,3 +11,4 @@ project.xcworkspace
 *.bsp
 *.app
 build/
+tags
