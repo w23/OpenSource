@@ -846,7 +846,7 @@ static int lumpRead(const char *name, const struct VBSPLumpHeader *header,
 		struct AnyLump *out_ptr, uint32_t item_size) {
 	out_ptr->p = stackAlloc(tmp, header->size);
 	if (!out_ptr->p) {
-		PRINTF("Not enough temp memory to allocate storage for lump %s", name);
+		PRINTF("Not enough temp memory to allocate storage for lump %s; need: %d (%x)", name, header->size, header->size);
 		return -1;
 	}
 

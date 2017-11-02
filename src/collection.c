@@ -106,6 +106,8 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 	}
 
 	if (aFileOpen(&file->file, filename) != AFile_Success) {
+		if (type == File_Map)
+			PRINTF("Cannot open map %s", filename);
 		stackFreeUpToPosition(fsc->mem.temp, file);
 		return CollectionOpen_NotFound;
 		
@@ -165,7 +167,7 @@ struct VPKFileMetadata {
 	} dir, arc;
 };
 
-#define MAX_VPK_ARCHIVES 16
+#define MAX_VPK_ARCHIVES 32
 
 struct VPKCollection {
 	struct ICollection head;

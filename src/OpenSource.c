@@ -9,8 +9,8 @@
 #include "atto/app.h"
 #include "atto/math.h"
 
-static char persistent_data[32*1024*1024];
-static char temp_data[32*1024*1024];
+static char persistent_data[128*1024*1024];
+static char temp_data[128*1024*1024];
 
 static struct Stack stack_temp = {
 	.storage = temp_data,
@@ -322,6 +322,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			}
 			const char *value = a_app_state->argv[++i];
 
+			PRINTF("Adding vpk collection at %s", value);
 			collection_chain = addToCollectionChain(collection_chain, collectionCreateVPK(&mem, value));
 		} else if (strcmp(argv, "-d") == 0) {
 			if (i == a_app_state->argc - 1) {
@@ -330,6 +331,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			}
 			const char *value = a_app_state->argv[++i];
 
+			PRINTF("Adding dir collection at %s", value);
 			collection_chain = addToCollectionChain(collection_chain, collectionCreateFilesystem(&mem, value));
 		} else if (strcmp(argv, "-n") == 0) {
 			if (i == a_app_state->argc - 1) {
