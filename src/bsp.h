@@ -18,6 +18,7 @@ struct BSPModelVertex {
 struct BSPDraw {
 	const struct Material *material;
 	unsigned int start, count;
+	unsigned int vbo_offset;
 };
 
 /* TODO

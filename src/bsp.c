@@ -103,7 +103,6 @@ struct LoadModelContext {
 		int max_height;
 		RTexture texture;
 	} lightmap;
-	int draws_to_alloc;
 };
 
 /* TODO change this to Ok|Skip|Inconsistent,
@@ -263,12 +262,6 @@ static enum BSPLoadResult bspLoadModelPreloadFaces(struct LoadModelContext *ctx)
 		struct Face face;
 		const enum FacePreload result = bspFacePreloadMetadata(ctx, &face, ctx->model->first_face + i);
 		if (result == FacePreload_Ok) {
-			if (current_draw_vertices + face.vertices > c_max_draw_vertices) {
-				if (ctx->max_draw_vertices < current_draw_vertices)
-					ctx->max_draw_vertices = current_draw_vertices;
-				++ctx->draws_to_alloc;
-				current_draw_vertices = 0;
-			}
 			current_draw_vertices += face.vertices;
 
 			struct Face *stored_face = stackAlloc(ctx->tmp, sizeof(struct Face));
@@ -280,9 +273,8 @@ static enum BSPLoadResult bspLoadModelPreloadFaces(struct LoadModelContext *ctx)
 			continue;
 		}
 
-		if (result != FacePreload_Skip) {
+		if (result != FacePreload_Skip)
 			return BSPLoadResult_ErrorFileFormat;
-		}
 	}
 
 	if (!ctx->faces_count) {
@@ -292,7 +284,6 @@ static enum BSPLoadResult bspLoadModelPreloadFaces(struct LoadModelContext *ctx)
 
 	if (ctx->max_draw_vertices < current_draw_vertices)
 		ctx->max_draw_vertices = current_draw_vertices;
-	++ctx->draws_to_alloc;
 	return BSPLoadResult_Success;
 }
 
@@ -574,18 +565,23 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	int vertex_pos = 0;
 	int draw_indices_start = 0, indices_pos = 0;
 
-	/*model->draws_count = ctx->draws_to_alloc;*/
 	model->draws_count = ctx->faces_count;
 	model->draws = stackAlloc(persistent, sizeof(struct BSPDraw) * model->draws_count);
 
+	int vbo_offset = 0;
 	int idraw = 0;
 	for (int iface = 0; iface < ctx->faces_count/* + 1*/; ++iface) {
 		const struct Face *face = ctx->faces + iface;
 
+		if ((vertex_pos - vbo_offset) + face->vertices >= c_max_draw_vertices) {
+			PRINTF("vbo_offset %d -> %d", vbo_offset, vertex_pos);
+			vbo_offset = vertex_pos;
+		}
+
 		if (face->dispinfo) {
-			bspLoadDisplacement(ctx, face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos);
+			bspLoadDisplacement(ctx, face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos - vbo_offset);
 		} else {
-			bspLoadFace(ctx, face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos);
+			bspLoadFace(ctx, face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos - vbo_offset);
 		}
 
 		vertex_pos += face->vertices;
@@ -595,6 +591,7 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 		memset(draw, 0, sizeof *draw);
 		draw->count = indices_pos - draw_indices_start;
 		draw->start = draw_indices_start;
+		draw->vbo_offset = vbo_offset;
 
 		//PRINTF("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
 
@@ -615,25 +612,21 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	PRINTF("%d %d", idraw, model->draws_count);
 	ASSERT(idraw == model->draws_count);
 
-	if (1) {
-		renderModelOptimize(model);
+	renderModelOptimize(model);
 
-		uint16_t *tmp_indices = stackAlloc(ctx->tmp, sizeof(uint16_t) * ctx->indices);
-		if (!tmp_indices) {
-			return BSPLoadResult_ErrorTempMemory;
-		}
-		int tmp_indices_offset = 0;
-		for (int i = 0; i < model->draws_count; ++i) {
-			struct BSPDraw *d = model->draws + i;
-			memcpy(tmp_indices + tmp_indices_offset, indices_buffer + d->start, sizeof(uint16_t) * d->count);
-			d->start = tmp_indices_offset;
-			tmp_indices_offset += d->count;
-		}
-		ASSERT(tmp_indices_offset == ctx->indices);
-		renderBufferCreate(&model->ibo, RBufferType_Index, sizeof(uint16_t) * ctx->indices, tmp_indices);
-	} else {
-		renderBufferCreate(&model->ibo, RBufferType_Index, sizeof(uint16_t) * ctx->indices, indices_buffer);
+	uint16_t *tmp_indices = stackAlloc(ctx->tmp, sizeof(uint16_t) * ctx->indices);
+	if (!tmp_indices) {
+		return BSPLoadResult_ErrorTempMemory;
 	}
+	int tmp_indices_offset = 0;
+	for (int i = 0; i < model->draws_count; ++i) {
+		struct BSPDraw *d = model->draws + i;
+		memcpy(tmp_indices + tmp_indices_offset, indices_buffer + d->start, sizeof(uint16_t) * d->count);
+		d->start = tmp_indices_offset;
+		tmp_indices_offset += d->count;
+	}
+	ASSERT(tmp_indices_offset == ctx->indices);
+	renderBufferCreate(&model->ibo, RBufferType_Index, sizeof(uint16_t) * ctx->indices, tmp_indices);
 
 	renderBufferCreate(&model->vbo, RBufferType_Vertex, sizeof(struct BSPModelVertex) * vertex_pos, vertices_buffer);
 	return BSPLoadResult_Success;

@@ -261,13 +261,13 @@ static void renderLocateUniforms(RProgram prog, RUniform *uniforms) {
 	}
 }
 
-static void renderApplyAttribs(const RAttrib *attribs, const RBuffer *buffer) {
+static void renderApplyAttribs(const RAttrib *attribs, const RBuffer *buffer, unsigned int vbo_offset) {
 	for(int i = 0; attribs[i].name; ++i) {
 		const RAttrib *a = attribs + i;
 		if (a->location < 0) continue;
 		GL_CALL(glEnableVertexAttribArray(a->location));
 		GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, buffer->gl_name));
-		GL_CALL(glVertexAttribPointer(a->location, a->components, a->type, GL_FALSE, a->stride, a->ptr));
+		GL_CALL(glVertexAttribPointer(a->location, a->components, a->type, GL_FALSE, a->stride, (const char*)a->ptr + vbo_offset * sizeof(struct BSPModelVertex)));
 	}
 }
 
@@ -304,9 +304,13 @@ int renderInit() {
 static int drawCompare(const void *left, const void *right) {
 	const struct BSPDraw *l = left, *r = right;
 	const ptrdiff_t diff = l->material - r->material;
-	if (diff == 0) {
+
+	if (l->vbo_offset != r->vbo_offset)
+		return (int)l->vbo_offset - (int)r->vbo_offset;
+
+	if (diff == 0)
 		return l->material->base_texture[0] - r->material->base_texture[0];
-	}
+
 	return diff;
 }
 
@@ -320,8 +324,6 @@ void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel 
 	GL_CALL(glUseProgram(r.lmgen_program));
 	GL_CALL(glActiveTexture(GL_TEXTURE0));
 	GL_CALL(glBindTexture(GL_TEXTURE_2D, model->lightmap.gl_name));
-
-	renderApplyAttribs(lmgen_attribs, &model->vbo);
 
 	GL_CALL(glUniformMatrix4fv(lmgen_uniforms[0].location, 1, GL_FALSE, &mvp->X.x));
 	GL_CALL(glUniform1f(lmgen_uniforms[1].location, lmn));
@@ -344,10 +346,15 @@ void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel 
 		}
 	}
 
+	renderApplyAttribs(lmgen_attribs, &model->vbo, model->draws->vbo_offset);
+
 	for (int i = 1; i < model->draws_count; ++i) {
 		const struct BSPDraw *d = model->draws + i;
 
 		if (drawCompare(d - 1, d) != 0) {
+			if (-1[d].vbo_offset != d->vbo_offset)
+				renderApplyAttribs(lmgen_attribs, &model->vbo, d->vbo_offset);
+
 			GL_CALL(glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * start)));
 			//PRINTF("DRAW start=%d, count=%d", start, count);
 
