@@ -56,7 +56,12 @@ struct Lumps {
 	BSPLUMP(PakFile, uint8_t, pakfile); \
 	\
 	BSPLUMP(TexDataStringData, char, texdatastringdata); \
-	BSPLUMP(TexDataStringTable, int32_t, texdatastringtable);
+	BSPLUMP(TexDataStringTable, int32_t, texdatastringtable); \
+	\
+	BSPLUMP(FaceHDR, struct VBSPLumpFace, faces_hdr); \
+	\
+	BSPLUMP(LightMapHDR, struct VBSPLumpLightMap, lightmaps_hdr); \
+
 
 #define BSPLUMP(name,type,field) struct{const type *p;uint32_t n;} field
 	LIST_LUMPS
@@ -908,6 +913,11 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const c
 	}
 	LIST_LUMPS
 #undef BSPLUMP
+
+	if (lumps.lightmaps.n == 0) {
+		memcpy(&lumps.lightmaps, &lumps.lightmaps_hdr, sizeof(lumps.lightmaps));
+		memcpy(&lumps.faces, &lumps.faces_hdr, sizeof(lumps.faces));
+	}
 
 	if (lumps.pakfile.n > 0) {
 		struct Memories memories = { context.tmp, context.tmp };

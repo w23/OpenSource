@@ -33,6 +33,8 @@ enum {
 
 	VBSP_Lump_LightMapHDR = 53,
 
+	VBSP_Lump_FaceHDR = 58,
+
 	VBSP_Lump_COUNT = 64
 };
 

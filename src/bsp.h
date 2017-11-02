@@ -32,8 +32,8 @@ struct BSPNode {
 };
 */
 
-#define BSP_LANDMARK_NAME_LENGTH 32
-#define BSP_MAX_LANDMARKS 8
+#define BSP_LANDMARK_NAME_LENGTH 64
+#define BSP_MAX_LANDMARKS 32
 
 struct BSPLandmark {
 	char name[BSP_LANDMARK_NAME_LENGTH];
