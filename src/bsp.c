@@ -244,7 +244,7 @@ static int scaleLightmapColor(int c, int exp) {
 #elif 0
 	c = 255.f * sqrtf(c * powf(2.f, exp) / 255.f) * .5f;
 #elif 1
-	c = 255.f * sqrtf(c/255.f) * powf(2.f, exp/2.f - 1.f);
+	c = (int)(255.f * sqrtf(c / 255.f) * powf(2.f, exp / 2.f - 1.f));
 #else
 	c = sqrtf(c / 255.f) * 255.f;
 	exp = exp / 2 - 1;
@@ -439,8 +439,8 @@ static void bspLoadDisplacement(
 	if (length_lm_u < 0. || length_lm_u >= face->width
 		|| length_lm_v < 0. || length_lm_v >= face->height) {
 		PRINTF("LM OOB: (%f, %f) (%d, %d)", length_lm_u, length_lm_v, face->width, face->height);
-		if (length_lm_u >= face->width) length_lm_u = face->width - 1;
-		if (length_lm_v >= face->height) length_lm_v = face->height - 1;
+		if (length_lm_u >= face->width) length_lm_u = (float)(face->width - 1);
+		if (length_lm_v >= face->height) length_lm_v = (float)(face->height - 1);
 	}
 
 	/*

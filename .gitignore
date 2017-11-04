@@ -12,3 +12,7 @@ project.xcworkspace
 *.app
 build/
 tags
+.vs
+*.opendb
+*.db
+*.user

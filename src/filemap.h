@@ -1,13 +1,16 @@
-#ifndef FILEMAP_H__INCLUDED
-#define FILEMAP_H__INCLUDED
+#pragma once
 
-#include <stddef.h> /* size_t */
+#include "libc.h"
 
 struct AFileMap {
 	const void *map;
 	size_t size;
 	struct {
+#ifndef _WIN32
 		int fd;
+#else
+		HANDLE handle;
+#endif
 	} impl_;
 };
 
@@ -17,7 +20,11 @@ void aFileMapClose(struct AFileMap *file);
 struct AFile {
 	size_t size;
 	struct {
+#ifndef _WIN32
 		int fd;
+#else
+		HANDLE handle;
+#endif
 	} impl_;
 };
 
@@ -31,8 +38,5 @@ enum AFileResult {
 /* reset file to default state, useful for initialization */
 void aFileReset(struct AFile *file);
 enum AFileResult aFileOpen(struct AFile *file, const char *filename);
-size_t aFileRead(struct AFile *file, size_t size, void *buffer);
 size_t aFileReadAtOffset(struct AFile *file, size_t off, size_t size, void *buffer);
 void aFileClose(struct AFile *file);
-
-#endif /* ifndef FILEMAP_H__INCLUDED */

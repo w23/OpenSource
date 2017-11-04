@@ -2,7 +2,12 @@
 #include "common.h"
 #include "vpk.h"
 #include "zip.h"
+
+#ifndef _WIN32
 #include <alloca.h>
+#else
+#define alloca _alloca
+#endif
 
 enum CollectionOpenResult collectionChainOpen(struct ICollection *collection,
 		const char *name, enum FileType type, struct IFile **out_file) {

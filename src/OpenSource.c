@@ -43,10 +43,10 @@ static void simplecamRecalc(struct SimpleCamera *cam) {
 		aMat4f3(axes_inv, aVec3fMulMat(axes_inv, aVec3fNeg(cam->pos))));
 }
 
-static void simplecamProjection(struct SimpleCamera *cam, float near, float far, float horizfov, float aspect) {
-	const float w = 2.f * near * tanf(horizfov / 2.f), h = w / aspect;
+static void simplecamProjection(struct SimpleCamera *cam, float znear, float zfar, float horizfov, float aspect) {
+	const float w = 2.f * znear * tanf(horizfov / 2.f), h = w / aspect;
 	//aAppDebugPrintf("%f %f %f %f -> %f %f", near, far, horizfov, aspect, w, h);
-	cam->projection = aMat4fPerspective(near, far, w, h);
+	cam->projection = aMat4fPerspective(znear, zfar, w, h);
 }
 
 static void simplecamLookAt(struct SimpleCamera *cam, struct AVec3f pos, struct AVec3f at, struct AVec3f up) {
@@ -211,7 +211,7 @@ static void opensrcInit(struct ICollection *collection, const char *map, int max
 
 	const float t = 0;
 	simplecamLookAt(&g.camera,
-			aVec3fAdd(g.center, aVec3fMulf(aVec3f(cosf(t*.5), sinf(t*.5), .25f), g.R*.5f)),
+			aVec3fAdd(g.center, aVec3fMulf(aVec3f(cosf(t*.5f), sinf(t*.5f), .25f), g.R*.5f)),
 			g.center, aVec3f(0.f, 0.f, 1.f));
 }
 
@@ -226,16 +226,9 @@ static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int ol
 static void opensrcPaint(ATimeUs timestamp, float dt) {
 	(void)(timestamp); (void)(dt);
 
-	if (0) {
-		const float t = timestamp * 1e-6f;
-		simplecamLookAt(&g.camera,
-				aVec3fAdd(g.center, aVec3fMulf(aVec3f(cosf(t*.5), sinf(t*.5), .25f), g.R*.5f)),
-				g.center, aVec3f(0.f, 0.f, 1.f));
-	} else {
-		float move = dt * (g.run?3000.f:300.f);
-		simplecamMove(&g.camera, aVec3f(g.right * move, 0.f, -g.forward * move));
-		simplecamRecalc(&g.camera);
-	}
+	float move = dt * (g.run?3000.f:300.f);
+	simplecamMove(&g.camera, aVec3f(g.right * move, 0.f, -g.forward * move));
+	simplecamRecalc(&g.camera);
 
 	renderClear();
 
@@ -257,6 +250,13 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 	}
 }
 
+#ifdef _WIN32
+/* FIXME need proper support from atto */
+static void aAppGrabInput(int grab) {
+	(void)grab;
+}
+#endif
+
 static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 	(void)(timestamp); (void)(key); (void)(pressed);
 	//printf("KEY %u %d %d\n", timestamp, key, pressed);
@@ -273,7 +273,7 @@ static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 	case AK_A: g.right += pressed?-1:1; break;
 	case AK_D: g.right += pressed?1:-1; break;
 	case AK_LeftShift: g.run = pressed; break;
-	case AK_E: g.lmn = pressed; break;
+	case AK_E: g.lmn = (float)pressed; break;
 	default: break;
 	}
 }

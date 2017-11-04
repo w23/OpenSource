@@ -21,12 +21,7 @@
 #endif /* ifdef ATTO_PLATFORM_RPI */
 
 #ifdef ATTO_PLATFORM_WINDOWS
-#ifndef ATTO_WINDOWS_H_INCLUDED
-#define WIN32_LEAN_AND_MEAN 1
-#define NOMINMAX
-#include <windows.h>
-#define ATTO_WINDOWS_H_INCLUDED
-#endif /* ifndef ATTO_WINDOWS_H_INCLUDED */
+#include "libc.h"
 #include <GL/gl.h>
 #include <glext.h>
 #define ATTO_GL_DESKTOP

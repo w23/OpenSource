@@ -7,29 +7,29 @@
 #include "atto/app.h"
 
 #define RENDER_ERRORCHECK
-//#define ATTO_GL_TRACE
+//#define RENDER_GL_TRACE
 
-#define ATTO_GL_PROFILE_FUNC profileEvent
+#define RENDER_GL_PROFILE_FUNC profileEvent
 
-#ifndef ATTO_ASSERT
-#define ATTO_ASSERT(cond) \
+#ifndef RENDER_ASSERT
+#define RENDER_ASSERT(cond) \
 	if (!(cond)) { \
 		aAppDebugPrintf("ERROR @ %s:%d: (%s) failed", __FILE__, __LINE__, #cond); \
 		aAppTerminate(-1); \
 	}
-#endif /* ifndef ATTO_ASSERT */
+#endif /* ifndef RENDER_ASSERT */
 
-#ifdef ATTO_GL_PROFILE_FUNC
-#define ATTO_GL_PROFILE_PREAMBLE const ATimeUs profile_time_start__ = aAppTime();
-#define ATTO_GL_PROFILE_START const ATimeUs agl_profile_start_ = aAppTime();
-#define ATTO_GL_PROFILE_END ATTO_GL_PROFILE_FUNC(__FUNCTION__, aAppTime() - agl_profile_start_);
-#define ATTO_GL_PROFILE_END_NAME(name) ATTO_GL_PROFILE_FUNC(name, aAppTime() - agl_profile_start_);
+#ifdef RENDER_GL_PROFILE_FUNC
+#define RENDER_GL_PROFILE_PREAMBLE const ATimeUs profile_time_start__ = aAppTime();
+#define RENDER_GL_PROFILE_START const ATimeUs agl_profile_start_ = aAppTime();
+#define RENDER_GL_PROFILE_END RENDER_GL_PROFILE_FUNC(__FUNCTION__, aAppTime() - agl_profile_start_);
+#define RENDER_GL_PROFILE_END_NAME(name) RENDER_GL_PROFILE_FUNC(name, aAppTime() - agl_profile_start_);
 #else
-#define ATTO_GL_PROFILE_PREAMBLE
-#define ATTO_GL_PROFILE_FUNC(...)
+#define RENDER_GL_PROFILE_PREAMBLE
+#define RENDER_GL_PROFILE_FUNC(...)
 #endif
 
-#if 0 //ndef ATTO_GL_DEBUG
+#if 0 //ndef RENDER_GL_DEBUG
 #define GL_CALL(f) (f)
 #else
 #if 0
@@ -56,27 +56,61 @@ static void a__GlPrintError(const char *message, int error) {
 #define RENDER_GL_GETERROR(f) \
 		const int glerror = glGetError(); \
 		if (glerror != GL_NO_ERROR) { \
-			a__GlPrintError(__FILE__ ":" ATTO__GL_STR(__LINE__) ": " #f " returned ", glerror); \
+			a__GlPrintError(__FILE__ ":" RENDER__GL_STR(__LINE__) ": " #f " returned ", glerror); \
 			abort(); \
 		}
 #else
 #define RENDER_GL_GETERROR(f)
 #endif
-#define ATTO__GL_STR__(s) #s
-#define ATTO__GL_STR(s) ATTO__GL_STR__(s)
-#ifdef ATTO_GL_TRACE
-#define ATTO_GL_TRACE_PRINT PRINTF
+#define RENDER__GL_STR__(s) #s
+#define RENDER__GL_STR(s) RENDER__GL_STR__(s)
+#ifdef RENDER_GL_TRACE
+#define RENDER_GL_TRACE_PRINT PRINTF
 #else
-#define ATTO_GL_TRACE_PRINT(...)
+#define RENDER_GL_TRACE_PRINT(...)
 #endif
 #define GL_CALL(f) do{\
-		ATTO_GL_TRACE_PRINT("%s", #f); \
-		ATTO_GL_PROFILE_PREAMBLE \
+		RENDER_GL_TRACE_PRINT("%s", #f); \
+		RENDER_GL_PROFILE_PREAMBLE \
 		f; \
-		ATTO_GL_PROFILE_FUNC(#f, aAppTime() - profile_time_start__); \
+		RENDER_GL_PROFILE_FUNC(#f, aAppTime() - profile_time_start__); \
 		RENDER_GL_GETERROR(f) \
 	} while(0)
-#endif /* ATTO_GL_DEBUG */
+#endif /* RENDER_GL_DEBUG */
+
+#ifdef _WIN32
+#define WGL__FUNCLIST \
+	WGL__FUNCLIST_DO(PFNGLGENBUFFERSPROC, GenBuffers) \
+	WGL__FUNCLIST_DO(PFNGLBINDBUFFERPROC, BindBuffer) \
+	WGL__FUNCLIST_DO(PFNGLBUFFERDATAPROC, BufferData) \
+	WGL__FUNCLIST_DO(PFNGLGETATTRIBLOCATIONPROC, GetAttribLocation) \
+	WGL__FUNCLIST_DO(PFNGLACTIVETEXTUREPROC, ActiveTexture) \
+	WGL__FUNCLIST_DO(PFNGLCREATESHADERPROC, CreateShader) \
+	WGL__FUNCLIST_DO(PFNGLSHADERSOURCEPROC, ShaderSource) \
+	WGL__FUNCLIST_DO(PFNGLCOMPILESHADERPROC, CompileShader) \
+	WGL__FUNCLIST_DO(PFNGLATTACHSHADERPROC, AttachShader) \
+	WGL__FUNCLIST_DO(PFNGLDELETESHADERPROC, DeleteShader) \
+	WGL__FUNCLIST_DO(PFNGLGETSHADERIVPROC, GetShaderiv) \
+	WGL__FUNCLIST_DO(PFNGLGETSHADERINFOLOGPROC, GetShaderInfoLog) \
+	WGL__FUNCLIST_DO(PFNGLCREATEPROGRAMPROC, CreateProgram) \
+	WGL__FUNCLIST_DO(PFNGLLINKPROGRAMPROC, LinkProgram) \
+	WGL__FUNCLIST_DO(PFNGLGETPROGRAMINFOLOGPROC, GetProgramInfoLog) \
+	WGL__FUNCLIST_DO(PFNGLDELETEPROGRAMPROC, DeleteProgram) \
+	WGL__FUNCLIST_DO(PFNGLGETPROGRAMIVPROC, GetProgramiv) \
+	WGL__FUNCLIST_DO(PFNGLUSEPROGRAMPROC, UseProgram) \
+	WGL__FUNCLIST_DO(PFNGLGETUNIFORMLOCATIONPROC, GetUniformLocation) \
+	WGL__FUNCLIST_DO(PFNGLUNIFORM1FPROC, Uniform1f) \
+	WGL__FUNCLIST_DO(PFNGLUNIFORM2FPROC, Uniform2f) \
+	WGL__FUNCLIST_DO(PFNGLUNIFORM1IPROC, Uniform1i) \
+	WGL__FUNCLIST_DO(PFNGLUNIFORMMATRIX4FVPROC, UniformMatrix4fv) \
+	WGL__FUNCLIST_DO(PFNGLENABLEVERTEXATTRIBARRAYPROC, EnableVertexAttribArray) \
+	WGL__FUNCLIST_DO(PFNGLVERTEXATTRIBPOINTERPROC, VertexAttribPointer) \
+	WGL__FUNCLIST_DO(PFNGLGENERATEMIPMAPPROC, GenerateMipmap) \
+
+#define WGL__FUNCLIST_DO(T,N) T gl##N = 0;
+WGL__FUNCLIST
+#undef WGL__FUNCLIST_DO
+#endif /* ifdef _WIN32 */
 
 typedef GLint RProgram;
 
@@ -272,6 +306,15 @@ static void renderApplyAttribs(const RAttrib *attribs, const RBuffer *buffer, un
 }
 
 int renderInit() {
+#ifdef _WIN32
+#define WGL__FUNCLIST_DO(T, N) \
+	gl##N = (T)wglGetProcAddress("gl" #N); \
+	ASSERT(gl##N);
+
+	WGL__FUNCLIST
+#undef WGL__FUNCLIST_DO
+#endif
+
 	r.lmgen_program = render_ProgramCreate(lmgen_common_src, lmgen_vertex_src, lmgen_fragment_src);
 	if (r.lmgen_program <= 0) {
 		PRINT("Cannot create program for lightmapped generic material");
@@ -341,7 +384,7 @@ void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel 
 		const RTexture *t = &m->base_texture[0]->texture;
 		if (t != r.current_tex0) {
 			GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
-			GL_CALL(glUniform2f(lmgen_uniforms[4].location, t->width, t->height));
+			GL_CALL(glUniform2f(lmgen_uniforms[4].location, (float)t->width, (float)t->height));
 			r.current_tex0 = t;
 		}
 	}
@@ -363,7 +406,7 @@ void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel 
 				const RTexture *t = &m->base_texture[0]->texture;
 				if (t != r.current_tex0) {
 					GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
-					GL_CALL(glUniform2f(lmgen_uniforms[4].location, t->width, t->height));
+					GL_CALL(glUniform2f(lmgen_uniforms[4].location, (float)t->width, (float)t->height));
 					r.current_tex0 = t;
 				}
 			}
@@ -384,6 +427,6 @@ void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel 
 }
 
 void renderClear() {
-	glClearColor(.5,.4,.2,0);
+	glClearColor(.5f,.4f,.2f,0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
