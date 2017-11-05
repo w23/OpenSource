@@ -76,7 +76,6 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 		case VTFImage_DXT3:
 		case VTFImage_DXT5:
 			pixel_bits = 4;
-			break;
 		case VTFImage_DXT1:
 		case VTFImage_DXT1_A1:
 			pixel_bits += 4;
@@ -157,6 +156,13 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 		PRINT("Invalid file signature");
 		return 0;
 	}
+
+	/*
+	if (!(hdr.version[0] > 7 || hdr.version[1] > 2)) {
+		PRINTF("VTF version %d.%d is not supported", hdr.version[0], hdr.version[1]);
+		return 0;
+	}
+	*/
 
 	//PRINTF("Texture: %dx%d, %s",
 	//	hdr.width, hdr.height, vtfFormatStr(hdr.hires_format));
