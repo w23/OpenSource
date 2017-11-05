@@ -2,21 +2,6 @@
 
 #include "libc.h"
 
-struct AFileMap {
-	const void *map;
-	size_t size;
-	struct {
-#ifndef _WIN32
-		int fd;
-#else
-		HANDLE handle;
-#endif
-	} impl_;
-};
-
-struct AFileMap aFileMapOpen(const char *filename);
-void aFileMapClose(struct AFileMap *file);
-
 struct AFile {
 	size_t size;
 	struct {

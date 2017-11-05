@@ -177,7 +177,10 @@ struct VPKFileMetadata {
 struct VPKCollection {
 	struct ICollection head;
 	struct Memories mem;
-	struct AFileMap directory;
+	struct {
+		const char *data;
+		int size;
+	} dir;
 	struct AFile archives[MAX_VPK_ARCHIVES];
 	struct VPKFileMetadata *files;
 	int files_count;
@@ -200,7 +203,7 @@ static size_t vpkCollectionFileRead(struct IFile *file, size_t offset, size_t si
 
 	size_t size_read = 0;
 	if (offset < meta->dir.size) {
-		const void *begin = ((char*)f->collection->directory.map) + offset + meta->dir.off;
+		const void *begin = ((char*)f->collection->dir.data) + offset + meta->dir.off;
 		const size_t dir_size_left = meta->dir.size - offset;
 		if (size < dir_size_left) {
 			memcpy(buffer, begin, size);
@@ -282,8 +285,8 @@ static int vpkMetadataCompare(const void *a, const void *b) {
 	return strcmp(am->filename.s, bm->filename.s);
 }
 
-struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dirfile) {
-	PRINTF("Opening collection %s", dirfile);
+struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_filename) {
+	PRINTF("Opening collection %s", dir_filename);
 	struct VPKCollection *collection = stackAlloc(mem->persistent, sizeof(*collection));
 
 	if (!collection)
@@ -294,21 +297,39 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dirfil
 
 	void *const temp_stack_top = stackGetCursor(mem->temp);
 
-	collection->directory = aFileMapOpen(dirfile);
-	if (!collection->directory.map) {
-		PRINTF("Cannot open %s", dirfile);
-		exit(-1);
+	{
+		struct AFile dir_file;
+		if (AFile_Success != aFileOpen(&dir_file, dir_filename)) {
+			PRINTF("Cannot open %s", dir_filename);
+			exit(-1);
+		}
+
+		char *data = stackAlloc(mem->persistent, dir_file.size);
+		if (!data) {
+			PRINTF("Cannot allocate %zd bytes of persistent memory", dir_file.size);
+			exit(-1);
+		}
+
+		if (aFileReadAtOffset(&dir_file, 0, dir_file.size, data) != dir_file.size) {
+			PRINTF("Cannot read entire directory of %zd bytes", dir_file.size);
+			exit(-1);
+		}
+
+		collection->dir.data = data;
+		collection->dir.size = dir_file.size;
+
+		aFileClose(&dir_file);
 	}
 
-	const char *dir = collection->directory.map;
-	const size_t size = collection->directory.size;
+	const char *dir = collection->dir.data;
+	const size_t size = collection->dir.size;
 
 	if (size <= sizeof(struct VPK2Header)) {
 		PRINT("VPK header is too small");
 		exit(-1);
 	}
 
-	const struct VPK2Header *header = collection->directory.map;
+	const struct VPK2Header *header = (void*)collection->dir.data;
 
 	if (header->signature != VPK_SIGNATURE) {
 		PRINTF("Wrong VPK signature %08x", header->signature);
@@ -430,13 +451,13 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dirfil
 		exit(-1);
 	}
 
-	const int dirfile_len = strlen(dirfile) + 1;
+	const int dirfile_len = strlen(dir_filename) + 1;
 	char *arcname = alloca(dirfile_len);
 	if (!arcname || dirfile_len < 8) {
 		PRINT("WTF");
 		exit(-1);
 	}
-	memcpy(arcname, dirfile, dirfile_len);
+	memcpy(arcname, dir_filename, dirfile_len);
 	for (int i = 0; i <= max_archives; ++i) {
 		sprintf(arcname + dirfile_len - 8, "%03d.vpk", i);
 		if (AFile_Success != aFileOpen(collection->archives+i, arcname)) {
