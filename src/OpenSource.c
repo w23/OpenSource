@@ -250,13 +250,6 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 	}
 }
 
-#ifdef _WIN32
-/* FIXME need proper support from atto */
-static void aAppGrabInput(int grab) {
-	(void)grab;
-}
-#endif
-
 static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 	(void)(timestamp); (void)(key); (void)(pressed);
 	//printf("KEY %u %d %d\n", timestamp, key, pressed);
