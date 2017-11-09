@@ -75,7 +75,7 @@ int profilerFrame(struct Stack *stack_temp) {
 	++profiler.counted_frame;
 	++profiler.frame;
 
-	if (start - profiler.last_print_time > 60000000) {
+	if (start - profiler.last_print_time > 1000000) {
 		PRINT("=================================================");
 		const ATimeUs dt = profiler.frame_deltas / profiler.counted_frame;
 		PRINTF("avg frame = %dus (fps = %f)", dt, 1000000. / dt);

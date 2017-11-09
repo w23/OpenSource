@@ -145,7 +145,7 @@ static enum BSPLoadResult loadMap(struct Map *map, struct ICollection *collectio
 		return result;
 	}
 
-	aAppDebugPrintf("Loaded %s to %u draw calls", map->name, map->model.draws_count);
+	aAppDebugPrintf("Loaded %s to %u draw calls", map->name, map->model.detailed.draws_count);
 	aAppDebugPrintf("AABB (%f, %f, %f) - (%f, %f, %f)",
 			map->model.aabb.min.x,
 			map->model.aabb.min.y,
@@ -232,21 +232,21 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 
 	renderClear();
 
+	int triangles = 0;
 	for (struct Map *map = g.maps_begin; map; map = map->next) {
 		if (!map->loaded)
 			continue;
 
 		const struct AMat4f mvp = aMat4fMul(g.camera.view_projection, aMat4fTranslation(map->offset));
 
-		renderModelDraw(&mvp, g.lmn, &map->model);
+		renderModelDraw(&mvp, aVec3fSub(g.camera.pos, map->offset), g.lmn, &map->model);
 
-		if (profilerFrame(&stack_temp)) {
-			int triangles = 0;
-			for (int i = 0; i < map->model.draws_count; ++i) {
-				triangles += map->model.draws[i].count / 3;
-			}
-			PRINTF("Total triangles: %d", triangles);
-		}
+		for (int i = 0; i < map->model.detailed.draws_count; ++i)
+			triangles += map->model.detailed.draws[i].count / 3;
+	}
+
+	if (profilerFrame(&stack_temp)) {
+		PRINTF("Total triangles: %d", triangles);
 	}
 }
 

@@ -41,12 +41,18 @@ struct BSPLandmark {
 	struct AVec3f origin;
 };
 
+struct BSPDrawSet {
+	int draws_count;
+	struct BSPDraw *draws;
+};
+
 struct BSPModel {
 	struct AABB aabb;
 	RTexture lightmap;
 	RBuffer vbo, ibo;
-	int draws_count;
-	struct BSPDraw *draws;
+
+	struct BSPDrawSet detailed;
+	struct BSPDrawSet coarse;
 
 	struct BSPLandmark landmarks[BSP_MAX_LANDMARKS];
 	int landmarks_count;

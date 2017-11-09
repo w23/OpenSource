@@ -344,25 +344,38 @@ int renderInit() {
 	return 1;
 }
 
-static int drawCompare(const void *left, const void *right) {
-	const struct BSPDraw *l = left, *r = right;
-	const ptrdiff_t diff = l->material - r->material;
+static void renderDraw(const struct BSPDraw *draw) {
+	const struct Material *m = draw->material;
+	if (m->base_texture[0]) {
+		const RTexture *t = &m->base_texture[0]->texture;
+		if (t != r.current_tex0) {
+			GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
+			GL_CALL(glUniform2f(lmgen_uniforms[4].location, (float)t->width, (float)t->height));
+			r.current_tex0 = t;
+		}
+	}
 
-	if (l->vbo_offset != r->vbo_offset)
-		return (int)l->vbo_offset - (int)r->vbo_offset;
-
-	if (diff == 0)
-		return l->material->base_texture[0] - r->material->base_texture[0];
-
-	return diff;
+	GL_CALL(glDrawElements(GL_TRIANGLES, draw->count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * draw->start)));
 }
 
-void renderModelOptimize(struct BSPModel *model) {
-	qsort(model->draws, model->draws_count, sizeof(struct BSPDraw), drawCompare);
+static void renderDrawSet(const struct BSPModel *model, const struct BSPDrawSet *drawset) {
+	unsigned int vbo_offset = 0;
+	for (int i = 0; i < drawset->draws_count; ++i) {
+		const struct BSPDraw *draw = drawset->draws + i;
+		if (i == 0 || draw->vbo_offset != vbo_offset) {
+			vbo_offset = draw->vbo_offset;
+			renderApplyAttribs(lmgen_attribs, &model->vbo, draw->vbo_offset);
+		}
+		renderDraw(draw);
+	}
 }
 
-void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel *model) {
-	if (!model->draws_count) return;
+static float aMaxf(float a, float b) { return a > b ? a : b; }
+//static float aMinf(float a, float b) { return a < b ? a : b; }
+
+void renderModelDraw(const struct AMat4f *mvp, struct AVec3f camera_position, float lmn, const struct BSPModel *model) {
+	if (!model->detailed.draws_count) return;
+
 	GL_CALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model->ibo.gl_name));
 	GL_CALL(glUseProgram(r.lmgen_program));
 	GL_CALL(glActiveTexture(GL_TEXTURE0));
@@ -376,54 +389,21 @@ void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel 
 
 	GL_CALL(glActiveTexture(GL_TEXTURE0 + 1));
 
-	int start = model->draws[0].start;
-	int count = model->draws[0].count;
+	const float distance =
+		aMaxf(aMaxf(
+			aMaxf(camera_position.x - model->aabb.max.x, model->aabb.min.x - camera_position.x),
+			aMaxf(camera_position.y - model->aabb.max.y, model->aabb.min.y - camera_position.y)),
+			aMaxf(camera_position.z - model->aabb.max.z, model->aabb.min.z - camera_position.z));
 
-	const struct Material *m = model->draws[0].material;
-	if (m->base_texture[0]) {
-		const RTexture *t = &m->base_texture[0]->texture;
-		if (t != r.current_tex0) {
-			GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
-			GL_CALL(glUniform2f(lmgen_uniforms[4].location, (float)t->width, (float)t->height));
-			r.current_tex0 = t;
-		}
-	}
+	/*
+	PRINTF("%f %f %f -> %f",
+			camera_position.x, camera_position.y, camera_position.z, distance);
+	*/
 
-	renderApplyAttribs(lmgen_attribs, &model->vbo, model->draws->vbo_offset);
-
-	for (int i = 1; i < model->draws_count; ++i) {
-		const struct BSPDraw *d = model->draws + i;
-
-		if (drawCompare(d - 1, d) != 0) {
-			if (-1[d].vbo_offset != d->vbo_offset)
-				renderApplyAttribs(lmgen_attribs, &model->vbo, d->vbo_offset);
-
-			GL_CALL(glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * start)));
-			//PRINTF("DRAW start=%d, count=%d", start, count);
-
-			const struct Material *m = d->material;
-			if (m->base_texture[0]) {
-				const RTexture *t = &m->base_texture[0]->texture;
-				if (t != r.current_tex0) {
-					GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
-					GL_CALL(glUniform2f(lmgen_uniforms[4].location, (float)t->width, (float)t->height));
-					r.current_tex0 = t;
-				}
-			}
-			start = d->start;
-			count = d->count;
-		} else {
-			//PRINTF("start=%d, count=%d; d->start=%d, d->count=%d", start, count, d->start, d->count);
-			ASSERT(start + count == (int)d->start);
-			count += d->count;
-		}
-
-		//GL_CALL(glDrawElements(GL_TRIANGLES, d->count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * d->start)));
-	}
-
-	//PRINTF("start=%d, count=%d", start, count);
-	if (count)
-		GL_CALL(glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * start)));
+	if (distance < 5000.f)
+		renderDrawSet(model, &model->detailed);
+	else
+		renderDrawSet(model, &model->coarse);
 }
 
 void renderClear() {

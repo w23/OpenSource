@@ -552,8 +552,19 @@ static void bspLoadFace(
 	}
 }
 
+static int faceMaterialCompare(const void *a, const void *b) {
+	const struct Face *fa = a, *fb = b;
+
+	if (fa->material == fb->material)
+		return 0;
+
+	return fa->material->base_texture[0] - fb->material->base_texture[0];
+}
+
 static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, struct Stack *persistent,
 		struct BSPModel *model) {
+	void * const tmp_cursor = stackGetCursor(ctx->tmp);
+
 	struct BSPModelVertex * const vertices_buffer
 		= stackAlloc(ctx->tmp, sizeof(struct BSPModelVertex) * ctx->max_draw_vertices);
 	if (!vertices_buffer) return BSPLoadResult_ErrorTempMemory;
@@ -562,20 +573,69 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 	uint16_t * const indices_buffer = stackAlloc(ctx->tmp, sizeof(uint16_t) * ctx->indices);
 	if (!indices_buffer) return BSPLoadResult_ErrorTempMemory;
 
+	qsort(ctx->faces, ctx->faces_count, sizeof(*ctx->faces), faceMaterialCompare);
+
+	{
+		int vbo_offset = 0, vertex_pos = 0;
+		model->detailed.draws_count = 1;
+		model->coarse.draws_count = 1;
+		for (int iface = 0; iface < ctx->faces_count; ++iface) {
+			const struct Face *face = ctx->faces + iface;
+
+			const int update_vbo_offset = (vertex_pos - vbo_offset) + face->vertices >= c_max_draw_vertices;
+			if (update_vbo_offset || (iface > 0 && faceMaterialCompare(ctx->faces+iface-1,face) != 0)) {
+				//PRINTF("%p -> %p", (void*)ctx->faces[iface-1].material->base_texture[0], (void*)face->material->base_texture[0]);
+				++model->detailed.draws_count;
+			}
+
+			if (update_vbo_offset) {
+				vbo_offset = vertex_pos;
+				++model->coarse.draws_count;
+			}
+
+			vertex_pos += face->vertices;
+		}
+	}
+
+	PRINTF("Faces: %d -> %d detailed draws", ctx->faces_count, model->detailed.draws_count);
+
+	model->detailed.draws = stackAlloc(persistent, sizeof(struct BSPDraw) * model->detailed.draws_count);
+	model->coarse.draws = stackAlloc(persistent, sizeof(struct BSPDraw) * model->coarse.draws_count);
+
 	int vertex_pos = 0;
 	int draw_indices_start = 0, indices_pos = 0;
-
-	model->draws_count = ctx->faces_count;
-	model->draws = stackAlloc(persistent, sizeof(struct BSPDraw) * model->draws_count);
-
 	int vbo_offset = 0;
 	int idraw = 0;
+	struct BSPDraw *detailed_draw = model->detailed.draws - 1,
+								 *coarse_draw = model->coarse.draws - 1;
+
 	for (int iface = 0; iface < ctx->faces_count/* + 1*/; ++iface) {
 		const struct Face *face = ctx->faces + iface;
 
-		if ((vertex_pos - vbo_offset) + face->vertices >= c_max_draw_vertices) {
+		const int update_vbo_offset = (vertex_pos - vbo_offset) + face->vertices >= c_max_draw_vertices;
+
+		if (update_vbo_offset) {
 			PRINTF("vbo_offset %d -> %d", vbo_offset, vertex_pos);
 			vbo_offset = vertex_pos;
+		}
+
+		if (update_vbo_offset || iface == 0 || faceMaterialCompare(ctx->faces+iface-1,face) != 0) {
+			++detailed_draw;
+			detailed_draw->start = draw_indices_start;
+			detailed_draw->count = 0;
+			detailed_draw->vbo_offset = vbo_offset;
+			detailed_draw->material = face->material;
+
+			++idraw;
+			ASSERT(idraw <= model->detailed.draws_count);
+		}
+
+		if (update_vbo_offset || iface == 0) {
+			++coarse_draw;
+			coarse_draw->start = draw_indices_start;
+			coarse_draw->count = 0;
+			coarse_draw->vbo_offset = vbo_offset;
+			coarse_draw->material = face->material; /* FIXME */
 		}
 
 		if (face->dispinfo) {
@@ -587,48 +647,18 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 		vertex_pos += face->vertices;
 		indices_pos += face->indices;
 
-		struct BSPDraw *draw = model->draws + idraw;
-		memset(draw, 0, sizeof *draw);
-		draw->count = indices_pos - draw_indices_start;
-		draw->start = draw_indices_start;
-		draw->vbo_offset = vbo_offset;
-
-		//PRINTF("Adding draw=%u start=%u count=%u", idraw, draw->start, draw->count);
-
-		draw->material = face->material;
-
-		/*
-		PRINTF("Got texture size %dx%d",
-				draw->material->base_texture[0]->gltex.width,
-				draw->material->base_texture[0]->gltex.height);
-		*/
+		detailed_draw->count += indices_pos - draw_indices_start;
+		coarse_draw->count += indices_pos - draw_indices_start;
 
 		//vertex_pos = 0;
 		draw_indices_start = indices_pos;
-		++idraw;
-		ASSERT(idraw <= model->draws_count);
 	}
+	ASSERT(idraw == model->detailed.draws_count);
 
-	PRINTF("%d %d", idraw, model->draws_count);
-	ASSERT(idraw == model->draws_count);
-
-	renderModelOptimize(model);
-
-	uint16_t *tmp_indices = stackAlloc(ctx->tmp, sizeof(uint16_t) * ctx->indices);
-	if (!tmp_indices) {
-		return BSPLoadResult_ErrorTempMemory;
-	}
-	int tmp_indices_offset = 0;
-	for (int i = 0; i < model->draws_count; ++i) {
-		struct BSPDraw *d = model->draws + i;
-		memcpy(tmp_indices + tmp_indices_offset, indices_buffer + d->start, sizeof(uint16_t) * d->count);
-		d->start = tmp_indices_offset;
-		tmp_indices_offset += d->count;
-	}
-	ASSERT(tmp_indices_offset == ctx->indices);
-	renderBufferCreate(&model->ibo, RBufferType_Index, sizeof(uint16_t) * ctx->indices, tmp_indices);
-
+	renderBufferCreate(&model->ibo, RBufferType_Index, sizeof(uint16_t) * ctx->indices, indices_buffer);
 	renderBufferCreate(&model->vbo, RBufferType_Vertex, sizeof(struct BSPModelVertex) * vertex_pos, vertices_buffer);
+
+	stackFreeUpToPosition(ctx->tmp, tmp_cursor);
 	return BSPLoadResult_Success;
 }
 

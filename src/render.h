@@ -68,5 +68,4 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 
 struct BSPModel;
 
-void renderModelOptimize(struct BSPModel *model);
-void renderModelDraw(const struct AMat4f *mvp, float lmn, const struct BSPModel *model);
+void renderModelDraw(const struct AMat4f *mvp, struct AVec3f camera_position, float lmn, const struct BSPModel *model);
