@@ -155,9 +155,20 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 		FACE_CHECK(vface->num_edges == 4);
 		face->vertices = side * side;
 		face->indices = (side - 1) * (side - 1) * 6; /* triangle list */
-		if (face->dispinfo->min_tess != 0)
-			PRINTF("Power: %d, min_tess: %d, vertices: %d",
-				face->dispinfo->power, face->dispinfo->min_tess, face->vertices);
+
+		/* TODO
+		 * some of the episode 2 maps have the min_tess set to flag mode, and flags are 0xe
+		 *
+		if (face->dispinfo->min_tess != 0) {
+			if ((uint32_t)face->dispinfo->min_tess & 0x80000000u) {
+				if ((uint32_t)face->dispinfo->min_tess & 0x7fffffffu)
+					PRINTF("min_tess has flags: %x", (uint32_t)face->dispinfo->min_tess & 0x7fffffffu);
+			} else
+				PRINTF("Power: %d, min_tess: %d, vertices: %d",
+					face->dispinfo->power, face->dispinfo->min_tess, face->vertices);
+		}
+		*/
+
 		face->dispstartvtx = 0;
 	} else {
 		face->dispinfo = 0;
