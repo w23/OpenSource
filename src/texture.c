@@ -90,6 +90,40 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 	return width * height * pixel_bits / 8;
 }
 
+static uint16_t *textureUnpackToTemp(struct Stack *tmp, struct IFile *file, size_t cursor,
+		int width, int height, enum VTFImageFormat format) {
+	const int src_texture_size = vtfImageSize(format, width, height);
+	const int dst_texture_size = sizeof(uint16_t) * width * height;
+	void *dst_texture = stackAlloc(tmp, dst_texture_size);
+	if (!dst_texture) {
+		PRINTF("Cannot allocate %d bytes for texture", dst_texture_size);
+		return 0;
+	}
+	void *src_texture = stackAlloc(tmp, src_texture_size);
+	if (!src_texture) {
+		PRINTF("Cannot allocate %d bytes for texture", src_texture_size);
+		return 0;
+	}
+	if (src_texture_size != (int)file->read(file, cursor, src_texture_size, src_texture)) {
+		PRINT("Cannot read texture data");
+		return 0;
+	}
+
+	const struct DXTUnpackContext dxt_ctx = {
+		.width = width,
+		.height = height,
+		.packed = src_texture,
+		.output = dst_texture
+	};
+	if (format == VTFImage_DXT1)
+		dxt1Unpack(dxt_ctx);
+	else
+		dxt5Unpack(dxt_ctx);
+
+	stackFreeUpToPosition(tmp, src_texture);
+	return dst_texture;
+}
+
 static int textureUploadMipmap(struct Stack *tmp, struct IFile *file, size_t cursor,
 		const struct VTFHeader *hdr, int miplevel, RTexture *tex) {
 	for (int mip = hdr->mipmap_count - 1; mip > miplevel; --mip) {
@@ -103,33 +137,11 @@ static int textureUploadMipmap(struct Stack *tmp, struct IFile *file, size_t cur
 		*/
 	}
 
-	const int src_texture_size = vtfImageSize(hdr->hires_format, hdr->width, hdr->height);
-	void *src_texture = stackAlloc(tmp, src_texture_size);
-	if (!src_texture) {
-		PRINTF("Cannot allocate %d bytes for texture", src_texture_size);
-		return 0;
-	}
-	const int dst_texture_size = sizeof(uint16_t) * hdr->width * hdr->height;
-	void *dst_texture = stackAlloc(tmp, dst_texture_size);
+	void *dst_texture = textureUnpackToTemp(tmp, file, cursor, hdr->width, hdr->height, hdr->hires_format);
 	if (!dst_texture) {
-		PRINTF("Cannot allocate %d bytes for texture", dst_texture_size);
+		PRINT("Failed to unpack texture");
 		return 0;
 	}
-	if (src_texture_size != (int)file->read(file, cursor, src_texture_size, src_texture)) {
-		PRINT("Cannot read texture data");
-		return 0;
-	}
-
-	const struct DXTUnpackContext dxt_ctx = {
-		.width = hdr->width,
-		.height = hdr->height,
-		.packed = src_texture,
-		.output = dst_texture
-	};
-	if (hdr->hires_format == VTFImage_DXT1)
-		dxt1Unpack(dxt_ctx);
-	else
-		dxt5Unpack(dxt_ctx);
 
 	const RTextureCreateParams params = {
 		.width = hdr->width,
@@ -174,15 +186,38 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 
 	cursor += hdr.header_size;
 
-	if (hdr.lores_format != (unsigned)VTFImage_None)
-		cursor += vtfImageSize(hdr.lores_format, hdr.lores_width, hdr.lores_height);
+	/* Compute averaga color from lowres image */
+	void *pre_alloc_cursor = stackGetCursor(tmp);
+	if (hdr.lores_format != VTFImage_DXT1 && hdr.lores_format != VTFImage_DXT5) {
+		PRINTF("Not implemented lores texture format: %s", vtfFormatStr(hdr.lores_format));
+	} else {
+		uint16_t *pixels = textureUnpackToTemp(tmp, file, cursor, hdr.lores_width, hdr.lores_height, hdr.lores_format);
+
+		if (!pixels) {
+			PRINT("Cannot unpack lowres image");
+			return 0;
+		}
+
+		tex->avg_color = aVec3ff(0);
+		const int pixels_count = hdr.lores_width * hdr.lores_height;
+		for (int i = 0; i < pixels_count; ++i) {
+			tex->avg_color.x += (pixels[i] >> 11);
+			tex->avg_color.y += (pixels[i] >> 5) & 0x3f;
+			tex->avg_color.z += (pixels[i] & 0x1f);
+		}
+
+		tex->avg_color = aVec3fMul(tex->avg_color,
+				aVec3fMulf(aVec3f(1.f/31.f, 1.f/63.f, 1.f/31.f), 1.f / pixels_count));
+		//PRINTF("Average color %f %f %f", tex->avg_color.x, tex->avg_color.y, tex->avg_color.z);
+	}
+
+	cursor += vtfImageSize(hdr.lores_format, hdr.lores_width, hdr.lores_height);
 
 	/*
 	PRINTF("Texture lowres: %dx%d, %s; mips %d; header_size: %u",
 		hdr.lores_width, hdr.lores_height, vtfFormatStr(hdr.lores_format), hdr.mipmap_count, hdr.header_size);
 	*/
 
-	void *pre_alloc_cursor = stackGetCursor(tmp);
 	retval = textureUploadMipmap(tmp, file, cursor, &hdr, 0, &tex->texture);
 	stackFreeUpToPosition(tmp, pre_alloc_cursor);
 

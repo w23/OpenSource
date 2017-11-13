@@ -10,9 +10,12 @@ struct Plane { struct AVec3f n; float d; };
 
 struct BSPModelVertex {
 	struct AVec3f vertex;
-	struct AVec3f normal;
+	//struct AVec3f normal;
 	struct AVec2f lightmap_uv;
 	struct AVec2f tex_uv;
+	struct {
+		uint8_t r, g, b;
+	} average_color;
 };
 
 struct BSPDraw {
@@ -81,6 +84,9 @@ enum BSPLoadResult {
 	BSPLoadResult_ErrorTempMemory,
 	BSPLoadResult_ErrorCapabilities
 };
+
+/* should be called AFTER renderInit() */
+void bspInit();
 
 enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const char *mapname);
 

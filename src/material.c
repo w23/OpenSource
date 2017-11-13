@@ -114,7 +114,7 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 		} else if (strncasecmp("$basetexturetransform", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$basetexturetransform2", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$detail", ctx.key, ctx.key_length) == 0) {
-			output->detail = textureGet(ctx.value, coll, tmp);
+			//output->detail = textureGet(ctx.value, coll, tmp);
 		} else if (strncasecmp("$detailscale", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$detailblendfactor", ctx.key, ctx.key_length) == 0) {
 		} else if (strncasecmp("$detailblendmode", ctx.key, ctx.key_length) == 0) {
@@ -151,14 +151,19 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 	} /* for all properties */
 
 	if (!output->base_texture[0]) {
-		PRINT("Material doesn't have base texture");
-		output->base_texture[0] = cacheGetTexture("opensource/placeholder");
+		PRINTF("Material with shader %.*s doesn't have base texture", shader_length, shader);
+		output->shader = MaterialShader_LightmappedAverageColor;
+		// HACK to notice these materials
+		output->average_color = aVec3f(1.f, 0.f, 1.f);
+	} else {
+		output->shader = MaterialShader_LightmappedGeneric;
+		output->average_color = output->base_texture[0]->avg_color;
 	}
 
 	retval = 1;
 
 exit:
-	if (retval == -1)
+	if (retval != 1)
 		PRINTF("Error parsing material with shader %.*s: %s", shader_length, shader, ctx.tok.cursor);
 
 	stackFreeUpToPosition(tmp, buffer);

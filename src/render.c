@@ -112,8 +112,6 @@ WGL__FUNCLIST
 #undef WGL__FUNCLIST_DO
 #endif /* ifdef _WIN32 */
 
-typedef GLint RProgram;
-
 static GLint render_ShaderCreate(GLenum type, const char *sources[]) {
 	int n;
 	GLuint shader = glCreateShader(type);
@@ -138,48 +136,6 @@ static GLint render_ShaderCreate(GLenum type, const char *sources[]) {
 #endif
 
 	return shader;
-}
-
-static RProgram render_ProgramCreate(const char *common, const char *vertex, const char *fragment) {
-	GLuint program;
-	GLuint vertex_shader, fragment_shader;
-	const char *sources[] = {
-		common, fragment, 0
-	};
-	fragment_shader = render_ShaderCreate(GL_FRAGMENT_SHADER, sources);
-	if (fragment_shader == 0)
-		return -1;
-
-	sources[1] = vertex;
-	vertex_shader = render_ShaderCreate(GL_VERTEX_SHADER, sources);
-	if (vertex_shader == 0) {
-		GL_CALL(glDeleteShader(fragment_shader));
-		return -2;
-	}
-
-	program = glCreateProgram();
-	GL_CALL(glAttachShader(program, fragment_shader));
-	GL_CALL(glAttachShader(program, vertex_shader));
-	GL_CALL(glLinkProgram(program));
-
-	GL_CALL(glDeleteShader(fragment_shader));
-	GL_CALL(glDeleteShader(vertex_shader));
-
-#ifdef RENDER_ERRORCHECK
-	{
-		GLint status;
-		GL_CALL(glGetProgramiv(program, GL_LINK_STATUS, &status));
-		if (status != GL_TRUE) {
-			char buffer[1024];
-			GL_CALL(glGetProgramInfoLog(program, sizeof(buffer), 0, buffer));
-			PRINTF("Program linking error: %s", buffer);
-			GL_CALL(glDeleteProgram(program));
-			return -3;
-		}
-	}
-#endif
-
-	return program;
 }
 
 void renderTextureCreate(RTexture *texture, RTextureCreateParams params) {
@@ -213,22 +169,116 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 	GL_CALL(glBufferData(type, size, data, GL_STATIC_DRAW));
 }
 
-static const char lmgen_common_src[] =
-	"varying vec2 v_lightmap_uv, v_tex_uv;\n"
-	"varying vec3 v_normal;\n";
+typedef struct {
+	const char *name;
+	int components;
+	GLenum type;
+	GLint normalize;
+	int stride;
+	const void *ptr;
+} RAttrib;
 
-static const char lmgen_vertex_src[] =
-	"attribute vec3 a_vertex, a_normal;\n"
+typedef struct {
+	const char *name;
+} RUniform;
+
+#define RENDER_LIST_ATTRIBS \
+	RENDER_DECLARE_ATTRIB(vertex, 3, GL_FLOAT, GL_FALSE) \
+	RENDER_DECLARE_ATTRIB(lightmap_uv, 2, GL_FLOAT, GL_FALSE) \
+	RENDER_DECLARE_ATTRIB(tex_uv, 2, GL_FLOAT, GL_FALSE) \
+	RENDER_DECLARE_ATTRIB(average_color, 3, GL_UNSIGNED_BYTE, GL_TRUE) \
+
+//	RENDER_DECLARE_ATTRIB(normal, 3, GL_FLOAT)
+
+static const RAttrib attribs[] = {
+#define RENDER_DECLARE_ATTRIB(n,c,t,N) \
+	{"a_" # n, c, t, N, sizeof(struct BSPModelVertex), (void*)offsetof(struct BSPModelVertex, n)},
+RENDER_LIST_ATTRIBS
+#undef RENDER_DECLARE_ATTRIB
+};
+
+enum RAttribKinds {
+#define RENDER_DECLARE_ATTRIB(n,c,t,N) \
+	RAttribKind_ ## n,
+RENDER_LIST_ATTRIBS
+#undef RENDER_DECLARE_ATTRIB
+	RAttribKind_COUNT
+};
+
+#define RENDER_LIST_UNIFORMS \
+	RENDER_DECLARE_UNIFORM(mvp) \
+	RENDER_DECLARE_UNIFORM(lmn) \
+	RENDER_DECLARE_UNIFORM(lightmap) \
+	RENDER_DECLARE_UNIFORM(tex0) \
+	RENDER_DECLARE_UNIFORM(tex1) \
+	RENDER_DECLARE_UNIFORM(tex0_size) \
+	RENDER_DECLARE_UNIFORM(tex1_size) \
+
+static const RUniform uniforms[] = {
+#define RENDER_DECLARE_UNIFORM(n) {"u_" # n},
+	RENDER_LIST_UNIFORMS
+#undef RENDER_DECLARE_UNIFORM
+};
+
+enum RUniformKinds {
+#define RENDER_DECLARE_UNIFORM(n) RUniformKind_ ## n,
+	RENDER_LIST_UNIFORMS
+#undef RENDER_DECLARE_UNIFORM
+	RUniformKind_COUNT
+};
+
+typedef struct RProgram {
+	GLint name;
+	struct {
+		const char *common, *vertex, *fragment;
+	} shader_sources;
+	int attrib_locations[RAttribKind_COUNT];
+	int uniform_locations[RUniformKind_COUNT];
+} RProgram;
+
+enum {
+	Program_LightmapColor,
+	Program_LightmapTexture,
+	Program_COUNT
+};
+
+static RProgram programs[Program_COUNT] = {
+	/*LightmapColor*/
+	{-1, {
+			/*common*/
+			"varying vec2 v_lightmap_uv;\n"
+			"varying vec3 v_color;\n",
+			/*vertex*/
+			"attribute vec3 a_vertex, a_average_color;\n"
+			"attribute vec2 a_lightmap_uv;\n"
+			"uniform mat4 u_mvp;\n"
+			"void main() {\n"
+				"v_lightmap_uv = a_lightmap_uv;\n"
+				"v_color = a_average_color;\n"
+				"gl_Position = u_mvp * vec4(a_vertex, 1.);\n"
+			"}\n",
+			/*fragment*/
+			"uniform sampler2D u_lightmap;\n"
+			"void main() {\n"
+				"gl_FragColor = vec4(v_color * (vec3(.1) + texture2D(u_lightmap, v_lightmap_uv).xyz), 1.);\n"
+			"}\n"
+			},
+		{ -1 }, { -1 }
+	},
+	/*LightmapTexture*/
+	{-1, {
+			/*common*/
+	"varying vec2 v_lightmap_uv, v_tex_uv;\n",
+			/*vertex*/
+	"attribute vec3 a_vertex;\n"
 	"attribute vec2 a_lightmap_uv, a_tex_uv;\n"
 	"uniform mat4 u_mvp;\n"
 	"void main() {\n"
 		"v_lightmap_uv = a_lightmap_uv;\n"
 		"v_tex_uv = a_tex_uv;\n"
-		"v_normal = a_normal;\n"
 		"gl_Position = u_mvp * vec4(a_vertex, 1.);\n"
-	"}\n";
-
-static const char lmgen_fragment_src[] =
+	"}\n",
+			/*fragment*/
 	"uniform sampler2D u_lightmap, u_tex0, u_tex1;\n"
 	"uniform vec2 u_lightmap_size, u_tex0_size, u_tex1_size;\n"
 	"uniform float u_lmn;\n"
@@ -239,70 +289,114 @@ static const char lmgen_fragment_src[] =
 		"vec3 lm = texture2D(u_lightmap, v_lightmap_uv).xyz;\n"
 		"vec3 color = albedo.xyz * (vec3(.1) + lm);\n"
 		"gl_FragColor = vec4(mix(color, tc, u_lmn), 1.);\n"
-	"}\n";
+	"}\n"
+			},
+		{ -1 }, { -1 }
+	},
 
-typedef struct {
-	const char *name;
-	int components;
-	GLenum type;
-	int stride;
-	const void *ptr;
-	int location;
-} RAttrib;
-
-typedef struct {
-	const char *name;
-	int location;
-} RUniform;
-
-static RAttrib lmgen_attribs[] = {
-	{"a_vertex", 3, GL_FLOAT, sizeof(struct BSPModelVertex), (void*)offsetof(struct BSPModelVertex, vertex), -1},
-	{"a_normal", 3, GL_FLOAT, sizeof(struct BSPModelVertex), (void*)offsetof(struct BSPModelVertex, normal), -1},
-	{"a_lightmap_uv", 2, GL_FLOAT, sizeof(struct BSPModelVertex), (void*)offsetof(struct BSPModelVertex, lightmap_uv), -1},
-	{"a_tex_uv", 2, GL_FLOAT, sizeof(struct BSPModelVertex), (void*)offsetof(struct BSPModelVertex, tex_uv), -1},
-	{0, 0, 0, 0, 0, -1}
-};
-
-static RUniform lmgen_uniforms[] = {
-	{"u_mvp", -1},
-	{"u_lmn", -1},
-	{"u_lightmap", -1},
-	{"u_tex0", -1},
-	{"u_tex0_size", -1},
-	{"u_tex1", -1},
-	{"u_tex1_size", -1},
-	{0, -1}
 };
 
 static struct {
-	RProgram lmgen_program;
 	const RTexture *current_tex0;
+
+	const RProgram *current_program;
+	struct {
+		const float *mvp;
+		float lmn;
+	} uniforms;
 } r;
 
-static void renderLocateAttribs(RProgram prog, RAttrib *attribs) {
-	for(int i = 0; attribs[i].name; ++i) {
-		attribs[i].location = glGetAttribLocation(prog, attribs[i].name);
-		if (attribs[i].location < 0)
+static void renderApplyAttribs(const RAttrib *attribs, const RBuffer *buffer, unsigned int vbo_offset) {
+	for(int i = 0; i < RAttribKind_COUNT; ++i) {
+		const RAttrib *a = attribs + i;
+		const int loc = r.current_program->attrib_locations[i];
+		if (loc < 0) continue;
+		GL_CALL(glEnableVertexAttribArray(loc));
+		GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, buffer->gl_name));
+		GL_CALL(glVertexAttribPointer(loc, a->components, a->type, a->normalize, a->stride, (const char*)a->ptr + vbo_offset * sizeof(struct BSPModelVertex)));
+	}
+}
+
+static int render_ProgramUse(RProgram *prog) {
+	if (r.current_program == prog)
+		return 0;
+
+	if (r.current_program) {
+		for (int i = 0; i < RAttribKind_COUNT; ++i) {
+			const int loc = r.current_program->attrib_locations[i];
+			if (loc >= 0)
+				GL_CALL(glDisableVertexAttribArray(loc));
+		}
+	}
+
+	GL_CALL(glUseProgram(prog->name));
+	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_lightmap], 0));
+	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex0], 1));
+	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex1], 2));
+
+	GL_CALL(glUniformMatrix4fv(prog->uniform_locations[RUniformKind_mvp], 1, GL_FALSE, r.uniforms.mvp));
+	GL_CALL(glUniform1f(prog->uniform_locations[RUniformKind_lmn], r.uniforms.lmn));
+
+	r.current_program = prog;
+	r.current_tex0 = NULL;
+
+	return 1;
+}
+
+static int render_ProgramInit(RProgram *prog) {
+	GLuint program;
+	GLuint vertex_shader, fragment_shader;
+	const char *sources[] = {
+		prog->shader_sources.common, prog->shader_sources.fragment, 0
+	};
+	fragment_shader = render_ShaderCreate(GL_FRAGMENT_SHADER, sources);
+	if (fragment_shader == 0)
+		return -1;
+
+	sources[1] = prog->shader_sources.vertex;
+	vertex_shader = render_ShaderCreate(GL_VERTEX_SHADER, sources);
+	if (vertex_shader == 0) {
+		GL_CALL(glDeleteShader(fragment_shader));
+		return -2;
+	}
+
+	program = glCreateProgram();
+	GL_CALL(glAttachShader(program, fragment_shader));
+	GL_CALL(glAttachShader(program, vertex_shader));
+	GL_CALL(glLinkProgram(program));
+
+	GL_CALL(glDeleteShader(fragment_shader));
+	GL_CALL(glDeleteShader(vertex_shader));
+
+#ifdef RENDER_ERRORCHECK
+	{
+		GLint status;
+		GL_CALL(glGetProgramiv(program, GL_LINK_STATUS, &status));
+		if (status != GL_TRUE) {
+			char buffer[1024];
+			GL_CALL(glGetProgramInfoLog(program, sizeof(buffer), 0, buffer));
+			PRINTF("Program linking error: %s", buffer);
+			GL_CALL(glDeleteProgram(program));
+			return -3;
+		}
+	}
+#endif
+
+	prog->name = program;
+
+	for(int i = 0; i < RAttribKind_COUNT; ++i) {
+		prog->attrib_locations[i] = glGetAttribLocation(prog->name, attribs[i].name);
+		if (prog->attrib_locations[i] < 0)
 			PRINTF("Cannot locate attribute %s", attribs[i].name);
 	}
-}
 
-static void renderLocateUniforms(RProgram prog, RUniform *uniforms) {
-	for(int i = 0; uniforms[i].name; ++i) {
-		uniforms[i].location = glGetUniformLocation(prog, uniforms[i].name);
-		if (uniforms[i].location < 0)
+	for(int i = 0; i < RUniformKind_COUNT; ++i) {
+		prog->uniform_locations[i] = glGetUniformLocation(prog->name, uniforms[i].name);
+		if (prog->uniform_locations[i] < 0)
 			PRINTF("Cannot locate uniform %s", uniforms[i].name);
 	}
-}
 
-static void renderApplyAttribs(const RAttrib *attribs, const RBuffer *buffer, unsigned int vbo_offset) {
-	for(int i = 0; attribs[i].name; ++i) {
-		const RAttrib *a = attribs + i;
-		if (a->location < 0) continue;
-		GL_CALL(glEnableVertexAttribArray(a->location));
-		GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, buffer->gl_name));
-		GL_CALL(glVertexAttribPointer(a->location, a->components, a->type, GL_FALSE, a->stride, (const char*)a->ptr + vbo_offset * sizeof(struct BSPModelVertex)));
-	}
+	return 0;
 }
 
 int renderInit() {
@@ -315,28 +409,42 @@ int renderInit() {
 #undef WGL__FUNCLIST_DO
 #endif
 
-	r.lmgen_program = render_ProgramCreate(lmgen_common_src, lmgen_vertex_src, lmgen_fragment_src);
-	if (r.lmgen_program <= 0) {
-		PRINT("Cannot create program for lightmapped generic material");
-		return 0;
-	}
+	r.current_program = NULL;
+	r.current_tex0 = NULL;
+	r.uniforms.mvp = NULL;
+	r.uniforms.lmn = 0;
 
-	renderLocateAttribs(r.lmgen_program, lmgen_attribs);
-	renderLocateUniforms(r.lmgen_program, lmgen_uniforms);
+	for (int i = 0; i < Program_COUNT; ++i) {
+		if (render_ProgramInit(programs + i) != 0) {
+			PRINTF("Cannot create program %d", i);
+			return 0;
+		}
+	}
 
 	struct Texture default_texture;
 	RTextureCreateParams params;
 	params.format = RTexFormat_RGB565;
-	params.width = 1;
-	params.height = 1;
-	params.pixels = (uint16_t[]){0xffff};
+	params.width = 2;
+	params.height = 2;
+	params.pixels = (uint16_t[]){0xffffu, 0, 0, 0xffffu};
 	renderTextureCreate(&default_texture.texture, params);
 	cachePutTexture("opensource/placeholder", &default_texture);
 
-	struct Material default_material;
-	memset(&default_material, 0, sizeof default_material);
-	default_material.base_texture[0] = cacheGetTexture("opensource/placeholder");
-	cachePutMaterial("opensource/placeholder", &default_material);
+	{
+		struct Material default_material;
+		memset(&default_material, 0, sizeof default_material);
+		default_material.average_color = aVec3f(0.f, 1.f, 0.f);
+		default_material.shader = MaterialShader_LightmappedAverageColor;
+		cachePutMaterial("opensource/placeholder", &default_material);
+	} 
+
+	{
+		struct Material lightmap_color_material;
+		memset(&lightmap_color_material, 0, sizeof lightmap_color_material);
+		lightmap_color_material.average_color = aVec3f(0.f, 1.f, 0.f);
+		lightmap_color_material.shader = MaterialShader_LightmappedAverageColor;
+		cachePutMaterial("opensource/coarse", &lightmap_color_material);
+	}
 
 	GL_CALL(glEnable(GL_DEPTH_TEST));
 	GL_CALL(glEnable(GL_CULL_FACE));
@@ -344,29 +452,45 @@ int renderInit() {
 	return 1;
 }
 
-static void renderDraw(const struct BSPDraw *draw) {
+static int renderPrepareProgram(const struct BSPDraw *draw) {
 	const struct Material *m = draw->material;
+
+	int program_changed = 0;
+
+	switch (m->shader) {
+		case MaterialShader_LightmappedAverageColor:
+			program_changed = render_ProgramUse(programs + Program_LightmapColor);
+			break;
+		case MaterialShader_LightmappedGeneric:
+			program_changed = render_ProgramUse(programs + Program_LightmapTexture);
+			break;
+		default:
+			ATTO_ASSERT(!"Impossible");
+	}
+
 	if (m->base_texture[0]) {
 		const RTexture *t = &m->base_texture[0]->texture;
 		if (t != r.current_tex0) {
 			GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
-			GL_CALL(glUniform2f(lmgen_uniforms[4].location, (float)t->width, (float)t->height));
+			GL_CALL(glUniform2f(r.current_program->uniform_locations[RUniformKind_tex0_size], (float)t->width, (float)t->height));
 			r.current_tex0 = t;
 		}
 	}
 
-	GL_CALL(glDrawElements(GL_TRIANGLES, draw->count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * draw->start)));
+	return program_changed;
 }
 
 static void renderDrawSet(const struct BSPModel *model, const struct BSPDrawSet *drawset) {
 	unsigned int vbo_offset = 0;
 	for (int i = 0; i < drawset->draws_count; ++i) {
 		const struct BSPDraw *draw = drawset->draws + i;
-		if (i == 0 || draw->vbo_offset != vbo_offset) {
+
+		if (renderPrepareProgram(draw) || i == 0 || draw->vbo_offset != vbo_offset) {
 			vbo_offset = draw->vbo_offset;
-			renderApplyAttribs(lmgen_attribs, &model->vbo, draw->vbo_offset);
+			renderApplyAttribs(attribs, &model->vbo, draw->vbo_offset);
 		}
-		renderDraw(draw);
+
+		GL_CALL(glDrawElements(GL_TRIANGLES, draw->count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * draw->start)));
 	}
 }
 
@@ -377,17 +501,13 @@ void renderModelDraw(const struct AMat4f *mvp, struct AVec3f camera_position, fl
 	if (!model->detailed.draws_count) return;
 
 	GL_CALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model->ibo.gl_name));
-	GL_CALL(glUseProgram(r.lmgen_program));
 	GL_CALL(glActiveTexture(GL_TEXTURE0));
 	GL_CALL(glBindTexture(GL_TEXTURE_2D, model->lightmap.gl_name));
-
-	GL_CALL(glUniformMatrix4fv(lmgen_uniforms[0].location, 1, GL_FALSE, &mvp->X.x));
-	GL_CALL(glUniform1f(lmgen_uniforms[1].location, lmn));
-	GL_CALL(glUniform1i(lmgen_uniforms[2].location, 0));
-	GL_CALL(glUniform1i(lmgen_uniforms[3].location, 1));
-	GL_CALL(glUniform1i(lmgen_uniforms[5].location, 2));
-
 	GL_CALL(glActiveTexture(GL_TEXTURE0 + 1));
+
+	r.current_program = NULL;
+	r.uniforms.mvp = &mvp->X.x;
+	r.uniforms.lmn = lmn;
 
 	const float distance =
 		aMaxf(aMaxf(

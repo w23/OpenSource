@@ -105,13 +105,15 @@ struct LoadModelContext {
 	} lightmap;
 };
 
-/* TODO change this to Ok|Skip|Inconsistent,
- * print verbose errors for inconsistent */
 enum FacePreload {
 	FacePreload_Ok,
 	FacePreload_Skip,
 	FacePreload_Inconsistent
 };
+
+static struct {
+	const struct Material *coarse_material;
+} bsp_global;
 
 static inline int shouldSkipFace(const struct VBSPLumpFace *face, const struct Lumps *lumps) {
 	(void)(face); (void)(lumps);
@@ -483,11 +485,13 @@ static void bspLoadDisplacement(
 
 			v->lightmap_uv = aVec2fMul(aVec2fAdd(v->lightmap_uv, atlas_offset), atlas_scale);
 
+#if 0
 #ifdef DEBUG_DISP_LIGHTMAP
 			v->normal = aVec3f(face->dispstartvtx/3.f, swap, dv->dist / 100.f);
 #else
 			/* FIXME normal */
 			v->normal = aVec3ff(0.f);
+#endif
 #endif
 		}
 	}
@@ -541,7 +545,7 @@ static void bspLoadFace(
 		struct BSPModelVertex * const vertex = out_vertices + iedge;
 
 		vertex->vertex = aVec3f(lv->x, lv->y, lv->z);
-		vertex->normal = normal;
+		//vertex->normal = normal;
 		vertex->lightmap_uv = aVec2f(
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f),	lm_map_u),
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), lm_map_v));
@@ -646,13 +650,22 @@ static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, 
 			coarse_draw->start = draw_indices_start;
 			coarse_draw->count = 0;
 			coarse_draw->vbo_offset = vbo_offset;
-			coarse_draw->material = face->material; /* FIXME */
+			coarse_draw->material = bsp_global.coarse_material;
 		}
 
 		if (face->dispinfo) {
 			bspLoadDisplacement(ctx, face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos - vbo_offset);
 		} else {
 			bspLoadFace(ctx, face, vertices_buffer + vertex_pos, indices_buffer + indices_pos, vertex_pos - vbo_offset);
+		}
+
+		for (int i = 0; i < face->vertices; ++i) {
+			vertices_buffer[vertex_pos + i].average_color.r =
+				(uint8_t)(face->material->average_color.x * 255.f);
+			vertices_buffer[vertex_pos + i].average_color.g =
+				(uint8_t)(face->material->average_color.y * 255.f);
+			vertices_buffer[vertex_pos + i].average_color.b =
+				(uint8_t)(face->material->average_color.z * 255.f);
 		}
 
 		vertex_pos += face->vertices;
@@ -977,4 +990,8 @@ exit:
 	stackFreeUpToPosition(context.tmp, tmp_cursor);
 	if (file) file->close(file);
 	return result;
+}
+
+void bspInit() {
+	bsp_global.coarse_material = materialGet("opensource/coarse", NULL, NULL);
 }

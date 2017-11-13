@@ -1,14 +1,19 @@
 #pragma once
+#include "atto/math.h"
 
 struct ICollection;
 struct Texture;
 struct Stack;
 
+enum MaterialShader {
+	MaterialShader_LightmappedAverageColor,
+	MaterialShader_LightmappedGeneric,
+};
+
 struct Material {
+	enum MaterialShader shader;
+	struct AVec3f average_color;
 	const struct Texture *base_texture[2];
-	const struct Texture *bump;
-	const struct Texture *detail;
-	const struct Texture *envmap;
 	/* TODO:
 	 * - bump
 	 * - detail

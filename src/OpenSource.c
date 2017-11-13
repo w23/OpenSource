@@ -194,6 +194,8 @@ static void opensrcInit(struct ICollection *collection, const char *map, int max
 		aAppTerminate(-1);
 	}
 
+	bspInit();
+
 	g.maps_limit = max_maps > 0 ? max_maps : 1;
 	g.maps_count = 0;
 	openSourceAddMap(map, strlen(map));
