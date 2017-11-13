@@ -113,6 +113,10 @@ enum FacePreload {
 
 static struct {
 	const struct Material *coarse_material;
+	struct {
+		int color[256];
+		int exponent[256];
+	} lightmap_tables;
 } bsp_global;
 
 static inline int shouldSkipFace(const struct VBSPLumpFace *face, const struct Lumps *lumps) {
@@ -252,18 +256,13 @@ static float clamp(float x, float min, float max) {
 */
 
 static int scaleLightmapColor(int c, int exp) {
-#if 0
-	c = 255.f * pow(c * powf(2.f, exp) / 255.f, 1.0f / 2.2f) * .5f;
-#elif 0
-	c = 255.f * sqrtf(c * powf(2.f, exp) / 255.f) * .5f;
-#elif 1
-	c = (int)(255.f * sqrtf(c / 255.f) * powf(2.f, exp / 2.f - 1.f));
-#else
-	c = sqrtf(c / 255.f) * 255.f;
-	exp = exp / 2 - 1;
-	c = (exp >= 0) ? c << exp : c >> -exp;
-#endif
-	return c < 255 ? c : 255;
+	const int c2 =
+		(bsp_global.lightmap_tables.exponent[exp+128] * bsp_global.lightmap_tables.color[c]) >> 12;
+
+	//const int c1 = 255.f * pow(c * powf(2.f, exp) / 255.f, 1.0f / 2.2f) * .5f;
+	//PRINTF("%d^%d => %d, %d => %d", c, exp, c1, c2, c2 - c1);
+
+	return c2 < 255 ? c2 : 255;
 }
 
 static enum BSPLoadResult bspLoadModelPreloadFaces(struct LoadModelContext *ctx) {
@@ -994,4 +993,14 @@ exit:
 
 void bspInit() {
 	bsp_global.coarse_material = materialGet("opensource/coarse", NULL, NULL);
+
+	const int scaling_factor = 4096;
+	for (int i = 0; i < 256; ++i) {
+		const int exp = i - 128;
+		bsp_global.lightmap_tables.exponent[i] = (exp < -15 || exp > 15) ? 0 :
+			(int)((float)scaling_factor * powf(2.f, (float)exp / 2.2f - 1.f));
+
+		bsp_global.lightmap_tables.color[i] =
+			(int)(255.f * powf((float)i / 255.f, 1.f / 2.2f));
+	}
 }
