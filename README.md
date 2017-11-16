@@ -11,26 +11,29 @@ It should be generally stable. However, it still has a lot of visual glitches an
 If you wish, you could check out the *old* branch for the 5 years old version that was used for Half-Life 1 merging.
 
 ## What works
-- It builds and runs on Linux/X11 and Raspberry Pi (bare vc libs, w/o X11); No Windows or macOS support yet, stay tuned.
+- It builds and runs on Windows, Linux/X11 and Raspberry Pi (bare vc libs, w/o X11); No macOS support yet, stay tuned.
 - VBSP format version 19 and 20, most of the maps from these games:
   - Half-Life: Source
   - Half-Life 2
   - Half-Life 2: Episode One
   - Half-Life 2: Episode Two
-  - Portal (Portal 2 wasn't tested yet)
+  - Portal
 - Basic support for the following map features:
   - Face geometry
   - Displacements
   - Base[0] textures
-  - DXT1 textures
-  - Reading VPK files
+  - DXT1/3/5 textures
+  - Reading VPK2 files
   - Reading materials from pakfile lumps
+  
+## What doesn't (yet)
+- Portal 2. It uses VPK version 1 (see #36) and seems to use different mechanism for maps transitions.
 
 ## Streaming
 Development is done almost entirely live. I usually stream **every Thursday at 22:00 NOVT (15:00 GMT)**, but there are also some  occasional sudden and unplanned streams.
 
 Stream links:
-- [Twitch/w23_ru](https://twitch.tv/w23_ru)
+- [Twitch/ProvodGL](https://twitch.tv/provodgl)
 - [YouTube](https://www.youtube.com/c/IvanAvdeev/live)
 - [Goodgame.ru/w23](https://goodgame.ru/channel/w23/)
 - [Peka2](http://peka2.tv/w23)
