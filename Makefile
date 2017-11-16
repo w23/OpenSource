@@ -3,7 +3,7 @@ MAKEOPTS+=-r
 
 MAP ?= d1_trainstation_01
 VPKDIR ?= ~/.local/share/Steam/steamapps/common/Half-Life\ 2/hl2
-MAX_MAPS ?= 32
+MAX_MAPS ?= 99
 ARGS ?= -p $(VPKDIR)/hl2_textures_dir.vpk -p $(VPKDIR)/hl2_misc_dir.vpk -p $(VPKDIR)/hl2_pak_dir.vpk -d $(VPKDIR) -n $(MAX_MAPS)
 
 CFLAGS += -Wall -Wextra -D_GNU_SOURCE -Isrc/atto -fPIE

@@ -358,12 +358,15 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 		} /* for y */
 	} /* fot all visible faces */
 
-	RTextureCreateParams upload;
+	RTextureUploadParams upload;
 	upload.width = atlas_context.width;
 	upload.height = atlas_context.height;
 	upload.format = RTexFormat_RGB565;
 	upload.pixels = pixels;
-	renderTextureCreate(&ctx->lightmap.texture, upload);
+	upload.generate_mipmaps = 1;
+	upload.type = RTexType_2D;
+	renderTextureInit(&ctx->lightmap.texture);
+	renderTextureUpload(&ctx->lightmap.texture, upload);
 	//ctx->lightmap.texture.min_filter = RTmF_Nearest;
 
 	/* pixels buffer is not needed anymore */
@@ -843,6 +846,27 @@ enum BSPLoadResult bspReadEntityTriggerChangelevel(struct BSPLoadModelContext *c
 	return BSPLoadResult_Success;
 }
 
+enum BSPLoadResult bspReadEntityWorldspawn(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
+	(void)ctx;
+	struct EntityProp props[] = {
+		{"skyname", NULL, 0},
+	};
+
+	const enum BSPLoadResult result = bspReadEntityProps(tctx, props, COUNTOF(props));
+
+	if (result != BSPLoadResult_Success)
+		return result;
+
+	/* FIXME skyboxes cannot be cube maps ;_;
+	if (props[0].value_length > 0) {
+		const StringView sky = { props[0].value, props[0].value_length };
+		ctx->model->skybox = textureGetSkybox(sky, ctx->collection, ctx->persistent);
+	}
+	*/
+
+	return BSPLoadResult_Success;
+}
+
 enum BSPLoadResult bspReadEntityAndDumpProps(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
 	(void)ctx;
 	return bspReadEntityProps(tctx, NULL, 0);
@@ -876,7 +900,7 @@ enum BSPLoadResult bspReadEntities(struct BSPLoadModelContext *ctx, const char *
 			}
 			LOAD_ENTITY("info_landmark", bspReadEntityInfoLandmark);
 			LOAD_ENTITY("trigger_changelevel", bspReadEntityTriggerChangelevel);
-			LOAD_ENTITY("worldspawn", bspReadEntityAndDumpProps);
+			LOAD_ENTITY("worldspawn", bspReadEntityWorldspawn);
 			LOAD_ENTITY("info_player_start", bspReadEntityAndDumpProps);
 			break;
 		case Token_Error:

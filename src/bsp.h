@@ -54,6 +54,8 @@ struct BSPModel {
 	RTexture lightmap;
 	RBuffer vbo, ibo;
 
+	const struct Texture *skybox;
+
 	struct BSPDrawSet detailed;
 	struct BSPDrawSet coarse;
 

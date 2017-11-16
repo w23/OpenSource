@@ -1,8 +1,8 @@
 #pragma once
 #include "render.h"
 
-struct ICollection;
-struct Stack;
+typedef struct ICollection ICollection;
+typedef struct Stack Stack;
 
 typedef struct Texture {
 	RTexture texture;
@@ -10,3 +10,10 @@ typedef struct Texture {
 } Texture;
 
 const Texture *textureGet(const char *name, struct ICollection *collection, struct Stack *tmp);
+
+typedef struct {
+	const char *str;
+	int length;
+} StringView;
+
+const Texture *textureGetSkybox(StringView name, ICollection *coll, Stack *tmp);

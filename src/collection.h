@@ -3,7 +3,7 @@
 #include "mempools.h"
 #include <stddef.h>
 
-struct IFile {
+typedef struct IFile {
 	size_t size;
 	/* read size bytes into buffer
 	 * returns bytes read, or < 0 on error. error codes aren't specified */
@@ -11,7 +11,7 @@ struct IFile {
 	/* free any internal resources.
 	 * will not free memory associated with this structure itself */
 	void (*close)(struct IFile *file);
-};
+} IFile;
 
 enum CollectionOpenResult {
 	CollectionOpen_Success,
@@ -27,13 +27,13 @@ enum FileType {
 	File_Model
 };
 
-struct ICollection {
+typedef struct ICollection {
 	/* free any internal resources, but don't deallocate this structure itself */
 	void (*close)(struct ICollection *collection);
 	enum CollectionOpenResult (*open)(struct ICollection *collection,
 			const char *name, enum FileType type, struct IFile **out_file);
 	struct ICollection *next;
-};
+} ICollection;
 
 enum CollectionOpenResult collectionChainOpen(struct ICollection *collection,
 		const char *name, enum FileType type, struct IFile **out_file);

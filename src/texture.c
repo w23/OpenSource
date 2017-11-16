@@ -90,8 +90,33 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 	return width * height * pixel_bits / 8;
 }
 
+static void textureUnpackDXTto565(uint8_t *src, uint16_t *dst, int width, int height, enum VTFImageFormat format) {
+	const struct DXTUnpackContext dxt_ctx = {
+		.width = width,
+		.height = height,
+		.packed = src,
+		.output = dst
+	};
+
+	if (format == VTFImage_DXT1)
+		dxt1Unpack(dxt_ctx);
+	else
+		dxt5Unpack(dxt_ctx);
+}
+
+static void textureUnpack888to565(uint8_t *src, uint16_t *dst, int width, int height) {
+	const int pixels = width * height;
+	for (int i = 0; i < pixels; ++i, src+=3) {
+		const int r = (src[0] >> 3) << 11;
+		const int g = (src[1] >> 2) << 5;
+		const int b = (src[2] >> 3);
+		dst[i] = r | g | b;
+	}
+}
+
 static uint16_t *textureUnpackToTemp(struct Stack *tmp, struct IFile *file, size_t cursor,
 		int width, int height, enum VTFImageFormat format) {
+
 	const int src_texture_size = vtfImageSize(format, width, height);
 	const int dst_texture_size = sizeof(uint16_t) * width * height;
 	void *dst_texture = stackAlloc(tmp, dst_texture_size);
@@ -104,28 +129,31 @@ static uint16_t *textureUnpackToTemp(struct Stack *tmp, struct IFile *file, size
 		PRINTF("Cannot allocate %d bytes for texture", src_texture_size);
 		return 0;
 	}
+
 	if (src_texture_size != (int)file->read(file, cursor, src_texture_size, src_texture)) {
 		PRINT("Cannot read texture data");
 		return 0;
 	}
 
-	const struct DXTUnpackContext dxt_ctx = {
-		.width = width,
-		.height = height,
-		.packed = src_texture,
-		.output = dst_texture
-	};
-	if (format == VTFImage_DXT1)
-		dxt1Unpack(dxt_ctx);
-	else
-		dxt5Unpack(dxt_ctx);
+	switch (format) {
+		case VTFImage_DXT1:
+		case VTFImage_DXT5:
+			textureUnpackDXTto565(src_texture, dst_texture, width, height, format);
+			break;
+		case VTFImage_BGR8:
+			textureUnpack888to565(src_texture, dst_texture, width, height);
+			break;
+		default:
+			PRINTF("Unsupported texture format %s", vtfFormatStr(format));
+			return 0;
+	}
 
 	stackFreeUpToPosition(tmp, src_texture);
 	return dst_texture;
 }
 
-static int textureUploadMipmap(struct Stack *tmp, struct IFile *file, size_t cursor,
-		const struct VTFHeader *hdr, int miplevel, RTexture *tex) {
+static int textureUploadMipmapType(struct Stack *tmp, struct IFile *file, size_t cursor,
+		const struct VTFHeader *hdr, int miplevel, RTexture *tex, RTexType tex_type) {
 	for (int mip = hdr->mipmap_count - 1; mip > miplevel; --mip) {
 		const unsigned int mip_width = hdr->width >> mip;
 		const unsigned int mip_height = hdr->height >> mip;
@@ -143,18 +171,21 @@ static int textureUploadMipmap(struct Stack *tmp, struct IFile *file, size_t cur
 		return 0;
 	}
 
-	const RTextureCreateParams params = {
+
+	const RTextureUploadParams params = {
+		.type = tex_type,
 		.width = hdr->width,
 		.height = hdr->height,
 		.format = RTexFormat_RGB565,
-		.pixels = dst_texture
+		.pixels = dst_texture,
+		.generate_mipmaps = 1
 	};
 
-	renderTextureCreate(tex, params);
+	renderTextureUpload(tex, params);
 	return 1;
 }
 
-static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
+static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp, RTexType type) {
 	struct VTFHeader hdr;
 	size_t cursor = 0;
 	int retval = 0;
@@ -179,7 +210,7 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 	//PRINTF("Texture: %dx%d, %s",
 	//	hdr.width, hdr.height, vtfFormatStr(hdr.hires_format));
 
-	if (hdr.hires_format != VTFImage_DXT1 && hdr.hires_format != VTFImage_DXT5) {
+	if (hdr.hires_format != VTFImage_DXT1 && hdr.hires_format != VTFImage_DXT5 && hdr.hires_format != VTFImage_BGR8) {
 		PRINTF("Not implemented texture format: %s", vtfFormatStr(hdr.hires_format));
 		return 0;
 	}
@@ -218,7 +249,7 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp) {
 		hdr.lores_width, hdr.lores_height, vtfFormatStr(hdr.lores_format), hdr.mipmap_count, hdr.header_size);
 	*/
 
-	retval = textureUploadMipmap(tmp, file, cursor, &hdr, 0, &tex->texture);
+	retval = textureUploadMipmapType(tmp, file, cursor, &hdr, 0, &tex->texture, type);
 	stackFreeUpToPosition(tmp, pre_alloc_cursor);
 
 	return retval;
@@ -235,7 +266,8 @@ const Texture *textureGet(const char *name, struct ICollection *collection, stru
 	}
 
 	struct Texture localtex;
-	if (textureLoad(texfile, &localtex, tmp) == 0) {
+	renderTextureInit(&localtex.texture);
+	if (textureLoad(texfile, &localtex, tmp, RTexType_2D) == 0) {
 		PRINTF("Texture \"%s\" found, but could not be loaded", name);
 	} else {
 		cachePutTexture(name, &localtex);
@@ -244,4 +276,46 @@ const Texture *textureGet(const char *name, struct ICollection *collection, stru
 
 	texfile->close(texfile);
 	return tex ? tex : cacheGetTexture("opensource/placeholder");
+}
+
+static const struct {
+	const char *suffix;
+	RTexType type;
+} texture_skybox_faces[6] = {
+	{"rt", RTexType_CubePX},
+	{"bk", RTexType_CubeNY},
+	{"dn", RTexType_CubeNZ},
+	{"ft", RTexType_CubePY},
+	{"lf", RTexType_CubeNX},
+	{"up", RTexType_CubePZ}};
+
+const Texture *textureGetSkybox(StringView name, ICollection *coll, Stack *tmp) {
+	char *zname = alloca(name.length + 3 + 7);
+	memset(zname, 0, name.length + 3 + 7);
+	memcpy(zname, "skybox/", 7);
+	memcpy(zname + 7, name.str, name.length);
+	const Texture *tex = cacheGetTexture(zname); /* FIXME will collide with non-skybox textures with the same name */
+	if (tex) return tex;
+
+	Texture localtex;
+	renderTextureInit(&localtex.texture);
+	for (int i = 0; i < 6; ++i) {
+		memcpy(zname + name.length + 7, texture_skybox_faces[i].suffix, 2);
+		struct IFile *texfile;
+		if (CollectionOpen_Success != collectionChainOpen(coll, zname, File_Texture, &texfile)) {
+			/* FIXME partially loaded skybox will leak here */
+			PRINTF("Texture \"%s\" not found", zname);
+			return cacheGetTexture("opensource/placeholder");
+		}
+
+		if (textureLoad(texfile, &localtex, tmp, texture_skybox_faces[i].type) == 0) {
+			/* FIXME partially loaded skybox will leak here */
+			texfile->close(texfile);
+			PRINTF("Texture \"%s\" found, but could not be loaded", zname);
+			return cacheGetTexture("opensource/placeholder");
+		}
+	}
+
+	cachePutTexture(zname, &localtex);
+	return cacheGetTexture(zname);
 }

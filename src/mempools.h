@@ -2,10 +2,10 @@
 #include "common.h"
 #include <stddef.h>
 
-struct Stack {
+typedef struct Stack {
 	char *storage;
 	size_t size, cursor;
-};
+} Stack;
 
 static inline void *stackGetCursor(const struct Stack *stack) {
 	return stack->storage + stack->cursor;

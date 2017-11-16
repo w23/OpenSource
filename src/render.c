@@ -33,7 +33,6 @@
 #define GL_CALL(f) (f)
 #else
 #if 0
-#include <stdlib.h> /* abort() */
 static void a__GlPrintError(const char *message, int error) {
 	const char *errstr = "UNKNOWN";
 	switch (error) {
@@ -57,7 +56,7 @@ static void a__GlPrintError(const char *message, int error) {
 		const int glerror = glGetError(); \
 		if (glerror != GL_NO_ERROR) { \
 			a__GlPrintError(__FILE__ ":" RENDER__GL_STR(__LINE__) ": " #f " returned ", glerror); \
-			abort(); \
+			RENDER_ASSERT(!"GL error"); \
 		}
 #else
 #define RENDER_GL_GETERROR(f)
@@ -138,29 +137,54 @@ static GLint render_ShaderCreate(GLenum type, const char *sources[]) {
 	return shader;
 }
 
-void renderTextureCreate(RTexture *texture, RTextureCreateParams params) {
+void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	GLenum internal, format, type;
-	GL_CALL(glGenTextures(1, &texture->gl_name));
+
+	if (texture->gl_name == (GLuint)-1) {
+		GL_CALL(glGenTextures(1, &texture->gl_name));
+		texture->type_flags = 0;
+	}
 
 	switch (params.format) {
 		case RTexFormat_RGB565:
 			internal = format = GL_RGB; type = GL_UNSIGNED_SHORT_5_6_5; break;
+		default:
+			ATTO_ASSERT(!"Impossible texture format");
 	}
-	GL_CALL(glBindTexture(GL_TEXTURE_2D, texture->gl_name));
 
-	GL_CALL(glTexImage2D(GL_TEXTURE_2D, 0, internal, params.width, params.height, 0,
+	const GLenum binding = (params.type == RTexType_2D) ? GL_TEXTURE_2D : GL_TEXTURE_CUBE_MAP;
+	const GLint wrap = (params.type == RTexType_2D) ? GL_REPEAT : GL_CLAMP;
+
+
+	GL_CALL(glBindTexture(binding, texture->gl_name));
+
+	GLenum upload_binding = binding;
+	switch (params.type) {
+		case RTexType_2D: upload_binding = GL_TEXTURE_2D; break;
+		case RTexType_CubePX: upload_binding = GL_TEXTURE_CUBE_MAP_POSITIVE_X; break;
+		case RTexType_CubeNX: upload_binding = GL_TEXTURE_CUBE_MAP_NEGATIVE_X; break;
+		case RTexType_CubePY: upload_binding = GL_TEXTURE_CUBE_MAP_POSITIVE_Y; break;
+		case RTexType_CubeNY: upload_binding = GL_TEXTURE_CUBE_MAP_NEGATIVE_Y; break;
+		case RTexType_CubePZ: upload_binding = GL_TEXTURE_CUBE_MAP_POSITIVE_Z; break;
+		case RTexType_CubeNZ: upload_binding = GL_TEXTURE_CUBE_MAP_NEGATIVE_Z; break;
+	}
+
+	GL_CALL(glTexImage2D(upload_binding, 0, internal, params.width, params.height, 0,
 			format, type, params.pixels));
 
-	GL_CALL(glGenerateMipmap(GL_TEXTURE_2D));
+	if (params.generate_mipmaps)
+		GL_CALL(glGenerateMipmap(binding));
 
-	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR));
-	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
-	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
-	GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
+	GL_CALL(glTexParameteri(binding, GL_TEXTURE_MIN_FILTER, params.generate_mipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST));
+	GL_CALL(glTexParameteri(binding, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+
+	GL_CALL(glTexParameteri(binding, GL_TEXTURE_WRAP_S, wrap));
+	GL_CALL(glTexParameteri(binding, GL_TEXTURE_WRAP_T, wrap));
 
 	texture->width = params.width;
 	texture->height = params.height;
 	texture->format = params.format;
+	texture->type_flags |= params.type;
 }
 
 void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void *data) {
@@ -422,12 +446,15 @@ int renderInit() {
 	}
 
 	struct Texture default_texture;
-	RTextureCreateParams params;
+	RTextureUploadParams params;
+	params.type = RTexType_2D;
 	params.format = RTexFormat_RGB565;
 	params.width = 2;
 	params.height = 2;
 	params.pixels = (uint16_t[]){0xffffu, 0, 0, 0xffffu};
-	renderTextureCreate(&default_texture.texture, params);
+	params.generate_mipmaps = 0;
+	renderTextureInit(&default_texture.texture);
+	renderTextureUpload(&default_texture.texture, params);
 	cachePutTexture("opensource/placeholder", &default_texture);
 
 	{

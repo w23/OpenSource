@@ -40,19 +40,33 @@ typedef enum {
 	RTexFormat_RGB565
 } RTexFormat;
 
+typedef enum {
+	RTexType_2D = (1 << 0),
+	RTexType_CubePX = (1 << 1),
+	RTexType_CubeNX = (1 << 2),
+	RTexType_CubePY = (1 << 3),
+	RTexType_CubeNY = (1 << 4),
+	RTexType_CubePZ = (1 << 5),
+	RTexType_CubeNZ = (1 << 6),
+} RTexType;
+
 typedef struct RTexture {
 	int width, height;
 	RTexFormat format;
 	GLuint gl_name;
+	int type_flags;
 } RTexture;
 
 typedef struct {
+	RTexType type;
 	int width, height;
 	RTexFormat format;
 	const void *pixels;
-} RTextureCreateParams;
+	int generate_mipmaps;
+} RTextureUploadParams;
 
-void renderTextureCreate(RTexture *texture, RTextureCreateParams params);
+#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = (GLuint)-1; } while (0)
+void renderTextureUpload(RTexture *texture, RTextureUploadParams params);
 
 typedef struct {
 	GLuint gl_name;
