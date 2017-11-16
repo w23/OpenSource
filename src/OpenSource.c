@@ -88,6 +88,7 @@ static struct {
 	float R;
 	float lmn;
 
+	struct ICollection *collection_chain;
 	struct Map *maps_begin, *maps_end;
 	int maps_count, maps_limit;
 } g;
@@ -186,7 +187,7 @@ static enum BSPLoadResult loadMap(struct Map *map, struct ICollection *collectio
 	return BSPLoadResult_Success;
 }
 
-static void opensrcInit(struct ICollection *collection, const char *map, int max_maps) {
+static void opensrcInit(const char *map, int max_maps) {
 	cacheInit(&stack_persistent);
 
 	if (!renderInit()) {
@@ -200,9 +201,8 @@ static void opensrcInit(struct ICollection *collection, const char *map, int max
 	g.maps_count = 0;
 	openSourceAddMap(map, strlen(map));
 
-	for(struct Map *map = g.maps_begin; map; map = map->next)
-		if (BSPLoadResult_Success != loadMap(map, collection) && map == g.maps_begin)
-			aAppTerminate(-2);
+	if (BSPLoadResult_Success != loadMap(g.maps_begin, g.collection_chain))
+		aAppTerminate(-2);
 
 	PRINTF("Maps loaded: %d", g.maps_count);
 
@@ -235,9 +235,20 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 	renderClear();
 
 	int triangles = 0;
+	int can_load_map = 1;
 	for (struct Map *map = g.maps_begin; map; map = map->next) {
-		if (!map->loaded)
+		if (map->loaded < 0)
 			continue;
+
+		if (map->loaded == 0) {
+			if (can_load_map) {
+				if (BSPLoadResult_Success != loadMap(map, g.collection_chain))
+					map->loaded = -1;
+			}
+
+			can_load_map = 0;
+			continue;
+		}
 
 		const struct AMat4f mvp = aMat4fMul(g.camera.view_projection, aMat4fTranslation(map->offset));
 
@@ -299,9 +310,9 @@ static struct ICollection *addToCollectionChain(struct ICollection *chain, struc
 void attoAppInit(struct AAppProctable *proctable) {
 	profilerInit();
 	//aGLInit();
-	struct ICollection *collection_chain = NULL;
 	const char *map = 0;
 	int max_maps = 1;
+	g.collection_chain = NULL;
 
 	struct Memories mem = {
 		&stack_temp,
@@ -318,7 +329,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			const char *value = a_app_state->argv[++i];
 
 			PRINTF("Adding vpk collection at %s", value);
-			collection_chain = addToCollectionChain(collection_chain, collectionCreateVPK(&mem, value));
+			g.collection_chain = addToCollectionChain(g.collection_chain, collectionCreateVPK(&mem, value));
 		} else if (strcmp(argv, "-d") == 0) {
 			if (i == a_app_state->argc - 1) {
 				aAppDebugPrintf("-d requires an argument");
@@ -327,7 +338,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			const char *value = a_app_state->argv[++i];
 
 			PRINTF("Adding dir collection at %s", value);
-			collection_chain = addToCollectionChain(collection_chain, collectionCreateFilesystem(&mem, value));
+			g.collection_chain = addToCollectionChain(g.collection_chain, collectionCreateFilesystem(&mem, value));
 		} else if (strcmp(argv, "-n") == 0) {
 			if (i == a_app_state->argc - 1) {
 				aAppDebugPrintf("-p requires an argument");
@@ -345,12 +356,12 @@ void attoAppInit(struct AAppProctable *proctable) {
 		}
 	}
 
-	if (!map || !collection_chain) {
+	if (!map || !g.collection_chain) {
 		aAppDebugPrintf("At least one map and one collection required");
 		goto print_usage_and_exit;
 	}
 
-	opensrcInit(collection_chain, map, max_maps);
+	opensrcInit(map, max_maps);
 
 	proctable->resize = opensrcResize;
 	proctable->paint = opensrcPaint;
