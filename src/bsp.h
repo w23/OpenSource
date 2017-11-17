@@ -3,19 +3,14 @@
 #include "render.h"
 #include "atto/math.h"
 
-struct Material;
-
 struct AABB { struct AVec3f min, max; };
-struct Plane { struct AVec3f n; float d; };
 
 struct BSPModelVertex {
 	struct AVec3f vertex;
 	//struct AVec3f normal;
 	struct AVec2f lightmap_uv;
 	struct AVec2f tex_uv;
-	struct {
-		uint8_t r, g, b;
-	} average_color;
+	struct { uint8_t r, g, b; } average_color;
 };
 
 struct BSPDraw {
@@ -23,18 +18,6 @@ struct BSPDraw {
 	unsigned int start, count;
 	unsigned int vbo_offset;
 };
-
-/* TODO
-struct BSPNode {
-	struct AABB aabb;
-	struct {
-		struct BSPDraw *p;
-		unsigned n;
-	} draw;
-	struct Plane plane;
-	int left, right;
-};
-*/
 
 #define BSP_LANDMARK_NAME_LENGTH 64
 #define BSP_MAX_LANDMARKS 32

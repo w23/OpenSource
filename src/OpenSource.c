@@ -219,7 +219,7 @@ static void opensrcInit(const char *map, int max_maps) {
 
 static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int old_h) {
 	(void)(timestamp); (void)(old_w); (void)(old_h);
-	glViewport(0, 0, a_app_state->width, a_app_state->height);
+	renderResize(a_app_state->width, a_app_state->height);
 
 	simplecamProjection(&g.camera, 1.f, g.R * 10.f, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
 	simplecamRecalc(&g.camera);

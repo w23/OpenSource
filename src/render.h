@@ -1,41 +1,6 @@
 #pragma once
 #include "atto/math.h"
 
-#if !defined(ATTO_PLATFORM)
-#include "atto/platform.h"
-#endif
-
-#if !defined(ATTO_GL_HEADERS_INCLUDED)
-#ifdef ATTO_PLATFORM_X11
-#define GL_GLEXT_PROTOTYPES 1
-#include <GL/glx.h>
-#include <GL/gl.h>
-#include <GL/glext.h>
-#define ATTO_GL_DESKTOP
-#endif /* ifdef ATTO_PLATFORM_X11 */
-
-#ifdef ATTO_PLATFORM_RPI
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
-#define ATTO_GL_ES
-#endif /* ifdef ATTO_PLATFORM_RPI */
-
-#ifdef ATTO_PLATFORM_WINDOWS
-#include "libc.h"
-#include <GL/gl.h>
-#include <glext.h>
-#define ATTO_GL_DESKTOP
-#endif /* ifdef ATTO_PLATFORM_WINDOWS */
-
-#ifdef ATTO_PLATFORM_OSX
-#include <OpenGL/gl3.h>
-#define ATTO_GL_DESKTOP
-#endif
-#endif /* if !defined(ATTO_GL_HEADERS_INCLUDED) */
-
-int renderInit();
-void renderClear();
-
 typedef enum {
 	RTexFormat_RGB565
 } RTexFormat;
@@ -50,10 +15,10 @@ typedef enum {
 	RTexType_CubeNZ = (1 << 6),
 } RTexType;
 
-typedef struct RTexture {
+typedef struct {
 	int width, height;
 	RTexFormat format;
-	GLuint gl_name;
+	int gl_name;
 	int type_flags;
 } RTexture;
 
@@ -65,21 +30,25 @@ typedef struct {
 	int generate_mipmaps;
 } RTextureUploadParams;
 
-#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = (GLuint)-1; } while (0)
+#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = -1; } while (0)
 void renderTextureUpload(RTexture *texture, RTextureUploadParams params);
 
 typedef struct {
-	GLuint gl_name;
+	int gl_name;
+	int type;
 } RBuffer;
 
 typedef enum {
-	RBufferType_Vertex = GL_ARRAY_BUFFER,
-	RBufferType_Index = GL_ELEMENT_ARRAY_BUFFER
+	RBufferType_Vertex,
+	RBufferType_Index
 } RBufferType;
 
+int renderInit();
+void renderResize(int w, int h);
+
 void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void *data);
-//void renderBufferUpload(RBuffer *buffer, RBufferUpload upload);
 
 struct BSPModel;
 
+void renderClear();
 void renderModelDraw(const struct AMat4f *mvp, struct AVec3f camera_position, float lmn, const struct BSPModel *model);

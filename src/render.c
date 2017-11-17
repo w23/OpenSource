@@ -5,6 +5,33 @@
 #include "common.h"
 #include "profiler.h"
 #include "atto/app.h"
+#include "atto/platform.h"
+
+#ifdef ATTO_PLATFORM_X11
+#define GL_GLEXT_PROTOTYPES 1
+#include <GL/glx.h>
+#include <GL/gl.h>
+#include <GL/glext.h>
+#define ATTO_GL_DESKTOP
+#endif /* ifdef ATTO_PLATFORM_X11 */
+
+#ifdef ATTO_PLATFORM_RPI
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
+#define ATTO_GL_ES
+#endif /* ifdef ATTO_PLATFORM_RPI */
+
+#ifdef ATTO_PLATFORM_WINDOWS
+#include "libc.h"
+#include <GL/gl.h>
+#include <glext.h>
+#define ATTO_GL_DESKTOP
+#endif /* ifdef ATTO_PLATFORM_WINDOWS */
+
+#ifdef ATTO_PLATFORM_OSX
+#include <OpenGL/gl3.h>
+#define ATTO_GL_DESKTOP
+#endif
 
 #define RENDER_ERRORCHECK
 //#define RENDER_GL_TRACE
@@ -140,8 +167,8 @@ static GLint render_ShaderCreate(GLenum type, const char *sources[]) {
 void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	GLenum internal, format, type;
 
-	if (texture->gl_name == (GLuint)-1) {
-		GL_CALL(glGenTextures(1, &texture->gl_name));
+	if (texture->gl_name == -1) {
+		GL_CALL(glGenTextures(1, (GLuint*)&texture->gl_name));
 		texture->type_flags = 0;
 	}
 
@@ -188,9 +215,14 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 }
 
 void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void *data) {
-	GL_CALL(glGenBuffers(1, &buffer->gl_name));
-	GL_CALL(glBindBuffer(type, buffer->gl_name));
-	GL_CALL(glBufferData(type, size, data, GL_STATIC_DRAW));
+	switch (type) {
+	case RBufferType_Vertex: buffer->type = GL_ARRAY_BUFFER; break;
+	case RBufferType_Index: buffer->type = GL_ELEMENT_ARRAY_BUFFER; break;
+	default: ASSERT(!"Invalid buffer type");
+	}
+	GL_CALL(glGenBuffers(1, (GLuint*)&buffer->gl_name));
+	GL_CALL(glBindBuffer(buffer->type, (GLuint)buffer->gl_name));
+	GL_CALL(glBufferData(buffer->type, size, data, GL_STATIC_DRAW));
 }
 
 typedef struct {
@@ -463,7 +495,7 @@ int renderInit() {
 		default_material.average_color = aVec3f(0.f, 1.f, 0.f);
 		default_material.shader = MaterialShader_LightmappedAverageColor;
 		cachePutMaterial("opensource/placeholder", &default_material);
-	} 
+	}
 
 	{
 		struct Material lightmap_color_material;
@@ -475,7 +507,6 @@ int renderInit() {
 
 	GL_CALL(glEnable(GL_DEPTH_TEST));
 	GL_CALL(glEnable(GL_CULL_FACE));
-	r.current_tex0 = 0;
 	return 1;
 }
 
@@ -551,6 +582,10 @@ void renderModelDraw(const struct AMat4f *mvp, struct AVec3f camera_position, fl
 		renderDrawSet(model, &model->detailed);
 	else
 		renderDrawSet(model, &model->coarse);
+}
+
+void renderResize(int w, int h) {
+	glViewport(0, 0, w, h);
 }
 
 void renderClear() {

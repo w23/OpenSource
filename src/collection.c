@@ -432,7 +432,7 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_fi
 
 	// sort
 	qsort(files_begin, files_end - files_begin, sizeof(*files_begin), vpkMetadataCompare);
-	
+
 	// store filenames in persistent memory
 	for (struct VPKFileMetadata *file = files_begin; file != files_end; ++file) {
 		char *string = stackAlloc(mem->persistent, file->filename.len + 1);
@@ -574,7 +574,7 @@ struct ICollection *collectionCreatePakfile(struct Memories *mem, const void *pa
 
 	(void)mem;
 
-	// 1. need to find zip end of directory 
+	// 1. need to find zip end of directory
 	if (size < (int)sizeof(struct ZipEndOfDirectory)) {
 		PRINT("Invalid pakfile size");
 		return NULL;
@@ -583,7 +583,7 @@ struct ICollection *collectionCreatePakfile(struct Memories *mem, const void *pa
 	int eod_offset = size - sizeof(struct ZipEndOfDirectory);
 	const struct ZipEndOfDirectory *eod;
 	for (;;) {
-		eod = (void*)((const char*)pakfile + eod_offset);
+		eod = (const void*)((const char*)pakfile + eod_offset);
 		// TODO what if comment contain signature?
 		if (eod->signature == ZipEndOfDirectory_Signature)
 			break;

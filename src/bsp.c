@@ -249,12 +249,6 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 
 const int c_max_draw_vertices = 65536;
 
-/*
-static float clamp(float x, float min, float max) {
-	return x < min ? min : (x > max ? max : x);
-}
-*/
-
 static int scaleLightmapColor(int c, int exp) {
 	const int c2 =
 		(bsp_global.lightmap_tables.exponent[exp+128] * bsp_global.lightmap_tables.color[c]) >> 12;
@@ -363,7 +357,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 	upload.height = atlas_context.height;
 	upload.format = RTexFormat_RGB565;
 	upload.pixels = pixels;
-	upload.generate_mipmaps = 1;
+	upload.generate_mipmaps = 0;
 	upload.type = RTexType_2D;
 	renderTextureInit(&ctx->lightmap.texture);
 	renderTextureUpload(&ctx->lightmap.texture, upload);
@@ -376,6 +370,10 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 }
 
 static inline struct AVec3f aVec3fLumpVec(struct VBSPLumpVertex v) { return aVec3f(v.x, v.y, v.z); }
+
+static inline float clamp(float x, float min, float max) {
+	return x < min ? min : (x > max ? max : x);
+}
 
 #ifdef DEBUG_DISP_LIGHTMAP
 static int shouldSwapUV(struct AVec3f mapU, struct AVec3f mapV, const struct AVec3f *v) {
@@ -555,8 +553,13 @@ static void bspLoadFace(
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_u),
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_v));
 
+		vertex->lightmap_uv.x = clamp(vertex->lightmap_uv.x, 0.f, face->width);
+		vertex->lightmap_uv.y = clamp(vertex->lightmap_uv.y, 0.f, face->height);
+
+		/*
 		if (vertex->lightmap_uv.x < 0 || vertex->lightmap_uv.y < 0 || vertex->lightmap_uv.x > face->width || vertex->lightmap_uv.y > face->height)
 			PRINTF("Error: OOB LM F:V%u: x=%f y=%f z=%f u=%f v=%f w=%d h=%d", iedge, lv->x, lv->y, lv->z, vertex->lightmap_uv.x, vertex->lightmap_uv.y, face->width, face->height);
+		*/
 
 		vertex->lightmap_uv.x = (vertex->lightmap_uv.x + face->atlas_x + .5f) / ctx->lightmap.texture.width;
 		vertex->lightmap_uv.y = (vertex->lightmap_uv.y + face->atlas_y + .5f) / ctx->lightmap.texture.height;
