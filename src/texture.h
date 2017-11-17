@@ -1,8 +1,7 @@
 #pragma once
 #include "render.h"
-
-typedef struct ICollection ICollection;
-typedef struct Stack Stack;
+#include "collection.h"
+#include "mempools.h"
 
 typedef struct Texture {
 	RTexture texture;
