@@ -736,6 +736,31 @@ static enum BSPLoadResult bspLoadModel(
 	return BSPLoadResult_Success;
 } // bspLoadModel()
 
+static const struct {
+	const char *suffix;
+	BSPSkyboxDir dir;
+} bsp_skybox_suffix[6] = {
+	{"rt", BSPSkyboxDir_RT},
+	{"lf", BSPSkyboxDir_LF},
+	{"ft", BSPSkyboxDir_FT},
+	{"bk", BSPSkyboxDir_BK},
+	{"up", BSPSkyboxDir_UP},
+	{"dn", BSPSkyboxDir_DN}};
+
+static void bspLoadSkybox(StringView name, ICollection *coll, Stack *tmp, struct BSPModel *model) {
+	char *zname = alloca(name.length + 3 + 7);
+	memset(zname, 0, name.length + 3 + 7);
+	memcpy(zname, "skybox/", 7);
+	memcpy(zname + 7, name.str, name.length);
+
+	Texture localtex;
+	renderTextureInit(&localtex.texture);
+	for (int i = 0; i < 6; ++i) {
+		memcpy(zname + name.length + 7, bsp_skybox_suffix[i].suffix, 2);
+		model->skybox[bsp_skybox_suffix[i].dir] = textureGet(zname, coll, tmp);
+	}
+}
+
 struct EntityProp {
 	const char *name;
 	const char *value;
@@ -860,12 +885,10 @@ enum BSPLoadResult bspReadEntityWorldspawn(struct BSPLoadModelContext *ctx, stru
 	if (result != BSPLoadResult_Success)
 		return result;
 
-	/* FIXME skyboxes cannot be cube maps ;_;
 	if (props[0].value_length > 0) {
 		const StringView sky = { props[0].value, props[0].value_length };
-		ctx->model->skybox = textureGetSkybox(sky, ctx->collection, ctx->persistent);
+		bspLoadSkybox(sky, ctx->collection, ctx->persistent, ctx->model);
 	}
-	*/
 
 	return BSPLoadResult_Success;
 }

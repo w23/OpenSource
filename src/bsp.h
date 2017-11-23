@@ -32,12 +32,22 @@ struct BSPDrawSet {
 	struct BSPDraw *draws;
 };
 
+typedef enum {
+	BSPSkyboxDir_RT,
+	BSPSkyboxDir_LF,
+	BSPSkyboxDir_FT,
+	BSPSkyboxDir_BK,
+	BSPSkyboxDir_UP,
+	BSPSkyboxDir_DN,
+	BSPSkyboxDir_COUNT
+} BSPSkyboxDir;
+
 struct BSPModel {
 	struct AABB aabb;
 	RTexture lightmap;
 	RBuffer vbo, ibo;
 
-	const struct Texture *skybox;
+	const struct Texture *skybox[BSPSkyboxDir_COUNT];
 
 	struct BSPDrawSet detailed;
 	struct BSPDrawSet coarse;

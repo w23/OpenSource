@@ -202,7 +202,7 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	if (params.generate_mipmaps)
 		GL_CALL(glGenerateMipmap(binding));
 
-	GL_CALL(glTexParameteri(binding, GL_TEXTURE_MIN_FILTER, params.generate_mipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST));
+	GL_CALL(glTexParameteri(binding, GL_TEXTURE_MIN_FILTER, params.generate_mipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR));
 	GL_CALL(glTexParameteri(binding, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 
 	GL_CALL(glTexParameteri(binding, GL_TEXTURE_WRAP_S, wrap));
@@ -269,6 +269,11 @@ RENDER_LIST_ATTRIBS
 	RENDER_DECLARE_UNIFORM(tex1) \
 	RENDER_DECLARE_UNIFORM(tex0_size) \
 	RENDER_DECLARE_UNIFORM(tex1_size) \
+	RENDER_DECLARE_UNIFORM(tex2) \
+	RENDER_DECLARE_UNIFORM(tex3) \
+	RENDER_DECLARE_UNIFORM(tex4) \
+	RENDER_DECLARE_UNIFORM(tex5) \
+	RENDER_DECLARE_UNIFORM(cam_pos) \
 
 static const RUniform uniforms[] = {
 #define RENDER_DECLARE_UNIFORM(n) {"u_" # n},
@@ -295,6 +300,7 @@ typedef struct RProgram {
 enum {
 	Program_LightmapColor,
 	Program_LightmapTexture,
+	Program_Skybox,
 	Program_COUNT
 };
 
@@ -316,7 +322,7 @@ static RProgram programs[Program_COUNT] = {
 			/*fragment*/
 			"uniform sampler2D u_lightmap;\n"
 			"void main() {\n"
-				"gl_FragColor = vec4(v_color * (vec3(.1) + texture2D(u_lightmap, v_lightmap_uv).xyz), 1.);\n"
+				"gl_FragColor = vec4(v_color * texture2D(u_lightmap, v_lightmap_uv).xyz, 1.);\n"
 			"}\n"
 			},
 		{ -1 }, { -1 }
@@ -343,14 +349,85 @@ static RProgram programs[Program_COUNT] = {
 		"vec4 albedo = texture2D(u_tex0, v_tex_uv/u_tex0_size);\n"
 		"albedo = mix(albedo, texture2D(u_tex1, v_tex_uv/u_tex1_size), .0);\n"
 		"vec3 lm = texture2D(u_lightmap, v_lightmap_uv).xyz;\n"
-		"vec3 color = albedo.xyz * (vec3(.1) + lm);\n"
+		"vec3 color = albedo.xyz * lm;\n"
 		"gl_FragColor = vec4(mix(color, tc, u_lmn), 1.);\n"
 	"}\n"
 			},
 		{ -1 }, { -1 }
 	},
-
+	/* Skybox */
+	{-1, { /* common */
+		"varying vec2 v_uv;\n"
+		"varying float texid;\n",
+		/* vertex */
+		"attribute vec3 a_vertex;\n"
+		"uniform vec3 u_cam_pos;\n"
+		"attribute vec2 a_tex_uv;\n"
+		"attribute vec2 a_lightmap_uv;\n"
+		"uniform mat4 u_mvp;\n"
+		"void main() {\n"
+			"v_uv = a_tex_uv;\n"
+			"texid = a_lightmap_uv.x;\n"
+			"gl_Position = u_mvp * vec4(u_cam_pos + 100000. * a_vertex, 1.);\n"
+		"}\n",
+		/* fragment */
+		"uniform sampler2D u_tex0, u_tex1, u_tex2, u_tex3, u_tex4, u_tex5;\n"
+		"void main() {\n"
+			"if (texid < 1.) gl_FragColor = texture2D(u_tex0, v_uv);\n"
+			"else if (texid < 2.) gl_FragColor = texture2D(u_tex1, v_uv);\n"
+			"else if (texid < 3.) gl_FragColor = texture2D(u_tex2, v_uv);\n"
+			"else if (texid < 4.) gl_FragColor = texture2D(u_tex3, v_uv);\n"
+			"else if (texid < 5.) gl_FragColor = texture2D(u_tex4, v_uv);\n"
+			"else gl_FragColor = texture2D(u_tex5, v_uv);\n"
+		"}\n"
+		}, {-1}, {-1}},
 };
+
+static struct BSPModelVertex box[] = {
+	{{ 1.f, -1.f, -1.f}, {0.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f, -1.f}, {0.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {0.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {0.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{ 1.f, -1.f,  1.f}, {0.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{ 1.f, -1.f, -1.f}, {0.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+
+	{{-1.f, -1.f,  1.f}, {1.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {1.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {1.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {1.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f, -1.f, -1.f}, {1.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f,  1.f}, {1.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+
+	{{ 1.f, -1.f,  1.f}, {2.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {2.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {2.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {2.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f, -1.f,  1.f}, {2.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{ 1.f, -1.f,  1.f}, {2.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+
+	{{-1.f, -1.f, -1.f}, {3.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {3.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{ 1.f,  1.f, -1.f}, {3.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{ 1.f,  1.f, -1.f}, {3.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{ 1.f, -1.f, -1.f}, {3.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f, -1.f}, {3.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+
+	{{ 1.f,  1.f,  1.f}, {4.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f, -1.f}, {4.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {4.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {4.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {4.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {4.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+
+	{{ 1.f, -1.f, -1.f}, {5.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f, -1.f,  1.f}, {5.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f, -1.f,  1.f}, {5.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f, -1.f,  1.f}, {5.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f, -1.f, -1.f}, {5.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{ 1.f, -1.f, -1.f}, {5.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+};
+
+static RBuffer box_buffer;
 
 static struct {
 	const RTexture *current_tex0;
@@ -359,6 +436,7 @@ static struct {
 	struct {
 		const float *mvp;
 		float lmn;
+		struct AVec3f campos;
 	} uniforms;
 } r;
 
@@ -389,9 +467,14 @@ static int render_ProgramUse(RProgram *prog) {
 	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_lightmap], 0));
 	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex0], 1));
 	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex1], 2));
+	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex2], 3));
+	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex3], 4));
+	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex4], 5));
+	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex5], 6));
 
 	GL_CALL(glUniformMatrix4fv(prog->uniform_locations[RUniformKind_mvp], 1, GL_FALSE, r.uniforms.mvp));
 	GL_CALL(glUniform1f(prog->uniform_locations[RUniformKind_lmn], r.uniforms.lmn));
+	GL_CALL(glUniform3f(prog->uniform_locations[RUniformKind_cam_pos], r.uniforms.campos.x, r.uniforms.campos.y, r.uniforms.campos.z));
 
 	r.current_program = prog;
 	r.current_tex0 = NULL;
@@ -505,6 +588,8 @@ int renderInit() {
 		cachePutMaterial("opensource/coarse", &lightmap_color_material);
 	}
 
+	renderBufferCreate(&box_buffer, RBufferType_Vertex, sizeof(box), box);
+
 	GL_CALL(glEnable(GL_DEPTH_TEST));
 	GL_CALL(glEnable(GL_CULL_FACE));
 	return 1;
@@ -552,6 +637,21 @@ static void renderDrawSet(const struct BSPModel *model, const struct BSPDrawSet 
 	}
 }
 
+static void renderBindTexture(const RTexture *texture, int slot) {
+	GL_CALL(glActiveTexture(GL_TEXTURE0 + slot));
+	GL_CALL(glBindTexture(GL_TEXTURE_2D, texture->gl_name));
+}
+
+static void renderSkybox(const struct BSPModel *model) {
+	render_ProgramUse(programs + Program_Skybox);
+	for (int i = 0; i < 6; ++i)
+		renderBindTexture(&model->skybox[i]->texture, 1+i);
+	renderApplyAttribs(attribs, &box_buffer, 0);
+	GL_CALL(glDisable(GL_CULL_FACE));
+	GL_CALL(glDrawArrays(GL_TRIANGLES, 0, COUNTOF(box)));
+	GL_CALL(glEnable(GL_CULL_FACE));
+}
+
 static float aMaxf(float a, float b) { return a > b ? a : b; }
 //static float aMinf(float a, float b) { return a < b ? a : b; }
 
@@ -559,13 +659,13 @@ void renderModelDraw(const struct AMat4f *mvp, struct AVec3f camera_position, fl
 	if (!model->detailed.draws_count) return;
 
 	GL_CALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model->ibo.gl_name));
-	GL_CALL(glActiveTexture(GL_TEXTURE0));
-	GL_CALL(glBindTexture(GL_TEXTURE_2D, model->lightmap.gl_name));
+	renderBindTexture(&model->lightmap, 0);
 	GL_CALL(glActiveTexture(GL_TEXTURE0 + 1));
 
 	r.current_program = NULL;
 	r.uniforms.mvp = &mvp->X.x;
 	r.uniforms.lmn = lmn;
+	r.uniforms.campos = camera_position;
 
 	const float distance =
 		aMaxf(aMaxf(
@@ -582,6 +682,8 @@ void renderModelDraw(const struct AMat4f *mvp, struct AVec3f camera_position, fl
 		renderDrawSet(model, &model->detailed);
 	else
 		renderDrawSet(model, &model->coarse);
+
+	renderSkybox(model);
 }
 
 void renderResize(int w, int h) {

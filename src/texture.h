@@ -9,10 +9,3 @@ typedef struct Texture {
 } Texture;
 
 const Texture *textureGet(const char *name, struct ICollection *collection, struct Stack *tmp);
-
-typedef struct {
-	const char *str;
-	int length;
-} StringView;
-
-const Texture *textureGetSkybox(StringView name, ICollection *coll, Stack *tmp);

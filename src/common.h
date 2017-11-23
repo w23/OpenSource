@@ -9,3 +9,8 @@
 #define ASSERT(cond) if (!(cond)){PRINTF("%s failed", #cond); abort();}
 
 #define COUNTOF(a) (sizeof(a) / sizeof(*(a)))
+
+typedef struct {
+	const char *str;
+	int length;
+} StringView;
