@@ -4,6 +4,8 @@
 #include "cache.h"
 #include "common.h"
 #include "profiler.h"
+#include "camera.h"
+
 #include "atto/app.h"
 #include "atto/platform.h"
 
@@ -180,8 +182,8 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	}
 
 	const GLenum binding = (params.type == RTexType_2D) ? GL_TEXTURE_2D : GL_TEXTURE_CUBE_MAP;
-	const GLint wrap = (params.type == RTexType_2D) ? GL_REPEAT : GL_CLAMP;
-
+	const GLint wrap = (params.type == RTexType_2D && params.wrap == RTexWrap_Repeat)
+		? GL_REPEAT : GL_CLAMP;
 
 	GL_CALL(glBindTexture(binding, texture->gl_name));
 
@@ -264,6 +266,7 @@ RENDER_LIST_ATTRIBS
 #define RENDER_LIST_UNIFORMS \
 	RENDER_DECLARE_UNIFORM(mvp) \
 	RENDER_DECLARE_UNIFORM(lmn) \
+	RENDER_DECLARE_UNIFORM(far) \
 	RENDER_DECLARE_UNIFORM(lightmap) \
 	RENDER_DECLARE_UNIFORM(tex0) \
 	RENDER_DECLARE_UNIFORM(tex1) \
@@ -273,7 +276,6 @@ RENDER_LIST_ATTRIBS
 	RENDER_DECLARE_UNIFORM(tex3) \
 	RENDER_DECLARE_UNIFORM(tex4) \
 	RENDER_DECLARE_UNIFORM(tex5) \
-	RENDER_DECLARE_UNIFORM(cam_pos) \
 
 static const RUniform uniforms[] = {
 #define RENDER_DECLARE_UNIFORM(n) {"u_" # n},
@@ -361,14 +363,14 @@ static RProgram programs[Program_COUNT] = {
 		"varying float texid;\n",
 		/* vertex */
 		"attribute vec3 a_vertex;\n"
-		"uniform vec3 u_cam_pos;\n"
 		"attribute vec2 a_tex_uv;\n"
 		"attribute vec2 a_lightmap_uv;\n"
 		"uniform mat4 u_mvp;\n"
+		"uniform float u_far;\n"
 		"void main() {\n"
 			"v_uv = a_tex_uv;\n"
 			"texid = a_lightmap_uv.x;\n"
-			"gl_Position = u_mvp * vec4(u_cam_pos + 100000. * a_vertex, 1.);\n"
+			"gl_Position = u_mvp * vec4(u_far * .5 * a_vertex, 1.);\n"
 		"}\n",
 		/* fragment */
 		"uniform sampler2D u_tex0, u_tex1, u_tex2, u_tex3, u_tex4, u_tex5;\n"
@@ -384,47 +386,47 @@ static RProgram programs[Program_COUNT] = {
 };
 
 static struct BSPModelVertex box[] = {
-	{{ 1.f, -1.f, -1.f}, {0.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f, -1.f, -1.f}, {0.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
 	{{ 1.f,  1.f, -1.f}, {0.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
-	{{ 1.f,  1.f,  1.f}, {0.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{ 1.f,  1.f,  1.f}, {0.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {0.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {0.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
 	{{ 1.f, -1.f,  1.f}, {0.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
-	{{ 1.f, -1.f, -1.f}, {0.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f, -1.f, -1.f}, {0.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+
+	{{ 1.f,  1.f,  1.f}, {2.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f, -1.f}, {2.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {2.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {2.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {2.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {2.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+
+	{{ 1.f, -1.f, -1.f}, {3.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{ 1.f, -1.f,  1.f}, {3.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f,  1.f}, {3.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f,  1.f}, {3.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f, -1.f}, {3.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{ 1.f, -1.f, -1.f}, {3.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
 
 	{{-1.f, -1.f,  1.f}, {1.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
-	{{-1.f,  1.f,  1.f}, {1.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {1.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
 	{{-1.f,  1.f, -1.f}, {1.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
 	{{-1.f,  1.f, -1.f}, {1.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f, -1.f, -1.f}, {1.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f, -1.f}, {1.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
 	{{-1.f, -1.f,  1.f}, {1.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
 
-	{{ 1.f, -1.f,  1.f}, {2.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
-	{{ 1.f,  1.f,  1.f}, {2.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
-	{{-1.f,  1.f,  1.f}, {2.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f,  1.f,  1.f}, {2.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f, -1.f,  1.f}, {2.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
-	{{ 1.f, -1.f,  1.f}, {2.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f, -1.f,  1.f}, {4.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {4.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {4.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {4.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f,  1.f}, {4.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{ 1.f, -1.f,  1.f}, {4.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
 
-	{{-1.f, -1.f, -1.f}, {3.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
-	{{-1.f,  1.f, -1.f}, {3.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
-	{{ 1.f,  1.f, -1.f}, {3.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{ 1.f,  1.f, -1.f}, {3.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{ 1.f, -1.f, -1.f}, {3.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
-	{{-1.f, -1.f, -1.f}, {3.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
-
-	{{ 1.f,  1.f,  1.f}, {4.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
-	{{ 1.f,  1.f, -1.f}, {4.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
-	{{-1.f,  1.f, -1.f}, {4.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f,  1.f, -1.f}, {4.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f,  1.f,  1.f}, {4.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
-	{{ 1.f,  1.f,  1.f}, {4.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
-
-	{{ 1.f, -1.f, -1.f}, {5.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
-	{{ 1.f, -1.f,  1.f}, {5.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
-	{{-1.f, -1.f,  1.f}, {5.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f, -1.f,  1.f}, {5.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f, -1.f, -1.f}, {5.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
-	{{ 1.f, -1.f, -1.f}, {5.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f, -1.f}, {5.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {5.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{ 1.f,  1.f, -1.f}, {5.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{ 1.f,  1.f, -1.f}, {5.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{ 1.f, -1.f, -1.f}, {5.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f, -1.f}, {5.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
 };
 
 static RBuffer box_buffer;
@@ -436,8 +438,13 @@ static struct {
 	struct {
 		const float *mvp;
 		float lmn;
-		struct AVec3f campos;
+		float far;
 	} uniforms;
+
+	struct {
+		float distance;
+		const struct BSPModel *model;
+	} closest_map;
 } r;
 
 static void renderApplyAttribs(const RAttrib *attribs, const RBuffer *buffer, unsigned int vbo_offset) {
@@ -474,7 +481,7 @@ static int render_ProgramUse(RProgram *prog) {
 
 	GL_CALL(glUniformMatrix4fv(prog->uniform_locations[RUniformKind_mvp], 1, GL_FALSE, r.uniforms.mvp));
 	GL_CALL(glUniform1f(prog->uniform_locations[RUniformKind_lmn], r.uniforms.lmn));
-	GL_CALL(glUniform3f(prog->uniform_locations[RUniformKind_cam_pos], r.uniforms.campos.x, r.uniforms.campos.y, r.uniforms.campos.z));
+	GL_CALL(glUniform1f(prog->uniform_locations[RUniformKind_far], r.uniforms.far));
 
 	r.current_program = prog;
 	r.current_tex0 = NULL;
@@ -568,6 +575,7 @@ int renderInit() {
 	params.height = 2;
 	params.pixels = (uint16_t[]){0xffffu, 0, 0, 0xffffu};
 	params.generate_mipmaps = 0;
+	params.wrap = RTexWrap_Clamp;
 	renderTextureInit(&default_texture.texture);
 	renderTextureUpload(&default_texture.texture, params);
 	cachePutTexture("opensource/placeholder", &default_texture);
@@ -637,15 +645,24 @@ static void renderDrawSet(const struct BSPModel *model, const struct BSPDrawSet 
 	}
 }
 
-static void renderBindTexture(const RTexture *texture, int slot) {
+static void renderBindTexture(const RTexture *texture, int slot, int norepeat) {
 	GL_CALL(glActiveTexture(GL_TEXTURE0 + slot));
 	GL_CALL(glBindTexture(GL_TEXTURE_2D, texture->gl_name));
+	if (norepeat) {
+		const GLuint wrap = GL_CLAMP_TO_EDGE;
+		GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap));
+		GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap));
+	}
 }
 
-static void renderSkybox(const struct BSPModel *model) {
+static void renderSkybox(const struct Camera *camera, const struct BSPModel *model) {
+	const struct AMat4f op = aMat4fMul(camera->projection, aMat4f3(camera->orientation, aVec3ff(0)));
+	r.uniforms.mvp = &op.X.x;
+
 	render_ProgramUse(programs + Program_Skybox);
-	for (int i = 0; i < 6; ++i)
-		renderBindTexture(&model->skybox[i]->texture, 1+i);
+	for (int i = 0; i < BSPSkyboxDir_COUNT; ++i)
+		renderBindTexture(&model->skybox[i]->texture, 1+i, 1);
+
 	renderApplyAttribs(attribs, &box_buffer, 0);
 	GL_CALL(glDisable(GL_CULL_FACE));
 	GL_CALL(glDrawArrays(GL_TRIANGLES, 0, COUNTOF(box)));
@@ -655,42 +672,55 @@ static void renderSkybox(const struct BSPModel *model) {
 static float aMaxf(float a, float b) { return a > b ? a : b; }
 //static float aMinf(float a, float b) { return a < b ? a : b; }
 
-void renderModelDraw(const struct AMat4f *mvp, struct AVec3f camera_position, float lmn, const struct BSPModel *model) {
+void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 	if (!model->detailed.draws_count) return;
 
+	const struct AMat4f mvp = aMat4fMul(params->camera->view_projection,
+			aMat4fTranslation(params->translation));
+
 	GL_CALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model->ibo.gl_name));
-	renderBindTexture(&model->lightmap, 0);
+	renderBindTexture(&model->lightmap, 0, 0);
 	GL_CALL(glActiveTexture(GL_TEXTURE0 + 1));
 
+	const struct AVec3f rel_pos = aVec3fSub(params->camera->pos, params->translation);
+
 	r.current_program = NULL;
-	r.uniforms.mvp = &mvp->X.x;
-	r.uniforms.lmn = lmn;
-	r.uniforms.campos = camera_position;
+	r.uniforms.mvp = &mvp.X.x;
+	r.uniforms.lmn = params->lmn;
+	r.uniforms.far = params->camera->z_far;
 
 	const float distance =
 		aMaxf(aMaxf(
-			aMaxf(camera_position.x - model->aabb.max.x, model->aabb.min.x - camera_position.x),
-			aMaxf(camera_position.y - model->aabb.max.y, model->aabb.min.y - camera_position.y)),
-			aMaxf(camera_position.z - model->aabb.max.z, model->aabb.min.z - camera_position.z));
+			aMaxf(rel_pos.x - model->aabb.max.x, model->aabb.min.x - rel_pos.x),
+			aMaxf(rel_pos.y - model->aabb.max.y, model->aabb.min.y - rel_pos.y)),
+			aMaxf(rel_pos.z - model->aabb.max.z, model->aabb.min.z - rel_pos.z));
 
 	/*
 	PRINTF("%f %f %f -> %f",
-			camera_position.x, camera_position.y, camera_position.z, distance);
+			rel_pos.x, rel_pos.y, rel_pos.z, distance);
 	*/
+
+	if (distance < r.closest_map.distance) {
+		r.closest_map.distance = distance;
+		r.closest_map.model = model;
+	}
 
 	if (distance < 5000.f)
 		renderDrawSet(model, &model->detailed);
 	else
 		renderDrawSet(model, &model->coarse);
-
-	renderSkybox(model);
 }
 
 void renderResize(int w, int h) {
 	glViewport(0, 0, w, h);
 }
 
-void renderClear() {
-	glClearColor(.5f,.4f,.2f,0);
+void renderBegin() {
+	glClearColor(0.f,1.f,0.f,0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	r.closest_map.distance = 1e9f;
+}
+
+void renderEnd(const struct Camera *camera) {
+	renderSkybox(camera, r.closest_map.model);
 }

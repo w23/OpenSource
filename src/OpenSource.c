@@ -5,6 +5,7 @@
 #include "common.h"
 #include "texture.h"
 #include "profiler.h"
+#include "camera.h"
 
 #include "atto/app.h"
 #include "atto/math.h"
@@ -24,55 +25,6 @@ static struct Stack stack_persistent = {
 	.cursor = 0
 };
 
-struct SimpleCamera {
-	struct AVec3f pos, dir, up;
-	struct AMat3f axes;
-	struct AMat4f projection;
-	struct AMat4f view_projection;
-};
-
-static void simplecamRecalc(struct SimpleCamera *cam) {
-	cam->dir = aVec3fNormalize(cam->dir);
-	const struct AVec3f
-			z = aVec3fNeg(cam->dir),
-			x = aVec3fNormalize(aVec3fCross(cam->up, z)),
-			y = aVec3fCross(z, x);
-	cam->axes = aMat3fv(x, y, z);
-	const struct AMat3f axes_inv = aMat3fTranspose(cam->axes);
-	cam->view_projection = aMat4fMul(cam->projection,
-		aMat4f3(axes_inv, aVec3fMulMat(axes_inv, aVec3fNeg(cam->pos))));
-}
-
-static void simplecamProjection(struct SimpleCamera *cam, float znear, float zfar, float horizfov, float aspect) {
-	const float w = 2.f * znear * tanf(horizfov / 2.f), h = w / aspect;
-	//aAppDebugPrintf("%f %f %f %f -> %f %f", near, far, horizfov, aspect, w, h);
-	cam->projection = aMat4fPerspective(znear, zfar, w, h);
-}
-
-static void simplecamLookAt(struct SimpleCamera *cam, struct AVec3f pos, struct AVec3f at, struct AVec3f up) {
-	cam->pos = pos;
-	cam->dir = aVec3fNormalize(aVec3fSub(at, pos));
-	cam->up = up;
-	simplecamRecalc(cam);
-}
-
-static void simplecamMove(struct SimpleCamera *cam, struct AVec3f v) {
-	cam->pos = aVec3fAdd(cam->pos, aVec3fMulf(cam->axes.X, v.x));
-	cam->pos = aVec3fAdd(cam->pos, aVec3fMulf(cam->axes.Y, v.y));
-	cam->pos = aVec3fAdd(cam->pos, aVec3fMulf(cam->axes.Z, v.z));
-}
-
-static void simplecamRotateYaw(struct SimpleCamera *cam, float yaw) {
-	const struct AMat3f rot = aMat3fRotateAxis(cam->up, yaw);
-	cam->dir = aVec3fMulMat(rot, cam->dir);
-}
-
-static void simplecamRotatePitch(struct SimpleCamera *cam, float pitch) {
-	/* TODO limit pitch */
-	const struct AMat3f rot = aMat3fRotateAxis(cam->axes.X, pitch);
-	cam->dir = aVec3fMulMat(rot, cam->dir);
-}
-
 struct Map {
 	char *name;
 	int loaded;
@@ -82,7 +34,7 @@ struct Map {
 };
 
 static struct {
-	struct SimpleCamera camera;
+	struct Camera camera;
 	int forward, right, run;
 	struct AVec3f center;
 	float R;
@@ -204,15 +156,13 @@ static void opensrcInit(const char *map, int max_maps) {
 	if (BSPLoadResult_Success != loadMap(g.maps_begin, g.collection_chain))
 		aAppTerminate(-2);
 
-	PRINTF("Maps loaded: %d", g.maps_count);
-
 	g.center = aVec3fMulf(aVec3fAdd(g.maps_begin->model.aabb.min, g.maps_begin->model.aabb.max), .5f);
 	g.R = aVec3fLength(aVec3fSub(g.maps_begin->model.aabb.max, g.maps_begin->model.aabb.min)) * .5f;
 
 	aAppDebugPrintf("Center %f, %f, %f, R~=%f", g.center.x, g.center.y, g.center.z, g.R);
 
 	const float t = 0;
-	simplecamLookAt(&g.camera,
+	cameraLookAt(&g.camera,
 			aVec3fAdd(g.center, aVec3fMulf(aVec3f(cosf(t*.5f), sinf(t*.5f), .25f), g.R*.5f)),
 			g.center, aVec3f(0.f, 0.f, 1.f));
 }
@@ -221,18 +171,18 @@ static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int ol
 	(void)(timestamp); (void)(old_w); (void)(old_h);
 	renderResize(a_app_state->width, a_app_state->height);
 
-	simplecamProjection(&g.camera, 1.f, g.R * 10.f, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
-	simplecamRecalc(&g.camera);
+	cameraProjection(&g.camera, 1.f, g.R * 10.f, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
+	cameraRecompute(&g.camera);
 }
 
 static void opensrcPaint(ATimeUs timestamp, float dt) {
 	(void)(timestamp); (void)(dt);
 
 	float move = dt * (g.run?3000.f:300.f);
-	simplecamMove(&g.camera, aVec3f(g.right * move, 0.f, -g.forward * move));
-	simplecamRecalc(&g.camera);
+	cameraMove(&g.camera, aVec3f(g.right * move, 0.f, -g.forward * move));
+	cameraRecompute(&g.camera);
 
-	renderClear();
+	renderBegin();
 
 	int triangles = 0;
 	int can_load_map = 1;
@@ -250,13 +200,19 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 			continue;
 		}
 
-		const struct AMat4f mvp = aMat4fMul(g.camera.view_projection, aMat4fTranslation(map->offset));
+		const RDrawParams params = {
+			.camera = &g.camera,
+			.translation = map->offset,
+			.lmn = g.lmn
+		};
 
-		renderModelDraw(&mvp, aVec3fSub(g.camera.pos, map->offset), g.lmn, &map->model);
+		renderModelDraw(&params, &map->model);
 
 		for (int i = 0; i < map->model.detailed.draws_count; ++i)
 			triangles += map->model.detailed.draws[i].count / 3;
 	}
+
+	renderEnd(&g.camera);
 
 	if (profilerFrame(&stack_temp)) {
 		PRINTF("Total triangles: %d", triangles);
@@ -288,9 +244,9 @@ static void opensrcPointer(ATimeUs timestamp, int dx, int dy, unsigned int btndi
 	(void)(timestamp); (void)(dx); (void)(dy); (void)(btndiff);
 	//printf("PTR %u %d %d %x\n", timestamp, dx, dy, btndiff);
 	if (a_app_state->grabbed) {
-		simplecamRotatePitch(&g.camera, dy * -4e-3f);
-		simplecamRotateYaw(&g.camera, dx * -4e-3f);
-		simplecamRecalc(&g.camera);
+		cameraRotatePitch(&g.camera, dy * -4e-3f);
+		cameraRotateYaw(&g.camera, dx * -4e-3f);
+		cameraRecompute(&g.camera);
 	} else if (btndiff)
 		aAppGrabInput(1);
 }

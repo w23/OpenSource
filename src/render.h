@@ -15,6 +15,11 @@ typedef enum {
 	RTexType_CubeNZ = (1 << 6),
 } RTexType;
 
+typedef enum {
+	RTexWrap_Repeat,
+	RTexWrap_Clamp
+} RTexWrap;
+
 typedef struct {
 	int width, height;
 	RTexFormat format;
@@ -28,6 +33,7 @@ typedef struct {
 	RTexFormat format;
 	const void *pixels;
 	int generate_mipmaps;
+	RTexWrap wrap;
 } RTextureUploadParams;
 
 #define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = -1; } while (0)
@@ -49,6 +55,16 @@ void renderResize(int w, int h);
 void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void *data);
 
 struct BSPModel;
+struct Camera;
 
-void renderClear();
-void renderModelDraw(const struct AMat4f *mvp, struct AVec3f camera_position, float lmn, const struct BSPModel *model);
+void renderBegin();
+
+typedef struct {
+	const struct Camera *camera;
+	struct AVec3f translation;
+	float lmn;
+} RDrawParams;
+
+void renderModelDraw(const RDrawParams *params, const struct BSPModel *model);
+
+void renderEnd(const struct Camera *camera);

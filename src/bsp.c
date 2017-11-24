@@ -359,6 +359,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 	upload.pixels = pixels;
 	upload.generate_mipmaps = 0;
 	upload.type = RTexType_2D;
+	upload.wrap = RTexWrap_Clamp;
 	renderTextureInit(&ctx->lightmap.texture);
 	renderTextureUpload(&ctx->lightmap.texture, upload);
 	//ctx->lightmap.texture.min_filter = RTmF_Nearest;
@@ -748,6 +749,8 @@ static const struct {
 	{"dn", BSPSkyboxDir_DN}};
 
 static void bspLoadSkybox(StringView name, ICollection *coll, Stack *tmp, struct BSPModel *model) {
+	PRINTF("Loading skybox %.*s", name.length, name.str);
+
 	char *zname = alloca(name.length + 3 + 7);
 	memset(zname, 0, name.length + 3 + 7);
 	memcpy(zname, "skybox/", 7);

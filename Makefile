@@ -73,6 +73,7 @@ SOURCES += \
 	src/bsp.c \
 	src/atlas.c \
 	src/filemap.c \
+	src/camera.c \
 	src/collection.c \
 	src/vmfparser.c \
 	src/material.c \

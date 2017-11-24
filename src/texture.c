@@ -178,7 +178,8 @@ static int textureUploadMipmapType(struct Stack *tmp, struct IFile *file, size_t
 		.height = hdr->height,
 		.format = RTexFormat_RGB565,
 		.pixels = dst_texture,
-		.generate_mipmaps = 1
+		.generate_mipmaps = 1,
+		.wrap =  RTexWrap_Repeat
 	};
 
 	renderTextureUpload(tex, params);
@@ -221,6 +222,7 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp, RTex
 	void *pre_alloc_cursor = stackGetCursor(tmp);
 	if (hdr.lores_format != VTFImage_DXT1 && hdr.lores_format != VTFImage_DXT5) {
 		PRINTF("Not implemented lores texture format: %s", vtfFormatStr(hdr.lores_format));
+		tex->avg_color = aVec3ff(1.f);
 	} else {
 		uint16_t *pixels = textureUnpackToTemp(tmp, file, cursor, hdr.lores_width, hdr.lores_height, hdr.lores_format);
 
