@@ -137,27 +137,13 @@ static void textureUnpackBGRA8to565(uint8_t *src, uint16_t *dst, int width, int 
 }
 
 /* FIXME: taken from internets: https://gist.github.com/martinkallman/5049614 */
-float float32(const uint16_t in) {
-	uint32_t t1;
-	uint32_t t2;
-	uint32_t t3;
-
-	t1 = in & 0x7fff;                       // Non-sign bits
-	t2 = in & 0x8000;                       // Sign bit
-	t3 = in & 0x7c00;                       // Exponent
-
-	t1 <<= 13;                              // Align mantissa on MSB
-	t2 <<= 16;                              // Shift sign bit into position
-
-	t1 += 0x38000000;                       // Adjust bias
-
-	t1 = (t3 == 0 ? 0 : t1);                // Denormals-as-zero
-
-	t1 |= t2;                               // Re-insert sign bit
-
-	float ret;
-	memcpy(&ret, &t1, sizeof(ret));
-	return ret;
+float float32(uint16_t value) {
+	const uint32_t result =
+		(((value & 0x7fffu) << 13) + 0x38000000u)	|  // mantissa + exponent
+		((value & 0x8000u) << 16); // sign
+	float retval;
+	memcpy(&retval, &result, sizeof(retval));
+	return retval;
 }
 
 static void textureUnpackRGBA16Fto565(const uint16_t *src, uint16_t *dst, int width, int height) {
