@@ -104,13 +104,70 @@ static void textureUnpackDXTto565(uint8_t *src, uint16_t *dst, int width, int he
 		dxt5Unpack(dxt_ctx);
 }
 
-static void textureUnpack888to565(uint8_t *src, uint16_t *dst, int width, int height) {
+static void textureUnpackBGR8to565(uint8_t *src, uint16_t *dst, int width, int height) {
 	const int pixels = width * height;
 	for (int i = 0; i < pixels; ++i, src+=3) {
 		const int r = (src[0] >> 3) << 11;
 		const int g = (src[1] >> 2) << 5;
 		const int b = (src[2] >> 3);
 		dst[i] = r | g | b;
+	}
+}
+
+static void textureUnpackBGRX8to565(uint8_t *src, uint16_t *dst, int width, int height) {
+	const int pixels = width * height;
+	for (int i = 0; i < pixels; ++i, src+=4) {
+		const int r = (src[0] & 0xf8) << 8;
+		const int g = (src[1] & 0xfc) << 3;
+		const int b = (src[2] >> 3);
+		dst[i] = r | g | b;
+	}
+}
+
+static void textureUnpackBGRA8to565(uint8_t *src, uint16_t *dst, int width, int height) {
+	const int pixels = width * height;
+	for (int i = 0; i < pixels; ++i, src+=4) {
+		const int a = src[3] * 8; /* FIXME this is likely HDR and need proper color correction */
+		const int r = ((a * src[0]) >> 11);
+		const int g = ((a * src[1]) >> 10);
+		const int b = (a * src[2]) >> 11;
+
+		dst[i] = ((r>31?31:r) << 11) | ((g>63?63:g) << 5) | (b>31?31:b);
+	}
+}
+
+/* FIXME: taken from internets: https://gist.github.com/martinkallman/5049614 */
+float float32(const uint16_t in) {
+	uint32_t t1;
+	uint32_t t2;
+	uint32_t t3;
+
+	t1 = in & 0x7fff;                       // Non-sign bits
+	t2 = in & 0x8000;                       // Sign bit
+	t3 = in & 0x7c00;                       // Exponent
+
+	t1 <<= 13;                              // Align mantissa on MSB
+	t2 <<= 16;                              // Shift sign bit into position
+
+	t1 += 0x38000000;                       // Adjust bias
+
+	t1 = (t3 == 0 ? 0 : t1);                // Denormals-as-zero
+
+	t1 |= t2;                               // Re-insert sign bit
+
+	float ret;
+	memcpy(&ret, &t1, sizeof(ret));
+	return ret;
+}
+
+static void textureUnpackRGBA16Fto565(const uint16_t *src, uint16_t *dst, int width, int height) {
+	const int pixels = width * height;
+	for (int i = 0; i < pixels; ++i, src+=4) {
+		const float scale = 255.f * 1.5f;
+		const int rf = (int)(sqrtf(float32(src[0])) * scale) >> 3;
+		const int gf = (int)(sqrtf(float32(src[1])) * scale) >> 2;
+		const int bf = (int)(sqrtf(float32(src[2])) * scale) >> 3;
+		dst[i] = ((rf>31?31:rf) << 11) | ((gf>63?63:gf) << 5) | (bf>31?31:bf);
 	}
 }
 
@@ -141,7 +198,16 @@ static uint16_t *textureUnpackToTemp(struct Stack *tmp, struct IFile *file, size
 			textureUnpackDXTto565(src_texture, dst_texture, width, height, format);
 			break;
 		case VTFImage_BGR8:
-			textureUnpack888to565(src_texture, dst_texture, width, height);
+			textureUnpackBGR8to565(src_texture, dst_texture, width, height);
+			break;
+		case VTFImage_BGRA8:
+			textureUnpackBGRA8to565(src_texture, dst_texture, width, height);
+			break;
+		case VTFImage_BGRX8:
+			textureUnpackBGRX8to565(src_texture, dst_texture, width, height);
+			break;
+		case VTFImage_RGBA16F:
+			textureUnpackRGBA16Fto565(src_texture, dst_texture, width, height);
 			break;
 		default:
 			PRINTF("Unsupported texture format %s", vtfFormatStr(format));
@@ -211,10 +277,12 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp, RTex
 	//PRINTF("Texture: %dx%d, %s",
 	//	hdr.width, hdr.height, vtfFormatStr(hdr.hires_format));
 
+	/*
 	if (hdr.hires_format != VTFImage_DXT1 && hdr.hires_format != VTFImage_DXT5 && hdr.hires_format != VTFImage_BGR8) {
 		PRINTF("Not implemented texture format: %s", vtfFormatStr(hdr.hires_format));
 		return 0;
 	}
+	*/
 
 	cursor += hdr.header_size;
 

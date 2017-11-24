@@ -171,7 +171,7 @@ static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int ol
 	(void)(timestamp); (void)(old_w); (void)(old_h);
 	renderResize(a_app_state->width, a_app_state->height);
 
-	cameraProjection(&g.camera, 1.f, g.R * 10.f, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
+	cameraProjection(&g.camera, 1.f, g.R * 20.f, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
 	cameraRecompute(&g.camera);
 }
 

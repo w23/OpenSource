@@ -391,13 +391,14 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_fi
 				memcpy(filename_temp + path.len + 1 + filename.len + 1, ext.s, ext.len);
 				filename_temp[filename_len-1] = '\0';
 
-				/*
+#define DUMP_VPK_CONTENTS 0
+#if DUMP_VPK_CONTENTS
 				PRINTF("%s crc=%08x pre=%d arc=%d(%04x) off=%d len=%d",
 					filename_temp,
 					entry->crc,
 					entry->preloadBytes, entry->archive, entry->archive,
 					entry->archiveOffset, entry->archiveLength);
-				*/
+#endif
 
 				struct VPKFileMetadata *file = stackAlloc(mem->persistent, sizeof(struct VPKFileMetadata));
 				if (!file) {
