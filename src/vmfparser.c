@@ -1,40 +1,79 @@
 #include "vmfparser.h"
 #include "libc.h"
 
-enum TokenType getNextToken(struct TokenContext *tok) {
-	enum TokenType type = Token_Skip;
-	const char *c = tok->cursor;
+ParseResult parserParse(ParserState *state, StringView string) {
+	const char *c = string.str;
+	const char * const end = string.str + string.length;
 
-#define CHECK_END ((tok->end && tok->end == c) || *c == '\0')
+#define CHECK_END (end == c || *c == '\0')
 
-	while (type == Token_Skip) {
+	int nest = 0;
+	for (;;) {
 		while(!CHECK_END && isspace(*c)) ++c;
-		if (CHECK_END) return Token_End;
+		if (CHECK_END)
+			return nest == 0 ? ParseResult_Success : ParseResult_Error;
 
-		tok->str_start = c;
-		tok->str_length = 0;
+		ParserCallbackResult cb_result = Parser_Continue;
+		StringView str = { .str = c, .length = 0 };
+		int quote = 0;
 		switch(*c) {
-			case '\"':
-				tok->str_start = ++c;
-				while(!CHECK_END && *c != '\"') ++c;
-				type = (*c == '\"') ? Token_String : Token_Error;
+			case '{':
+				++nest;
+				cb_result = state->callbacks.curlyOpen(state, str);
+				++c;
 				break;
-			case '{': type = Token_CurlyOpen; break;
-			case '}': type = Token_CurlyClose; break;
+			case '}':
+				if (nest < 1)
+					return ParseResult_Error;
+				--nest;
+				cb_result = state->callbacks.curlyClose(state, str);
+				++c;
+				break;
 			case '/':
 				if (*++c == '/') {
 					while(!CHECK_END && *c != '\n') ++c;
-					type = Token_Skip;
 				} else
-					type = Token_Error;
+					return ParseResult_Error;
 				break;
-			default:
-				while (!CHECK_END && isgraph(*c)) ++c;
-				type = (c == tok->str_start) ? Token_Error : Token_String;
-		} /* switch(*c) */
-	} /* while skip */
+			case '\"':
+				str.str = ++c;
+				quote = 1;
 
-	tok->str_length = c - tok->str_start;
-	tok->cursor = c + 1;
-	return type;
+				// fall through
+			default:
+				if (quote) {
+					for (;; ++c) {
+						if (CHECK_END)
+							return ParseResult_Error;
+						if (*c == '\"')
+							break;
+					}
+				} else {
+					while (!CHECK_END && isgraph(*c)) ++c;
+				}
+
+				str.length = c - str.str;
+				cb_result = state->callbacks.string(state, str);
+				++c;
+		} /* switch(*c) */
+
+		switch (cb_result) {
+		case Parser_Continue:
+			break;
+		case Parser_Exit:
+			return ParseResult_Success;
+		default:
+			return ParseResult_Error;
+		}
+	} /* forever */
+}
+
+ParserCallbackResult parserError(ParserState *state, StringView s) {
+	(void)state; (void)s;
+	return Parser_Error;
+}
+
+ParserCallbackResult parserIgnore(ParserState *state, StringView s) {
+	(void)state; (void)s;
+	return Parser_Continue;
 }

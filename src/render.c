@@ -722,5 +722,5 @@ void renderBegin() {
 }
 
 void renderEnd(const struct Camera *camera) {
-	renderSkybox(camera, r.closest_map.model);
+	if (0) renderSkybox(camera, r.closest_map.model);
 }
