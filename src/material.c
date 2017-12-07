@@ -5,55 +5,15 @@
 #include "vmfparser.h"
 #include "common.h"
 
-struct MaterialContext {
+typedef struct {
+	ICollection *collection;
+	Stack *temp;
+	StringView shader;
 	struct Material *mat;
-	struct TokenContext tok;
-	const char *key;
-	int key_length;
-	char value[128];
-};
+	StringView key;
+} MaterialContext;
 
-enum KeyValueResult {KeyValue_Read, KeyValue_Error, KeyValue_End};
-static enum KeyValueResult getNextKeyValue(struct MaterialContext *ctx) {
-	for (;;) {
-		enum TokenType type = getNextToken(&ctx->tok);
-		if (type == Token_End || type == Token_CurlyClose) return KeyValue_End;
-		if (type != Token_String) return KeyValue_Error;
-
-		ctx->key = ctx->tok.str_start;
-		ctx->key_length = ctx->tok.str_length;
-
-		type = getNextToken(&ctx->tok);
-		if (type == Token_CurlyOpen) {
-			/* skip unsupported proxies and DX-level specifics */
-			if (strncmp(ctx->key, "replace", ctx->key_length) != 0)
-				PRINTF("Skipping section %.*s", ctx->key_length, ctx->key);
-
-			int depth = 1;
-			for (;;) {
-				type = getNextToken(&ctx->tok);
-				if (type == Token_CurlyClose) {
-					if (--depth == 0)
-						break;
-				} else if (type == Token_CurlyOpen) {
-					++depth;
-				} else if (type != Token_String)
-					return KeyValue_Error;
-			}
-		} else if (type != Token_String) {
-			return KeyValue_Error;
-		} else {
-			if (ctx->tok.str_length > (int)sizeof(ctx->value) - 1) {
-				PRINTF("Value is too long: %d", ctx->tok.str_length);
-				return KeyValue_Error;
-			}
-			memcpy(ctx->value, ctx->tok.str_start, ctx->tok.str_length);
-			ctx->value[ctx->tok.str_length] = '\0';
-			return KeyValue_Read;
-		}
-	} /* loop until key value pair found */
-} /* getNextKeyValue */
-
+#if 0
 static const char * const ignore_params[] = {
 	"$surfaceprop", "$surfaceprop2", "$tooltexture",
 	"%tooltexture", "%keywords", "%compilewater", "%detailtype",
@@ -61,114 +21,149 @@ static const char * const ignore_params[] = {
 	"replace", /* TODO implement */
 	0
 };
+#endif
+
+static ParserCallbackResult materialReadShader(ParserState *state, StringView s);
+static ParserCallbackResult materialReadKeyOrSection(ParserState *state, StringView s);
+static ParserCallbackResult materialReadValue(ParserState *state, StringView s);
+static ParserCallbackResult materialEnd(ParserState *state, StringView s);
+
+static ParserCallbackResult materialOpenShader(ParserState *state, StringView s) {
+	MaterialContext *ctx = state->user_data;
+	ctx->shader = s;
+
+	state->callbacks.string = materialReadKeyOrSection;
+	state->callbacks.curlyOpen = parserError;
+
+	return Parser_Continue;
+}
+
+static ParserCallbackResult materialReadShader(ParserState *state, StringView s) {
+	MaterialContext *ctx = state->user_data;
+	ctx->shader = s;
+
+	PRINTF("Material shader %.*s", PRI_SVV(ctx->shader));
+
+	state->callbacks.string = parserError;
+	state->callbacks.curlyOpen = materialOpenShader;
+	return Parser_Continue;
+}
+
+static ParserCallbackResult materialReadKeyOrSection(ParserState *state, StringView s) {
+	MaterialContext *ctx = state->user_data;
+	ctx->key = s;
+	state->callbacks.string = materialReadValue;
+	state->callbacks.curlyClose = state->callbacks.curlyOpen = parserError;
+	return Parser_Continue;
+}
+
+static ParserCallbackResult materialReadValue(ParserState *state, StringView s) {
+	MaterialContext *ctx = state->user_data;
+
+	if (s.length > 127)
+		return Parser_Error;
+
+	char value[128];
+	memcpy(value, s.str, s.length);
+	value[s.length] = '\0';
+
+	if (strncasecmp("$basetexture", ctx->key.str, ctx->key.length) == 0) {
+		ctx->mat->base_texture[0] = textureGet(value, ctx->collection, ctx->temp);
+	} else if (strncasecmp("$basetexture2", ctx->key.str, ctx->key.length) == 0) {
+		ctx->mat->base_texture[1] = textureGet(value, ctx->collection, ctx->temp);
+	} else if (strncasecmp("$basetexturetransform", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$basetexturetransform2", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$detail", ctx->key.str, ctx->key.length) == 0) {
+		//output->detail = textureGet(ctx.value, ctx->collection, ctx->temp);
+	} else if (strncasecmp("$detailscale", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$detailblendfactor", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$detailblendmode", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$parallaxmap", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$parallaxmapscale", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$bumpmap", ctx->key.str, ctx->key.length) == 0) {
+		/* output->bump = textureGet(ctx.value, ctx->collection, ctx->temp); */
+	} else if (strncasecmp("$envmap", ctx->key.str, ctx->key.length) == 0) {
+		/* output->envmap = textureGet(ctx.value, ctx->collection, ctx->temp); */
+	} else if (strncasecmp("$fogenable", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$fogcolor", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$alphatest", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$translucent", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$envmapcontrast", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$envmapsaturation", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$envmaptint", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$normalmapalphaenvmapmask", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$envmapmask", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$nodiffusebumplighting", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$AlphaTestReference", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$basealphaenvmapmask", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$selfillum", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("$reflectivity", ctx->key.str, ctx->key.length) == 0) {
+	} else if (strncasecmp("include", ctx->key.str, ctx->key.length) == 0) {
+		char *vmt = strstr(value, ".vmt");
+		if (vmt)
+			*vmt = '\0';
+		if (strstr(value, "materials/") == value)
+			*ctx->mat = *materialGet(value + 10, ctx->collection, ctx->temp);
+	} else {
+		PRINTF("Material shader:%.*s, unknown param %.*s = %s",
+				ctx->shader.length, ctx->shader.str, ctx->key.length, ctx->key.str, value);
+	}
+
+	state->callbacks.string = materialReadKeyOrSection;
+	state->callbacks.curlyClose = materialEnd;
+	state->callbacks.curlyOpen = parserError;
+	return Parser_Continue;
+}
+
+static ParserCallbackResult materialEnd(ParserState *state, StringView s) {
+	(void)(s);
+	MaterialContext *ctx = state->user_data;
+
+	if (!ctx->mat->base_texture[0]) {
+		PRINTF("Material with ctx->shader %.*s doesn't have base texture", ctx->shader.length, ctx->shader.str);
+		ctx->mat->shader = MaterialShader_LightmappedAverageColor;
+		// HACK to notice these materials
+		ctx->mat->average_color = aVec3f(1.f, 0.f, 1.f);
+	} else {
+		ctx->mat->shader = MaterialShader_LightmappedGeneric;
+		ctx->mat->average_color = ctx->mat->base_texture[0]->avg_color;
+	}
+
+	return Parser_Exit;
+}
 
 static int materialLoad(struct IFile *file, struct ICollection *coll, struct Material *output, struct Stack *tmp) {
-	char *buffer = stackAlloc(tmp, file->size + 1);
-	int retval = 0;
+	char *buffer = stackAlloc(tmp, file->size);
+
 	if (!buffer) {
 		PRINT("Out of temp memory");
 		return 0;
 	}
 
 	if (file->size != file->read(file, 0, file->size, buffer)) return 0;
-	buffer[file->size] = '\0';
 
-	struct MaterialContext ctx;
-	ctx.mat = output;
-	ctx.tok.cursor = buffer;
-	ctx.tok.end = NULL;
+	MaterialContext ctx = {
+		.collection = coll,
+		.temp = tmp,
+		.mat = output
+	};
 
-#define EXPECT_TOKEN(type) \
-	if (getNextToken(&ctx.tok) != type) { \
-		PRINTF("Unexpected token at position %zd, expecting %d; left: %s", ctx.tok.cursor - buffer, type, ctx.tok.cursor); \
-		goto exit; \
-	}
-
-	EXPECT_TOKEN(Token_String);
-	const char *shader = ctx.tok.str_start;
-	const int shader_length = ctx.tok.str_length;
-
-	EXPECT_TOKEN(Token_CurlyOpen);
-
-	for (;;) {
-		const enum KeyValueResult result = getNextKeyValue(&ctx);
-		if (result == KeyValue_End)
-			break;
-		if (result != KeyValue_Read) {
-			retval = -1;
-			goto exit;
+	ParserState parser = {
+		.user_data = &ctx,
+		.callbacks = {
+			.curlyOpen = parserError,
+			.curlyClose = parserError,
+			.string = materialReadShader
 		}
+	};
 
-		int skip = 0;
-		for (const char *const *ignore = ignore_params; ignore[0] != 0; ++ignore)
-			if (strncasecmp(ignore[0], ctx.key, ctx.key_length) == 0) {
-				skip = 1;
-				break;
-			}
-		if (skip) continue;
+	StringView buf_sv = { .str = buffer, .length = file->size };
 
-		if (strncasecmp("$basetexture", ctx.key, ctx.key_length) == 0) {
-			output->base_texture[0] = textureGet(ctx.value, coll, tmp);
-		} else if (strncasecmp("$basetexture2", ctx.key, ctx.key_length) == 0) {
-			output->base_texture[1] = textureGet(ctx.value, coll, tmp);
-		} else if (strncasecmp("$basetexturetransform", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$basetexturetransform2", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$detail", ctx.key, ctx.key_length) == 0) {
-			//output->detail = textureGet(ctx.value, coll, tmp);
-		} else if (strncasecmp("$detailscale", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$detailblendfactor", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$detailblendmode", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$parallaxmap", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$parallaxmapscale", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$bumpmap", ctx.key, ctx.key_length) == 0) {
-			/* output->bump = textureGet(ctx.value, coll, tmp); */
-		} else if (strncasecmp("$envmap", ctx.key, ctx.key_length) == 0) {
-			/* output->envmap = textureGet(ctx.value, coll, tmp); */
-		} else if (strncasecmp("$fogenable", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$fogcolor", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$alphatest", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$translucent", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$envmapcontrast", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$envmapsaturation", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$envmaptint", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$normalmapalphaenvmapmask", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$envmapmask", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$nodiffusebumplighting", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$AlphaTestReference", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$basealphaenvmapmask", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$selfillum", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("$reflectivity", ctx.key, ctx.key_length) == 0) {
-		} else if (strncasecmp("include", ctx.key, ctx.key_length) == 0) {
-			char *vmt = strstr(ctx.value, ".vmt");
-			if (vmt)
-				*vmt = '\0';
-			if (strstr(ctx.value, "materials/") == ctx.value)
-				*output = *materialGet(ctx.value + 10, coll, tmp);
-		} else {
-			PRINTF("Material shader:%.*s, unknown param %.*s = %s",
-					shader_length, shader, ctx.key_length, ctx.key, ctx.value);
-		}
-	} /* for all properties */
-
-	if (!output->base_texture[0]) {
-		PRINTF("Material with shader %.*s doesn't have base texture", shader_length, shader);
-		output->shader = MaterialShader_LightmappedAverageColor;
-		// HACK to notice these materials
-		output->average_color = aVec3f(1.f, 0.f, 1.f);
-	} else {
-		output->shader = MaterialShader_LightmappedGeneric;
-		output->average_color = output->base_texture[0]->avg_color;
-	}
-
-	retval = 1;
-
-exit:
-	if (retval != 1)
-		PRINTF("Error parsing material with shader %.*s: %s", shader_length, shader, ctx.tok.cursor);
+	int success = ParseResult_Success == parserParse(&parser, buf_sv);
 
 	stackFreeUpToPosition(tmp, buffer);
 
-	return retval;
+	return success;
 }
 
 const struct Material *materialGet(const char *name, struct ICollection *collection, struct Stack *tmp) {

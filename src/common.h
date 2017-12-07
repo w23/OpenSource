@@ -14,3 +14,6 @@ typedef struct {
 	const char *str;
 	int length;
 } StringView;
+
+#define PRI_SV "%.*s"
+#define PRI_SVV(s) ((s).length), ((s).str)

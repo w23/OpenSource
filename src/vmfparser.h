@@ -1,19 +1,34 @@
 #pragma once
 
-enum TokenType {
-	Token_Skip,
-	Token_String,
-	Token_CurlyOpen,
-	Token_CurlyClose,
-	Token_Error,
-	Token_End
-};
-struct TokenContext {
-	const char *cursor;
-	const char *end;
+#include "common.h"
 
-	const char *str_start;
-	int str_length;
+typedef enum {
+	Parser_Continue,
+	Parser_Exit,
+	Parser_Error
+} ParserCallbackResult;
+
+struct ParserState;
+typedef struct ParserState ParserState;
+
+typedef ParserCallbackResult (*ParserCallback)(ParserState *state, StringView s);
+
+struct ParserState {
+	void *user_data;
+	struct {
+		ParserCallback curlyOpen;
+		ParserCallback curlyClose;
+		ParserCallback string;
+	} callbacks;
 };
 
-enum TokenType getNextToken(struct TokenContext *tok);
+typedef enum {
+	ParseResult_Success,
+	ParseResult_Error
+} ParseResult;
+
+ParseResult parserParse(ParserState *state, StringView string);
+
+// Utility callback function for specifying semantically invalid tokens
+ParserCallbackResult parserError(ParserState *state, StringView s);
+ParserCallbackResult parserIgnore(ParserState *state, StringView s);

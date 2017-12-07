@@ -62,23 +62,23 @@ struct ICollection;
 struct MemoryPool;
 struct Stack;
 
-struct BSPLoadModelContext {
+typedef struct BSPLoadModelContext {
 	struct ICollection *collection;
 	struct Stack *persistent;
 	struct Stack *tmp;
 
 	/* allocated by caller, populated by callee */
 	struct BSPModel *model;
-};
+} BSPLoadModelContext;
 
-enum BSPLoadResult {
+typedef enum BSPLoadResult {
 	BSPLoadResult_Success,
 	BSPLoadResult_ErrorFileOpen,
 	BSPLoadResult_ErrorFileFormat,
 	BSPLoadResult_ErrorMemory,
 	BSPLoadResult_ErrorTempMemory,
 	BSPLoadResult_ErrorCapabilities
-};
+} BSPLoadResult;
 
 /* should be called AFTER renderInit() */
 void bspInit();

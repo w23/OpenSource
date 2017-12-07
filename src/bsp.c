@@ -764,69 +764,96 @@ static void bspLoadSkybox(StringView name, ICollection *coll, Stack *tmp, struct
 	}
 }
 
-struct EntityProp {
+typedef struct {
 	const char *name;
-	const char *value;
-	int value_length;
-};
+	StringView value;
+} EntityProp;
 
-enum BSPLoadResult bspReadEntityProps(struct TokenContext *tctx, struct EntityProp* props, int prop_count) {
-	// TODO: what if this entity for some reason has nested entities
-	// should count curlies then
-	for (;;) {
-		const enum TokenType type = getNextToken(tctx);
-		switch (type) {
-		case Token_String:
-			/*if (!prop_count)
-				PRINTF("%.*s", tctx->str_length, tctx->str_start);*/
-			for (int i = 0; i < prop_count; ++i) {
-				if (strncmp(props[i].name, tctx->str_start, tctx->str_length) == 0) {
-					const enum TokenType type = getNextToken(tctx);
-					if (type == Token_Error)
-						return BSPLoadResult_ErrorFileFormat;
+typedef struct {
+	EntityProp *props;
+	int props_count;
+	int prop_to_read;
+} EntityPropParser;
 
-					if (type != Token_String) {
-						PRINTF("Warning: expected string, got %d", type);
-						continue;
-					}
+static ParserCallbackResult bspReadEntityPropsReadValue(ParserState *state, StringView s);
 
-					props[i].value = tctx->str_start;
-					props[i].value_length = tctx->str_length;
-					break;
-				} // if prop match found
-			} // for all props
-			break;
-		case Token_CurlyClose:
-			/*
-			for (int i = 0; i < prop_count; ++i) {
-				PRINTF("prop[%i] '%s' = '%.*s'", i,
-					props[i].name, props[i].value_length, props[i].value);
-			}
-			*/
-			return BSPLoadResult_Success;
-		default:
-			PRINTF("Illegal token: %d", type);
-			return BSPLoadResult_ErrorFileFormat;
+static ParserCallbackResult bspReadEntityPropsFinalize(ParserState *state, StringView s) {
+	(void)s;
+	EntityPropParser *epp = state->user_data;
+
+	for (int i = 0; i < epp->props_count; ++i) {
+		if (epp->props[i].value.length == 0) {
+			return Parser_Error;
 		}
-	} // forever
+	}
+
+	return Parser_Exit;
 }
 
-enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
-	struct EntityProp props[] = {
-		{"targetname", NULL, 0},
-		{"origin", NULL, 0}
+static ParserCallbackResult bspReadEntityPropsReadKey(ParserState *state, StringView s) {
+	EntityPropParser *epp = state->user_data;
+
+	epp->prop_to_read = -1;
+	for (int i = 0; i < epp->props_count; ++i) {
+		if (strncmp(epp->props[i].name, s.str, s.length) == 0) {
+			epp->prop_to_read = i;
+			break;
+		}
+	}
+
+	state->callbacks.curlyClose = parserError;
+	state->callbacks.string = bspReadEntityPropsReadValue;
+
+	return Parser_Continue;
+}
+
+static ParserCallbackResult bspReadEntityPropsReadValue(ParserState *state, StringView s) {
+	EntityPropParser *epp = state->user_data;
+
+	if (epp->prop_to_read >= 0)
+		epp->props[epp->prop_to_read].value = s;
+
+	state->callbacks.curlyClose = bspReadEntityPropsFinalize;
+	state->callbacks.string = bspReadEntityPropsReadKey;
+
+	return Parser_Continue;
+}
+
+static BSPLoadResult bspReadEntityProps(StringView source, EntityProp *props, int count) {
+	EntityPropParser epp = {
+		.props = props,
+		.props_count = count,
+		.prop_to_read = -1
 	};
 
-	const enum BSPLoadResult result = bspReadEntityProps(tctx, props, COUNTOF(props));
+	ParserState parser = {
+		.user_data = &epp,
+		.callbacks = {
+			.curlyOpen = parserError,
+			.curlyClose = bspReadEntityPropsFinalize,
+			.string = bspReadEntityPropsReadKey
+		}
+	};
+
+	for (int i = 0; i < epp.props_count; ++i) {
+		epp.props[i].value.length = 0;
+		epp.props[i].value.str = NULL;
+	}
+
+	return ParseResult_Success == parserParse(&parser, source)
+		? BSPLoadResult_Success : BSPLoadResult_ErrorFileFormat;
+}
+
+enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, StringView src) {
+	EntityProp props[] = {
+		{"targetname", {NULL, 0}},
+		{"origin", {NULL, 0}}
+	};
+
+	const enum BSPLoadResult result = bspReadEntityProps(src, props, COUNTOF(props));
 
 	if (result != BSPLoadResult_Success)
 		return result;
-
-	for (int i = 0; i < (int)COUNTOF(props); ++i)
-		if (props[i].value == NULL || props[i].value_length == 0) {
-			PRINTF("Property %s is empty, skipping this landmark", props[i].name);
-			return BSPLoadResult_Success;
-		}
 
 	struct BSPModel *model = ctx->model;
 	if (model->landmarks_count == BSP_MAX_LANDMARKS) {
@@ -835,23 +862,23 @@ enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, st
 	}
 
 	struct BSPLandmark *landmark = model->landmarks + model->landmarks_count;
-	if (props[0].value_length >= (int)sizeof(landmark->name)) {
+	if (props[0].value.length >= (int)sizeof(landmark->name)) {
 		PRINTF("Landmark name \"%.*s\" is too long",
-			props[0].value_length, props[0].value);
+			PRI_SVV(props[0].value));
 		return BSPLoadResult_ErrorMemory;
 	}
 
-	memcpy(landmark->name, props[0].value, props[0].value_length);
-	landmark->name[props[0].value_length] = '\0';
+	memcpy(landmark->name, props[0].value.str, props[0].value.length);
+	landmark->name[props[0].value.length] = '\0';
 
 	// FIXME props[1].value is not null-terminated suman
-	if (3 != sscanf(props[1].value, "%f %f %f",
+	if (3 != sscanf(props[1].value.str, "%f %f %f",
 			&landmark->origin.x,
 			&landmark->origin.y,
 			&landmark->origin.z))
 	{
 		PRINTF("Cannot read x, y, z from origin=\"%.*s\"",
-			props[1].value_length, props[1].value);
+			PRI_SVV(props[1].value));
 		return BSPLoadResult_ErrorFileFormat;
 	}
 
@@ -860,89 +887,118 @@ enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, st
 	return BSPLoadResult_Success;
 }
 
-enum BSPLoadResult bspReadEntityTriggerChangelevel(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
+enum BSPLoadResult bspReadEntityTriggerChangelevel(struct BSPLoadModelContext *ctx, StringView src) {
 	(void)ctx;
-	struct EntityProp props[] = {
-		{"landmark", NULL, 0},
-		{"map", NULL, 0}
+	EntityProp props[] = {
+		{"landmark", {NULL, 0}},
+		{"map", {NULL, 0}}
 	};
 
-	const enum BSPLoadResult result = bspReadEntityProps(tctx, props, COUNTOF(props));
+	const enum BSPLoadResult result = bspReadEntityProps(src, props, COUNTOF(props));
 
 	if (result != BSPLoadResult_Success)
 		return result;
 
-	openSourceAddMap(props[1].value, props[1].value_length);
+	openSourceAddMap(props[1].value.str, props[1].value.length);
 
 	return BSPLoadResult_Success;
 }
 
-enum BSPLoadResult bspReadEntityWorldspawn(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
+enum BSPLoadResult bspReadEntityWorldspawn(struct BSPLoadModelContext *ctx, StringView src) {
 	(void)ctx;
-	struct EntityProp props[] = {
-		{"skyname", NULL, 0},
+	EntityProp props[] = {
+		{"skyname", {NULL, 0}},
 	};
 
-	const enum BSPLoadResult result = bspReadEntityProps(tctx, props, COUNTOF(props));
+	const enum BSPLoadResult result = bspReadEntityProps(src, props, COUNTOF(props));
 
 	if (result != BSPLoadResult_Success)
 		return result;
 
-	if (props[0].value_length > 0) {
-		const StringView sky = { props[0].value, props[0].value_length };
+	if (props[0].value.length > 0) {
+		const StringView sky = { props[0].value.str, props[0].value.length };
 		bspLoadSkybox(sky, ctx->collection, ctx->persistent, ctx->model);
 	}
 
 	return BSPLoadResult_Success;
 }
 
-enum BSPLoadResult bspReadEntityAndDumpProps(struct BSPLoadModelContext *ctx, struct TokenContext* tctx) {
+/*
+enum BSPLoadResult bspReadEntityAndDumpProps(struct BSPLoadModelContext *ctx, StringView src) {
 	(void)ctx;
-	return bspReadEntityProps(tctx, NULL, 0);
+	return bspReadEntityProps(src, NULL, 0);
+}
+*/
+
+typedef struct {
+	BSPLoadModelContext *ctx;
+	const char *entity_begin;
+	const char *end;
+} EntityReadContext;
+
+static ParserCallbackResult entitySearchBegin(ParserState *state, StringView s);
+static ParserCallbackResult entitySearchSkip(ParserState *state, StringView s) {
+	(void)s;
+
+	state->callbacks.curlyOpen = entitySearchBegin;
+	state->callbacks.curlyClose = parserError;
+	state->callbacks.string = parserError;
+
+	return Parser_Continue;
+}
+
+static ParserCallbackResult entitySearchReadString(ParserState *state, StringView s) {
+	EntityReadContext *ctx = state->user_data;
+
+#define LOAD_ENTITY(name, func) \
+	if (strncmp(name, s.str, s.length) == 0) { \
+		const StringView src = { .str = ctx->entity_begin, .length = ctx->end - ctx->entity_begin }; \
+		if (func(ctx->ctx, src) != BSPLoadResult_Success) \
+			PRINTF("Cannot parse %s", name); \
+	}
+
+	LOAD_ENTITY("info_landmark", bspReadEntityInfoLandmark);
+	LOAD_ENTITY("trigger_changelevel", bspReadEntityTriggerChangelevel);
+	LOAD_ENTITY("worldspawn", bspReadEntityWorldspawn);
+	//LOAD_ENTITY("info_player_start", bspReadEntityAndDumpProps);
+
+	return Parser_Continue;
+}
+
+static ParserCallbackResult entitySearchBegin(ParserState *state, StringView s) {
+	(void)s;
+	EntityReadContext *ctx = state->user_data;
+	ctx->entity_begin = s.str;
+
+	state->callbacks.curlyOpen = parserError;
+	state->callbacks.curlyClose = entitySearchSkip;
+	state->callbacks.string = entitySearchReadString;
+
+	return Parser_Continue;
 }
 
 enum BSPLoadResult bspReadEntities(struct BSPLoadModelContext *ctx, const char *str, int length) {
 	ctx->model->landmarks_count = 0;
 
-	struct TokenContext tctx;
-	tctx.cursor = str;
-	tctx.end = str + length;
+	EntityReadContext ents_context = {
+		.ctx = ctx,
+		.entity_begin = str,
+		.end = str + length
+	};
 
-	int loop = 1;
-	const char* curlyOpen = NULL;
-	while(loop) {
-		switch(getNextToken(&tctx)) {
-		case Token_CurlyOpen:
-			curlyOpen = tctx.cursor;
-			break;
-		case Token_String:
-			//PRINTF("%.*s", (int)tctx.str_length, tctx.str_start);
-#define LOAD_ENTITY(name, func) \
-			if (strncmp(name, tctx.str_start, tctx.str_length) == 0) { \
-				tctx.cursor = curlyOpen; \
-				const enum BSPLoadResult result = func(ctx, &tctx); \
-				if (result != BSPLoadResult_Success) { \
-					PRINTF("Failed at loading " name "@%d", (int)(tctx.cursor - str)); \
-					return result; \
-				} \
-				continue; \
-			}
-			LOAD_ENTITY("info_landmark", bspReadEntityInfoLandmark);
-			LOAD_ENTITY("trigger_changelevel", bspReadEntityTriggerChangelevel);
-			LOAD_ENTITY("worldspawn", bspReadEntityWorldspawn);
-			LOAD_ENTITY("info_player_start", bspReadEntityAndDumpProps);
-			break;
-		case Token_Error:
-			return BSPLoadResult_ErrorFileFormat;
-		case Token_End:
-			loop = 0;
-			break;
-		default:
-			break;
+	ParserState parser = {
+		.user_data = &ents_context,
+		.callbacks = {
+			.curlyOpen = entitySearchBegin,
+			.curlyClose = parserError,
+			.string = parserError
 		}
-	}
+	};
 
-	return BSPLoadResult_Success;
+	const StringView ent_sv = { .str = str, .length = length };
+
+return ParseResult_Success == parserParse(&parser, ent_sv)
+	? BSPLoadResult_Success : BSPLoadResult_ErrorFileFormat;
 }
 
 static int lumpRead(const char *name, const struct VBSPLumpHeader *header,
