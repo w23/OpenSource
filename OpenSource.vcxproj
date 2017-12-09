@@ -107,6 +107,7 @@
     <ClCompile Include="src\atto\src\app_windows.c" />
     <ClCompile Include="src\bsp.c" />
     <ClCompile Include="src\cache.c" />
+    <ClCompile Include="src\camera.c" />
     <ClCompile Include="src\collection.c" />
     <ClCompile Include="src\dxt.c" />
     <ClCompile Include="src\filemap.c" />
@@ -128,6 +129,7 @@
     <ClInclude Include="src\atto\atto_udio.h" />
     <ClInclude Include="src\bsp.h" />
     <ClInclude Include="src\cache.h" />
+    <ClInclude Include="src\camera.h" />
     <ClInclude Include="src\collection.h" />
     <ClInclude Include="src\common.h" />
     <ClInclude Include="src\dxt.h" />
