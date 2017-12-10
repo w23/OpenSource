@@ -769,91 +769,32 @@ typedef struct {
 	StringView value;
 } EntityProp;
 
+#define ENTITY_LIST_PROPS \
+	ENTITY_PROP(ClassName, classname) \
+	ENTITY_PROP(TargetName, targetname) \
+	ENTITY_PROP(Origin, origin) \
+	ENTITY_PROP(SkyName, skyname) \
+	ENTITY_PROP(Landmark, landmark) \
+	ENTITY_PROP(Map, map) \
+
+typedef enum {
+#define ENTITY_PROP(name, string) \
+	EntityPropIndex_##name,
+ENTITY_LIST_PROPS
+#undef ENTITY_PROP
+} EntityPropIndex;
+
 typedef struct {
+	BSPLoadModelContext *ctx;
 	EntityProp *props;
 	int props_count;
-	int prop_to_read;
-} EntityPropParser;
+} Entity;
 
-static ParserCallbackResult bspReadEntityPropsReadValue(ParserState *state, StringView s);
+typedef BSPLoadResult (*BspProcessEntityProc)(BSPLoadModelContext *ctx, const Entity *entity);
 
-static ParserCallbackResult bspReadEntityPropsFinalize(ParserState *state, StringView s) {
-	(void)s;
-	EntityPropParser *epp = state->user_data;
-
-	for (int i = 0; i < epp->props_count; ++i) {
-		if (epp->props[i].value.length == 0) {
-			return Parser_Error;
-		}
-	}
-
-	return Parser_Exit;
-}
-
-static ParserCallbackResult bspReadEntityPropsReadKey(ParserState *state, StringView s) {
-	EntityPropParser *epp = state->user_data;
-
-	epp->prop_to_read = -1;
-	for (int i = 0; i < epp->props_count; ++i) {
-		if (strncmp(epp->props[i].name, s.str, s.length) == 0) {
-			epp->prop_to_read = i;
-			break;
-		}
-	}
-
-	state->callbacks.curlyClose = parserError;
-	state->callbacks.string = bspReadEntityPropsReadValue;
-
-	return Parser_Continue;
-}
-
-static ParserCallbackResult bspReadEntityPropsReadValue(ParserState *state, StringView s) {
-	EntityPropParser *epp = state->user_data;
-
-	if (epp->prop_to_read >= 0)
-		epp->props[epp->prop_to_read].value = s;
-
-	state->callbacks.curlyClose = bspReadEntityPropsFinalize;
-	state->callbacks.string = bspReadEntityPropsReadKey;
-
-	return Parser_Continue;
-}
-
-static BSPLoadResult bspReadEntityProps(StringView source, EntityProp *props, int count) {
-	EntityPropParser epp = {
-		.props = props,
-		.props_count = count,
-		.prop_to_read = -1
-	};
-
-	ParserState parser = {
-		.user_data = &epp,
-		.callbacks = {
-			.curlyOpen = parserError,
-			.curlyClose = bspReadEntityPropsFinalize,
-			.string = bspReadEntityPropsReadKey
-		}
-	};
-
-	for (int i = 0; i < epp.props_count; ++i) {
-		epp.props[i].value.length = 0;
-		epp.props[i].value.str = NULL;
-	}
-
-	return ParseResult_Success == parserParse(&parser, source)
-		? BSPLoadResult_Success : BSPLoadResult_ErrorFileFormat;
-}
-
-enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, StringView src) {
-	EntityProp props[] = {
-		{"targetname", {NULL, 0}},
-		{"origin", {NULL, 0}}
-	};
-
-	const enum BSPLoadResult result = bspReadEntityProps(src, props, COUNTOF(props));
-
-	if (result != BSPLoadResult_Success)
-		return result;
+BSPLoadResult bspProcessEntityInfoLandmark(BSPLoadModelContext *ctx, const Entity *entity) {
+	const StringView target_name = entity->props[EntityPropIndex_TargetName].value;
+	const StringView origin = entity->props[EntityPropIndex_Origin].value;
 
 	struct BSPModel *model = ctx->model;
 	if (model->landmarks_count == BSP_MAX_LANDMARKS) {
@@ -862,23 +803,22 @@ enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, St
 	}
 
 	struct BSPLandmark *landmark = model->landmarks + model->landmarks_count;
-	if (props[0].value.length >= (int)sizeof(landmark->name)) {
+	if (target_name.length >= (int)sizeof(landmark->name)) {
 		PRINTF("Landmark name \"%.*s\" is too long",
-			PRI_SVV(props[0].value));
+			PRI_SVV(target_name));
 		return BSPLoadResult_ErrorMemory;
 	}
 
-	memcpy(landmark->name, props[0].value.str, props[0].value.length);
-	landmark->name[props[0].value.length] = '\0';
+	memcpy(landmark->name, target_name.str, target_name.length);
+	landmark->name[target_name.length] = '\0';
 
-	// FIXME props[1].value is not null-terminated suman
-	if (3 != sscanf(props[1].value.str, "%f %f %f",
+	// FIXME props[EntityPropIndex_Origin].value is not null-terminated suman
+	if (3 != sscanf(origin.str, "%f %f %f",
 			&landmark->origin.x,
 			&landmark->origin.y,
 			&landmark->origin.z))
 	{
-		PRINTF("Cannot read x, y, z from origin=\"%.*s\"",
-			PRI_SVV(props[1].value));
+		PRINTF("Cannot read x, y, z from origin=\"%.*s\"", PRI_SVV(origin));
 		return BSPLoadResult_ErrorFileFormat;
 	}
 
@@ -887,118 +827,91 @@ enum BSPLoadResult bspReadEntityInfoLandmark(struct BSPLoadModelContext *ctx, St
 	return BSPLoadResult_Success;
 }
 
-enum BSPLoadResult bspReadEntityTriggerChangelevel(struct BSPLoadModelContext *ctx, StringView src) {
+BSPLoadResult bspProcessEntityTriggerChangelevel(struct BSPLoadModelContext *ctx, const Entity *entity) {
 	(void)ctx;
-	EntityProp props[] = {
-		{"landmark", {NULL, 0}},
-		{"map", {NULL, 0}}
-	};
-
-	const enum BSPLoadResult result = bspReadEntityProps(src, props, COUNTOF(props));
-
-	if (result != BSPLoadResult_Success)
-		return result;
-
-	openSourceAddMap(props[1].value.str, props[1].value.length);
-
+	const StringView map = entity->props[EntityPropIndex_Map].value;
+	openSourceAddMap(map.str, map.length);
 	return BSPLoadResult_Success;
 }
 
-enum BSPLoadResult bspReadEntityWorldspawn(struct BSPLoadModelContext *ctx, StringView src) {
+BSPLoadResult bspProcessEntityWorldspawn(struct BSPLoadModelContext *ctx, const Entity *entity) {
 	(void)ctx;
-	EntityProp props[] = {
-		{"skyname", {NULL, 0}},
-	};
+	const StringView skyname = entity->props[EntityPropIndex_SkyName].value;
 
-	const enum BSPLoadResult result = bspReadEntityProps(src, props, COUNTOF(props));
-
-	if (result != BSPLoadResult_Success)
-		return result;
-
-	if (props[0].value.length > 0) {
-		const StringView sky = { props[0].value.str, props[0].value.length };
+	if (skyname.length > 0) {
+		const StringView sky = { skyname.str, skyname.length };
 		bspLoadSkybox(sky, ctx->collection, ctx->persistent, ctx->model);
 	}
 
 	return BSPLoadResult_Success;
 }
 
-/*
-enum BSPLoadResult bspReadEntityAndDumpProps(struct BSPLoadModelContext *ctx, StringView src) {
-	(void)ctx;
-	return bspReadEntityProps(src, NULL, 0);
-}
-*/
+static struct {
+	const char *classname;
+	BspProcessEntityProc proc;
+} entity_procs[] = {
+	{"info_landmark", bspProcessEntityInfoLandmark},
+	{"trigger_changelevel", bspProcessEntityTriggerChangelevel},
+	{"worldspawn", bspProcessEntityWorldspawn},
+};
 
-typedef struct {
-	BSPLoadModelContext *ctx;
-	const char *entity_begin;
-	const char *end;
-} EntityReadContext;
+static VMFAction bspReadEntityProps(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv) {
+	Entity *entity = state->user_data;
 
-static ParserCallbackResult entitySearchBegin(ParserState *state, StringView s);
-static ParserCallbackResult entitySearchSkip(ParserState *state, StringView s) {
-	(void)s;
+	switch (entry) {
+		case VMFEntryType_KeyValue:
+			for (int i = 0; i < entity->props_count; ++i) {
+				if (strncmp(entity->props[i].name, kv->key.str, kv->key.length) == 0) {
+					entity->props[i].value = kv->value;
+					break;
+				}
+			}
+			break;
+		case VMFEntryType_SectionOpen:
+			for (int i = 0; i < entity->props_count; ++i) {
+				entity->props[i].value.str = NULL;
+				entity->props[i].value.length = 0;
+			}
 
-	state->callbacks.curlyOpen = entitySearchBegin;
-	state->callbacks.curlyClose = parserError;
-	state->callbacks.string = parserError;
-
-	return Parser_Continue;
-}
-
-static ParserCallbackResult entitySearchReadString(ParserState *state, StringView s) {
-	EntityReadContext *ctx = state->user_data;
-
-#define LOAD_ENTITY(name, func) \
-	if (strncmp(name, s.str, s.length) == 0) { \
-		const StringView src = { .str = ctx->entity_begin, .length = ctx->end - ctx->entity_begin }; \
-		if (func(ctx->ctx, src) != BSPLoadResult_Success) \
-			PRINTF("Cannot parse %s", name); \
+			break;
+		case VMFEntryType_SectionClose:
+			for (int i = 0; i < (int)COUNTOF(entity_procs); ++i) {
+				const StringView classname = entity->props[EntityPropIndex_ClassName].value;
+				if (strncmp(entity_procs[i].classname, classname.str, classname.length) == 0) {
+					entity_procs[i].proc(entity->ctx, entity);
+					break;
+				}
+			}
+			break;
 	}
 
-	LOAD_ENTITY("info_landmark", bspReadEntityInfoLandmark);
-	LOAD_ENTITY("trigger_changelevel", bspReadEntityTriggerChangelevel);
-	LOAD_ENTITY("worldspawn", bspReadEntityWorldspawn);
-	//LOAD_ENTITY("info_player_start", bspReadEntityAndDumpProps);
-
-	return Parser_Continue;
+	return VMFAction_Continue;
 }
 
-static ParserCallbackResult entitySearchBegin(ParserState *state, StringView s) {
-	(void)s;
-	EntityReadContext *ctx = state->user_data;
-	ctx->entity_begin = s.str;
-
-	state->callbacks.curlyOpen = parserError;
-	state->callbacks.curlyClose = entitySearchSkip;
-	state->callbacks.string = entitySearchReadString;
-
-	return Parser_Continue;
-}
-
-enum BSPLoadResult bspReadEntities(struct BSPLoadModelContext *ctx, const char *str, int length) {
+BSPLoadResult bspReadEntities(BSPLoadModelContext *ctx, const char *str, int length) {
 	ctx->model->landmarks_count = 0;
 
-	EntityReadContext ents_context = {
+	EntityProp props[] = {
+#define ENTITY_PROP(name, string) \
+		{#string, {NULL, 0}},
+ENTITY_LIST_PROPS
+#undef ENTITY_PROP
+	};
+
+	Entity entity = {
 		.ctx = ctx,
-		.entity_begin = str,
-		.end = str + length
+		.props = props,
+		.props_count = COUNTOF(props),
 	};
 
-	ParserState parser = {
-		.user_data = &ents_context,
-		.callbacks = {
-			.curlyOpen = entitySearchBegin,
-			.curlyClose = parserError,
-			.string = parserError
-		}
+	VMFState parser_state = {
+		.user_data = &entity,
+		.data = { .str = str, .length = length },
+		.callback = bspReadEntityProps,
 	};
 
-	const StringView ent_sv = { .str = str, .length = length };
-
-return ParseResult_Success == parserParse(&parser, ent_sv)
-	? BSPLoadResult_Success : BSPLoadResult_ErrorFileFormat;
+	return VMFResult_Success == vmfParse(&parser_state)
+		? BSPLoadResult_Success : BSPLoadResult_ErrorFileFormat;
 }
 
 static int lumpRead(const char *name, const struct VBSPLumpHeader *header,

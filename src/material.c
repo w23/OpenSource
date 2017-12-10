@@ -23,6 +23,7 @@ static const char * const ignore_params[] = {
 };
 #endif
 
+#if 0
 static ParserCallbackResult materialReadShader(ParserState *state, StringView s);
 static ParserCallbackResult materialReadKeyOrSection(ParserState *state, StringView s);
 static ParserCallbackResult materialReadValue(ParserState *state, StringView s);
@@ -131,8 +132,15 @@ static ParserCallbackResult materialEnd(ParserState *state, StringView s) {
 
 	return Parser_Exit;
 }
+#endif
 
 static int materialLoad(struct IFile *file, struct ICollection *coll, struct Material *output, struct Stack *tmp) {
+	(void)file;
+	(void)coll;
+	(void)output;
+	(void)tmp;
+	return 0;
+#if 0
 	char *buffer = stackAlloc(tmp, file->size);
 
 	if (!buffer) {
@@ -164,6 +172,7 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 	stackFreeUpToPosition(tmp, buffer);
 
 	return success;
+#endif
 }
 
 const struct Material *materialGet(const char *name, struct ICollection *collection, struct Stack *tmp) {

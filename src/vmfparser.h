@@ -2,33 +2,37 @@
 
 #include "common.h"
 
+struct VMFState;
+typedef struct VMFState VMFState;
+
 typedef enum {
-	Parser_Continue,
-	Parser_Exit,
-	Parser_Error
-} ParserCallbackResult;
+	VMFEntryType_KeyValue,
+	VMFEntryType_SectionOpen,
+	VMFEntryType_SectionClose
+} VMFEntryType;
 
-struct ParserState;
-typedef struct ParserState ParserState;
+typedef enum {
+	VMFAction_Continue,
+	VMFAction_Exit,
+	VMFAction_SemanticError
+} VMFAction;
 
-typedef ParserCallbackResult (*ParserCallback)(ParserState *state, StringView s);
+typedef struct {
+	StringView key, value;
+} VMFKeyValue;
 
-struct ParserState {
+typedef VMFAction (*VMFCallback)(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv);
+
+struct VMFState {
 	void *user_data;
-	struct {
-		ParserCallback curlyOpen;
-		ParserCallback curlyClose;
-		ParserCallback string;
-	} callbacks;
+	StringView data;
+	VMFCallback callback;
 };
 
 typedef enum {
-	ParseResult_Success,
-	ParseResult_Error
-} ParseResult;
+	VMFResult_Success,
+	VMFResult_SyntaxError,
+	VMFResult_SemanticError
+} VMFResult;
 
-ParseResult parserParse(ParserState *state, StringView string);
-
-// Utility callback function for specifying semantically invalid tokens
-ParserCallbackResult parserError(ParserState *state, StringView s);
-ParserCallbackResult parserIgnore(ParserState *state, StringView s);
+VMFResult vmfParse(VMFState *state);
