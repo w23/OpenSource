@@ -85,8 +85,7 @@ exit:
 	if (error_message)
 		PRINTF("Parsing error \"%s\" @%d (%.*s)", error_message,
 				(int)(c - state->data.str), (int)(end - c < 32 ? end - c : 32), c);
-	else
-		PRINTF("Token %d, (%.*s)", token.type, PRI_SVV(token.string));
+	//else PRINTF("Token %d, (%.*s)", token.type, PRI_SVV(token.string));
 
 	state->data.str = c + 1;
 	state->data.length = end - c - 1;
@@ -119,7 +118,7 @@ VMFResult vmfParse(VMFState *state) {
 				action = state->callback(state, VMFEntryType_SectionOpen, &kv);
 				continue;
 			case VMFTokenType_Close:
-				action = state->callback(state, VMFEntryType_SectionClose, NULL);
+				action = state->callback(state, VMFEntryType_SectionClose, &kv);
 				continue;
 			case VMFTokenType_End:
 				return VMFResult_Success;
