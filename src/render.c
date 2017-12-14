@@ -266,17 +266,10 @@ RENDER_LIST_ATTRIBS
 
 #define RENDER_LIST_UNIFORMS \
 	RENDER_DECLARE_UNIFORM(mvp) \
-	RENDER_DECLARE_UNIFORM(lmn) \
 	RENDER_DECLARE_UNIFORM(far) \
 	RENDER_DECLARE_UNIFORM(lightmap) \
 	RENDER_DECLARE_UNIFORM(tex0) \
-	RENDER_DECLARE_UNIFORM(tex1) \
 	RENDER_DECLARE_UNIFORM(tex0_size) \
-	RENDER_DECLARE_UNIFORM(tex1_size) \
-	RENDER_DECLARE_UNIFORM(tex2) \
-	RENDER_DECLARE_UNIFORM(tex3) \
-	RENDER_DECLARE_UNIFORM(tex4) \
-	RENDER_DECLARE_UNIFORM(tex5) \
 
 static const RUniform uniforms[] = {
 #define RENDER_DECLARE_UNIFORM(n) {"u_" # n},
@@ -300,15 +293,26 @@ typedef struct RProgram {
 	int uniform_locations[RUniformKind_COUNT];
 } RProgram;
 
-enum {
-	Program_LightmapColor,
-	Program_LightmapTexture,
-	Program_Skybox,
-	Program_COUNT
-};
-
-static RProgram programs[Program_COUNT] = {
-	/*LightmapColor*/
+static RProgram programs[MShader_COUNT] = {
+	/* MShader_Unknown */
+	{-1, {
+			/* common */
+			"varying vec3 v_pos;\n",
+			/* vertex */
+			"attribute vec3 a_vertex;\n"
+			"uniform mat4 u_mvp;\n"
+			"void main() {\n"
+				"v_pos = a_vertex;\n"
+				"gl_Position = u_mvp * vec4(a_vertex, 1.);\n"
+			"}\n",
+			/* fragment */
+			"void main() {\n"
+				"gl_FragColor = vec4(mod(v_pos,100.)/100., 1.);\n"
+			"}\n",
+			},
+		{ -1 }, { -1 }
+	},
+	/* MShader_LightmappedOnly */
 	{-1, {
 			/*common*/
 			"varying vec2 v_lightmap_uv;\n"
@@ -330,59 +334,50 @@ static RProgram programs[Program_COUNT] = {
 			},
 		{ -1 }, { -1 }
 	},
-	/*LightmapTexture*/
+	/* MShader_LightmappedGeneric */
 	{-1, {
 			/*common*/
-	"varying vec2 v_lightmap_uv, v_tex_uv;\n",
+			"varying vec2 v_lightmap_uv, v_tex_uv;\n",
 			/*vertex*/
-	"attribute vec3 a_vertex;\n"
-	"attribute vec2 a_lightmap_uv, a_tex_uv;\n"
-	"uniform mat4 u_mvp;\n"
-	"void main() {\n"
-		"v_lightmap_uv = a_lightmap_uv;\n"
-		"v_tex_uv = a_tex_uv;\n"
-		"gl_Position = u_mvp * vec4(a_vertex, 1.);\n"
-	"}\n",
+			"attribute vec3 a_vertex;\n"
+			"attribute vec2 a_lightmap_uv, a_tex_uv;\n"
+			"uniform mat4 u_mvp;\n"
+			"void main() {\n"
+				"v_lightmap_uv = a_lightmap_uv;\n"
+				"v_tex_uv = a_tex_uv;\n"
+				"gl_Position = u_mvp * vec4(a_vertex, 1.);\n"
+			"}\n",
 			/*fragment*/
-	"uniform sampler2D u_lightmap, u_tex0, u_tex1;\n"
-	"uniform vec2 u_lightmap_size, u_tex0_size, u_tex1_size;\n"
-	"uniform float u_lmn;\n"
-	"void main() {\n"
-		"vec3 tc = vec3(fract(v_tex_uv/u_tex0_size), 0.);\n"
-		"vec4 albedo = texture2D(u_tex0, v_tex_uv/u_tex0_size);\n"
-		"albedo = mix(albedo, texture2D(u_tex1, v_tex_uv/u_tex1_size), .0);\n"
-		"vec3 lm = texture2D(u_lightmap, v_lightmap_uv).xyz;\n"
-		"vec3 color = albedo.xyz * lm;\n"
-		"gl_FragColor = vec4(mix(color, tc, u_lmn), 1.);\n"
-	"}\n"
+			"uniform sampler2D u_lightmap, u_tex0;\n"
+			"uniform vec2 u_lightmap_size, u_tex0_size;\n"
+			"void main() {\n"
+				"vec4 albedo = texture2D(u_tex0, v_tex_uv/u_tex0_size);\n"
+				"vec3 lm = texture2D(u_lightmap, v_lightmap_uv).xyz;\n"
+				"vec3 color = albedo.xyz * lm;\n"
+				"gl_FragColor = vec4(color, 1.);\n"
+			"}\n"
 			},
 		{ -1 }, { -1 }
 	},
-	/* Skybox */
+	/* MShader_UnlitGeneric */
 	{-1, { /* common */
-		"varying vec2 v_uv;\n"
-		"varying float texid;\n",
+		"varying vec2 v_uv;\n",
 		/* vertex */
 		"attribute vec3 a_vertex;\n"
 		"attribute vec2 a_tex_uv;\n"
-		"attribute vec2 a_lightmap_uv;\n"
 		"uniform mat4 u_mvp;\n"
 		"uniform float u_far;\n"
 		"void main() {\n"
 			"v_uv = a_tex_uv;\n"
-			"texid = a_lightmap_uv.x;\n"
 			"gl_Position = u_mvp * vec4(u_far * .5 * a_vertex, 1.);\n"
 		"}\n",
 		/* fragment */
-		"uniform sampler2D u_tex0, u_tex1, u_tex2, u_tex3, u_tex4, u_tex5;\n"
+		"uniform sampler2D u_tex0;\n"
+		"uniform vec2 u_tex0_size;\n"
 		"void main() {\n"
-			"if (texid < 1.) gl_FragColor = texture2D(u_tex0, v_uv);\n"
-			"else if (texid < 2.) gl_FragColor = texture2D(u_tex1, v_uv);\n"
-			"else if (texid < 3.) gl_FragColor = texture2D(u_tex2, v_uv);\n"
-			"else if (texid < 4.) gl_FragColor = texture2D(u_tex3, v_uv);\n"
-			"else if (texid < 5.) gl_FragColor = texture2D(u_tex4, v_uv);\n"
-			"else gl_FragColor = texture2D(u_tex5, v_uv);\n"
-		"}\n"
+			"gl_FragColor = texture2D(u_tex0, v_uv + vec2(.5) / u_tex0_size);\n"
+			//"gl_FragColor = texture2D(u_tex0, v_uv);\n"
+		"}\n",
 		}, {-1}, {-1}},
 };
 
@@ -394,12 +389,12 @@ static struct BSPModelVertex box[] = {
 	{{ 1.f, -1.f,  1.f}, {0.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
 	{{ 1.f, -1.f, -1.f}, {0.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
 
-	{{ 1.f,  1.f,  1.f}, {3.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
-	{{ 1.f,  1.f, -1.f}, {3.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
-	{{-1.f,  1.f, -1.f}, {3.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f,  1.f, -1.f}, {3.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f,  1.f,  1.f}, {3.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
-	{{ 1.f,  1.f,  1.f}, {3.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{-1.f, -1.f,  1.f}, {1.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {1.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {1.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {1.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f, -1.f, -1.f}, {1.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f, -1.f,  1.f}, {1.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
 
 	{{ 1.f, -1.f, -1.f}, {2.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
 	{{ 1.f, -1.f,  1.f}, {2.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
@@ -408,12 +403,12 @@ static struct BSPModelVertex box[] = {
 	{{-1.f, -1.f, -1.f}, {2.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
 	{{ 1.f, -1.f, -1.f}, {2.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
 
-	{{-1.f, -1.f,  1.f}, {1.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
-	{{-1.f,  1.f,  1.f}, {1.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
-	{{-1.f,  1.f, -1.f}, {1.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
-	{{-1.f,  1.f, -1.f}, {1.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
-	{{-1.f, -1.f, -1.f}, {1.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
-	{{-1.f, -1.f,  1.f}, {1.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {3.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f, -1.f}, {3.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {3.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f, -1.f}, {3.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
+	{{-1.f,  1.f,  1.f}, {3.f, 0.f}, {0.f, 0.f}, {0, 0, 0}},
+	{{ 1.f,  1.f,  1.f}, {3.f, 0.f}, {1.f, 0.f}, {0, 0, 0}},
 
 	{{ 1.f, -1.f,  1.f}, {4.f, 0.f}, {1.f, 1.f}, {0, 0, 0}},
 	{{ 1.f,  1.f,  1.f}, {4.f, 0.f}, {0.f, 1.f}, {0, 0, 0}},
@@ -438,7 +433,6 @@ static struct {
 	const RProgram *current_program;
 	struct {
 		const float *mvp;
-		float lmn;
 		float far;
 	} uniforms;
 
@@ -474,14 +468,8 @@ static int render_ProgramUse(RProgram *prog) {
 	GL_CALL(glUseProgram(prog->name));
 	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_lightmap], 0));
 	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex0], 1));
-	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex1], 2));
-	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex2], 3));
-	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex3], 4));
-	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex4], 5));
-	GL_CALL(glUniform1i(prog->uniform_locations[RUniformKind_tex5], 6));
 
 	GL_CALL(glUniformMatrix4fv(prog->uniform_locations[RUniformKind_mvp], 1, GL_FALSE, r.uniforms.mvp));
-	GL_CALL(glUniform1f(prog->uniform_locations[RUniformKind_lmn], r.uniforms.lmn));
 	GL_CALL(glUniform1f(prog->uniform_locations[RUniformKind_far], r.uniforms.far));
 
 	r.current_program = prog;
@@ -559,9 +547,8 @@ int renderInit() {
 	r.current_program = NULL;
 	r.current_tex0 = NULL;
 	r.uniforms.mvp = NULL;
-	r.uniforms.lmn = 0;
 
-	for (int i = 0; i < Program_COUNT; ++i) {
+	for (int i = 0; i < MShader_COUNT; ++i) {
 		if (render_ProgramInit(programs + i) != 0) {
 			PRINTF("Cannot create program %d", i);
 			return 0;
@@ -585,15 +572,15 @@ int renderInit() {
 		struct Material default_material;
 		memset(&default_material, 0, sizeof default_material);
 		default_material.average_color = aVec3f(0.f, 1.f, 0.f);
-		default_material.shader = MaterialShader_LightmappedAverageColor;
+		default_material.shader = MShader_Unknown;
 		cachePutMaterial("opensource/placeholder", &default_material);
 	}
 
 	{
 		struct Material lightmap_color_material;
 		memset(&lightmap_color_material, 0, sizeof lightmap_color_material);
-		lightmap_color_material.average_color = aVec3f(0.f, 1.f, 0.f);
-		lightmap_color_material.shader = MaterialShader_LightmappedAverageColor;
+		lightmap_color_material.average_color = aVec3f(1.f, 1.f, 0.f);
+		lightmap_color_material.shader = MShader_LightmappedOnly;
 		cachePutMaterial("opensource/coarse", &lightmap_color_material);
 	}
 
@@ -604,26 +591,23 @@ int renderInit() {
 	return 1;
 }
 
-static int renderPrepareProgram(const struct BSPDraw *draw) {
-	const struct Material *m = draw->material;
-
-	int program_changed = 0;
-
-	switch (m->shader) {
-		case MaterialShader_LightmappedAverageColor:
-			program_changed = render_ProgramUse(programs + Program_LightmapColor);
-			break;
-		case MaterialShader_LightmappedGeneric:
-			program_changed = render_ProgramUse(programs + Program_LightmapTexture);
-			break;
-		default:
-			ATTO_ASSERT(!"Impossible");
+static void renderBindTexture(const RTexture *texture, int slot, int norepeat) {
+	GL_CALL(glActiveTexture(GL_TEXTURE0 + slot));
+	GL_CALL(glBindTexture(GL_TEXTURE_2D, texture->gl_name));
+	if (norepeat) {
+		const GLuint wrap = GL_CLAMP_TO_EDGE;
+		GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap));
+		GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap));
 	}
+}
 
-	if (m->base_texture[0]) {
-		const RTexture *t = &m->base_texture[0]->texture;
+static int renderUseMaterial(const Material *m) {
+	const int program_changed = render_ProgramUse(programs + m->shader);
+
+	if (m->base_texture.texture) {
+		const RTexture *t = &m->base_texture.texture->texture;
 		if (t != r.current_tex0) {
-			GL_CALL(glBindTexture(GL_TEXTURE_2D, t->gl_name));
+			renderBindTexture(&m->base_texture.texture->texture, 1, 0);
 			GL_CALL(glUniform2f(r.current_program->uniform_locations[RUniformKind_tex0_size], (float)t->width, (float)t->height));
 			r.current_tex0 = t;
 		}
@@ -637,7 +621,7 @@ static void renderDrawSet(const struct BSPModel *model, const struct BSPDrawSet 
 	for (int i = 0; i < drawset->draws_count; ++i) {
 		const struct BSPDraw *draw = drawset->draws + i;
 
-		if (renderPrepareProgram(draw) || i == 0 || draw->vbo_offset != vbo_offset) {
+		if (renderUseMaterial(draw->material) || i == 0 || draw->vbo_offset != vbo_offset) {
 			vbo_offset = draw->vbo_offset;
 			renderApplyAttribs(attribs, &model->vbo, draw->vbo_offset);
 		}
@@ -646,27 +630,16 @@ static void renderDrawSet(const struct BSPModel *model, const struct BSPDrawSet 
 	}
 }
 
-static void renderBindTexture(const RTexture *texture, int slot, int norepeat) {
-	GL_CALL(glActiveTexture(GL_TEXTURE0 + slot));
-	GL_CALL(glBindTexture(GL_TEXTURE_2D, texture->gl_name));
-	if (norepeat) {
-		const GLuint wrap = GL_CLAMP_TO_EDGE;
-		GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap));
-		GL_CALL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap));
-	}
-}
-
 static void renderSkybox(const struct Camera *camera, const struct BSPModel *model) {
 	const struct AMat4f op = aMat4fMul(camera->projection, aMat4f3(camera->orientation, aVec3ff(0)));
 	r.uniforms.mvp = &op.X.x;
 
-	render_ProgramUse(programs + Program_Skybox);
-	for (int i = 0; i < BSPSkyboxDir_COUNT; ++i)
-		renderBindTexture(&model->skybox[i]->texture, 1+i, 1);
-
-	renderApplyAttribs(attribs, &box_buffer, 0);
 	GL_CALL(glDisable(GL_CULL_FACE));
-	GL_CALL(glDrawArrays(GL_TRIANGLES, 0, COUNTOF(box)));
+	for (int i = 0; i < BSPSkyboxDir_COUNT; ++i) {
+		renderUseMaterial(model->skybox[i]);
+		renderApplyAttribs(attribs, &box_buffer, 0);
+		GL_CALL(glDrawArrays(GL_TRIANGLES, i*6, 6));
+	}
 	GL_CALL(glEnable(GL_CULL_FACE));
 }
 
@@ -681,13 +654,11 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 
 	GL_CALL(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model->ibo.gl_name));
 	renderBindTexture(&model->lightmap, 0, 0);
-	GL_CALL(glActiveTexture(GL_TEXTURE0 + 1));
 
 	const struct AVec3f rel_pos = aVec3fSub(params->camera->pos, params->translation);
 
 	r.current_program = NULL;
 	r.uniforms.mvp = &mvp.X.x;
-	r.uniforms.lmn = params->lmn;
 	r.uniforms.far = params->camera->z_far;
 
 	const float distance =

@@ -103,6 +103,7 @@ void *aHashInsert(AHash *hash, const void *key, const void *value) {
 
 	void *const new_item = hash->alloc(hash->alloc_param, hash->impl_.item_size);
 	const struct AHashItemData_ item_data = a__hashGetItemData(hash, new_item);
+	// FIXME key is string and is < key_size most of the time
 	memcpy(item_data.key, key, hash->key_size);
 	memcpy(item_data.value, value, hash->value_size);
 	item_data.next[0] = 0;

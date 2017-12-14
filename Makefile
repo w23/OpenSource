@@ -7,7 +7,6 @@ MAX_MAPS ?= 99
 ARGS ?= -p $(VPKDIR)/hl2_textures_dir.vpk -p $(VPKDIR)/hl2_misc_dir.vpk -p $(VPKDIR)/hl2_pak_dir.vpk -d $(VPKDIR) -n $(MAX_MAPS)
 
 CFLAGS += -Wall -Wextra -D_GNU_SOURCE -Isrc/atto -fPIE
-LIBS = -lX11 -lXfixes -lGL -lm -pthread
 BUILDDIR ?= build
 
 ifeq ($(DEBUG), 1)
@@ -41,7 +40,7 @@ ifeq ($(RASPBERRY), 1)
 
 	CFLAGS += -I$(RPI_VCDIR)/include -I$(RPI_VCDIR)/include/interface/vcos/pthreads
 	CFLAGS += -I$(RPI_VCDIR)/include/interface/vmcs_host/linux -DATTO_PLATFORM_RPI
-	LIBS = -lGLESv2 -lEGL -lbcm_host -lvcos -lvchiq_arm -L$(RPI_VCDIR)/lib -lrt -lm
+	LIBS += -lGLESv2 -lEGL -lbcm_host -lvcos -lvchiq_arm -L$(RPI_VCDIR)/lib -lrt -lm
 
 	SOURCES += \
 		src/atto/src/app_linux.c \
@@ -50,7 +49,7 @@ ifeq ($(RASPBERRY), 1)
 else
 	PLATFORM = desktop
 	CC ?= cc
-	LIBS = -lX11 -lXfixes -lGL -lm -pthread
+	LIBS += -lX11 -lXfixes -lGL -lm -pthread
 	SOURCES += \
 		src/atto/src/app_linux.c \
 		src/atto/src/app_x11.c

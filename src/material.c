@@ -9,7 +9,7 @@ typedef struct {
 	ICollection *collection;
 	Stack *temp;
 	StringView shader;
-	struct Material *mat;
+	Material *mat;
 	int depth;
 } MaterialContext;
 
@@ -18,11 +18,11 @@ static VMFAction materialReadKeyValue(MaterialContext *ctx, const VMFKeyValue *k
 		return VMFAction_SemanticError;
 
 	char value[128];
+	memset(value, 0, sizeof value);
 	memcpy(value, kv->value.str, kv->value.length);
-	value[kv->value.length] = '\0';
 
 	if (strncasecmp("$basetexture", kv->key.str, kv->key.length) == 0) {
-		ctx->mat->base_texture[0] = textureGet(value, ctx->collection, ctx->temp);
+		ctx->mat->base_texture.texture = textureGet(value, ctx->collection, ctx->temp);
 	} else if (strncasecmp("include", kv->key.str, kv->key.length) == 0) {
 		char *vmt = strstr(value, ".vmt");
 		if (vmt)
@@ -85,9 +85,18 @@ static VMFAction materialShaderCallback(VMFState *state, VMFEntryType entry, con
 	return retval;
 }
 
+static void mtextureInit(MTexture *t) {
+	memset(t, 0, sizeof(*t));
+	t->transform.scale = aVec2f(1.f, 1.f);
+}
+
 static VMFAction materialParserCallback(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv) {
 	//PRINTF("Entry %d (%.*s -> %.*s)", entry, PRI_SVV(kv->key), PRI_SVV(kv->value));
 	MaterialContext *ctx = state->user_data;
+
+	ctx->mat->average_color = aVec3f(0,1,1);
+	ctx->mat->shader = MShader_Unknown;
+	mtextureInit(&ctx->mat->base_texture);
 
 	VMFAction retval = VMFAction_SemanticError;
 
@@ -100,6 +109,14 @@ static VMFAction materialParserCallback(VMFState *state, VMFEntryType entry, con
 				state->callback = materialPatchCallback;
 			} else {
 				ctx->shader = kv->key;
+				if (strncasecmp("unlitgeneric", kv->key.str, kv->key.length) == 0
+					|| strncasecmp("sky", kv->key.str, kv->key.length) == 0)
+					ctx->mat->shader = MShader_UnlitGeneric;
+				else if (strncasecmp("lightmappedgeneric", kv->key.str, kv->key.length) == 0
+					|| strncasecmp("worldvertextransition", kv->key.str, kv->key.length) == 0)
+					ctx->mat->shader = MShader_LightmappedGeneric;
+				else
+					PRINTF("Unknown material shader " PRI_SV, PRI_SVV(kv->key));
 				state->callback = materialShaderCallback;
 			}
 			retval = VMFAction_Continue;
@@ -111,7 +128,7 @@ static VMFAction materialParserCallback(VMFState *state, VMFEntryType entry, con
 	return retval;
 }
 
-static int materialLoad(struct IFile *file, struct ICollection *coll, struct Material *output, struct Stack *tmp) {
+static int materialLoad(struct IFile *file, struct ICollection *coll, Material *output, struct Stack *tmp) {
 	char *buffer = stackAlloc(tmp, file->size);
 
 	if (!buffer) {
@@ -137,26 +154,16 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, struct Mat
 
 	const int success = VMFResult_Success == vmfParse(&parser_state);
 
-	if (success) {
-		if (!ctx.mat->base_texture[0]) {
-			PRINTF("Material with ctx.shader %.*s doesn't have base texture", ctx.shader.length, ctx.shader.str);
-			ctx.mat->shader = MaterialShader_LightmappedAverageColor;
-			// HACK to notice these materials
-			ctx.mat->average_color = aVec3f(1.f, 0.f, 1.f);
-		} else {
-			ctx.mat->shader = MaterialShader_LightmappedGeneric;
-			ctx.mat->average_color = ctx.mat->base_texture[0]->avg_color;
-		}
-	}
-
+	if (success && ctx.mat->base_texture.texture)
+		ctx.mat->average_color = ctx.mat->base_texture.texture->avg_color;
 
 	stackFreeUpToPosition(tmp, buffer);
 
 	return success;
 }
 
-const struct Material *materialGet(const char *name, struct ICollection *collection, struct Stack *tmp) {
-	const struct Material *mat = cacheGetMaterial(name);
+const Material *materialGet(const char *name, struct ICollection *collection, struct Stack *tmp) {
+	const Material *mat = cacheGetMaterial(name);
 	if (mat) return mat;
 
 	struct IFile *matfile;
@@ -165,7 +172,7 @@ const struct Material *materialGet(const char *name, struct ICollection *collect
 		return cacheGetMaterial("opensource/placeholder");
 	}
 
-	struct Material localmat;
+	Material localmat;
 	memset(&localmat, 0, sizeof localmat);
 	if (materialLoad(matfile, collection, &localmat, tmp) == 0) {
 		PRINTF("Material \"%s\" found, but could not be loaded", name);

@@ -81,7 +81,7 @@ struct Face {
 	const struct VBSPLumpDispInfo *dispinfo;
 	int dispquadvtx[4]; // filled only when displaced
 	int dispstartvtx;
-	const struct Material *material;
+	const Material *material;
 
 	/* filled as a result of atlas allocation */
 	int atlas_x, atlas_y;
@@ -112,7 +112,7 @@ enum FacePreload {
 };
 
 static struct {
-	const struct Material *coarse_material;
+	const Material *coarse_material;
 	struct {
 		int color[256];
 		int exponent[256];
@@ -579,7 +579,7 @@ static int faceMaterialCompare(const void *a, const void *b) {
 	if (fa->material == fb->material)
 		return 0;
 
-	return fa->material->base_texture[0] - fb->material->base_texture[0];
+	return fa->material->base_texture.texture - fb->material->base_texture.texture;
 }
 
 static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, struct Stack *persistent,
@@ -737,16 +737,8 @@ static enum BSPLoadResult bspLoadModel(
 	return BSPLoadResult_Success;
 } // bspLoadModel()
 
-static const struct {
-	const char *suffix;
-	BSPSkyboxDir dir;
-} bsp_skybox_suffix[6] = {
-	{"rt", BSPSkyboxDir_RT},
-	{"lf", BSPSkyboxDir_LF},
-	{"ft", BSPSkyboxDir_FT},
-	{"bk", BSPSkyboxDir_BK},
-	{"up", BSPSkyboxDir_UP},
-	{"dn", BSPSkyboxDir_DN}};
+static const char *bsp_skybox_suffix[6] = {
+	"rt", "lf", "ft", "bk", "up", "dn" };
 
 static void bspLoadSkybox(StringView name, ICollection *coll, Stack *tmp, struct BSPModel *model) {
 	PRINTF("Loading skybox %.*s", name.length, name.str);
@@ -756,11 +748,9 @@ static void bspLoadSkybox(StringView name, ICollection *coll, Stack *tmp, struct
 	memcpy(zname, "skybox/", 7);
 	memcpy(zname + 7, name.str, name.length);
 
-	Texture localtex;
-	renderTextureInit(&localtex.texture);
 	for (int i = 0; i < 6; ++i) {
-		memcpy(zname + name.length + 7, bsp_skybox_suffix[i].suffix, 2);
-		model->skybox[bsp_skybox_suffix[i].dir] = textureGet(zname, coll, tmp);
+		memcpy(zname + name.length + 7, bsp_skybox_suffix[i], 2);
+		model->skybox[i] = materialGet(zname, coll, tmp);
 	}
 }
 
@@ -840,7 +830,7 @@ BSPLoadResult bspProcessEntityWorldspawn(struct BSPLoadModelContext *ctx, const 
 
 	if (skyname.length > 0) {
 		const StringView sky = { skyname.str, skyname.length };
-		bspLoadSkybox(sky, ctx->collection, ctx->persistent, ctx->model);
+		bspLoadSkybox(sky, ctx->collection, ctx->tmp, ctx->model);
 	}
 
 	return BSPLoadResult_Success;

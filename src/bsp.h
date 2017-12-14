@@ -14,7 +14,7 @@ struct BSPModelVertex {
 };
 
 struct BSPDraw {
-	const struct Material *material;
+	const Material *material;
 	unsigned int start, count;
 	unsigned int vbo_offset;
 };
@@ -47,7 +47,7 @@ struct BSPModel {
 	RTexture lightmap;
 	RBuffer vbo, ibo;
 
-	const struct Texture *skybox[BSPSkyboxDir_COUNT];
+	const Material *skybox[BSPSkyboxDir_COUNT];
 
 	struct BSPDrawSet detailed;
 	struct BSPDrawSet coarse;

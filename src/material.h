@@ -5,22 +5,29 @@ struct ICollection;
 struct Texture;
 struct Stack;
 
-enum MaterialShader {
-	MaterialShader_LightmappedAverageColor,
-	MaterialShader_LightmappedGeneric,
-};
+typedef struct AVec2f AVec2f;
 
-struct Material {
-	enum MaterialShader shader;
+typedef enum {
+	MShader_Unknown,
+	MShader_LightmappedOnly,
+	MShader_LightmappedGeneric,
+	MShader_UnlitGeneric,
+
+	MShader_COUNT
+} MShader;
+
+typedef struct {
+	const struct Texture *texture;
+	struct {
+		AVec2f translate;
+		AVec2f scale;
+	} transform;
+} MTexture;
+
+typedef struct Material {
+	MShader shader;
 	struct AVec3f average_color;
-	const struct Texture *base_texture[2];
-	/* TODO:
-	 * - bump
-	 * - detail
-	 * - texture transforms
-	 * - special material type (e.g. water, translucent, ...)
-	 * ...
-	 */
-};
+	MTexture base_texture;
+} Material;
 
-const struct Material *materialGet(const char *name, struct ICollection *collection, struct Stack *tmp);
+const Material *materialGet(const char *name, struct ICollection *collection, struct Stack *tmp);
