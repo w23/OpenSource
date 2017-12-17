@@ -270,6 +270,8 @@ RENDER_LIST_ATTRIBS
 	RENDER_DECLARE_UNIFORM(lightmap) \
 	RENDER_DECLARE_UNIFORM(tex0) \
 	RENDER_DECLARE_UNIFORM(tex0_size) \
+	RENDER_DECLARE_UNIFORM(tex0_scale) \
+	RENDER_DECLARE_UNIFORM(tex0_translate) \
 
 static const RUniform uniforms[] = {
 #define RENDER_DECLARE_UNIFORM(n) {"u_" # n},
@@ -367,8 +369,9 @@ static RProgram programs[MShader_COUNT] = {
 		"attribute vec2 a_tex_uv;\n"
 		"uniform mat4 u_mvp;\n"
 		"uniform float u_far;\n"
+		"uniform vec2 u_tex0_scale, u_tex0_translate;\n"
 		"void main() {\n"
-			"v_uv = a_tex_uv;\n"
+			"v_uv = a_tex_uv * u_tex0_scale + u_tex0_translate;\n"
 			"gl_Position = u_mvp * vec4(u_far * .5 * a_vertex, 1.);\n"
 		"}\n",
 		/* fragment */
@@ -607,8 +610,10 @@ static int renderUseMaterial(const Material *m) {
 	if (m->base_texture.texture) {
 		const RTexture *t = &m->base_texture.texture->texture;
 		if (t != r.current_tex0) {
-			renderBindTexture(&m->base_texture.texture->texture, 1, 0);
+			renderBindTexture(&m->base_texture.texture->texture, 1, m->shader == MShader_UnlitGeneric);
 			GL_CALL(glUniform2f(r.current_program->uniform_locations[RUniformKind_tex0_size], (float)t->width, (float)t->height));
+			GL_CALL(glUniform2f(r.current_program->uniform_locations[RUniformKind_tex0_scale], m->base_texture.transform.scale.x, m->base_texture.transform.scale.y));
+			GL_CALL(glUniform2f(r.current_program->uniform_locations[RUniformKind_tex0_translate], m->base_texture.transform.translate.x, m->base_texture.transform.translate.y));
 			r.current_tex0 = t;
 		}
 	}

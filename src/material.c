@@ -23,6 +23,17 @@ static VMFAction materialReadKeyValue(MaterialContext *ctx, const VMFKeyValue *k
 
 	if (strncasecmp("$basetexture", kv->key.str, kv->key.length) == 0) {
 		ctx->mat->base_texture.texture = textureGet(value, ctx->collection, ctx->temp);
+	} else if (strncasecmp("$basetexturetransform", kv->key.str, kv->key.length) == 0) {
+		AVec2f center, scale, translate;
+		float rotate;
+		if (7 != sscanf(value, "center %f %f scale %f %f rotate %f translate %f %f",
+					&center.x, &center.y, &scale.x, &scale.y, &rotate, &translate.x, &translate.y)) {
+			PRINTF("ERR: transform has wrong format: \"%s\"", value);
+		} else {
+			ctx->mat->base_texture.transform.scale = scale;
+			ctx->mat->base_texture.transform.translate = translate;
+			// TODO support rotation
+		}
 	} else if (strncasecmp("include", kv->key.str, kv->key.length) == 0) {
 		char *vmt = strstr(value, ".vmt");
 		if (vmt)
