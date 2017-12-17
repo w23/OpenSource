@@ -682,10 +682,22 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 		r.closest_map.model = model;
 	}
 
+	if (params->selected) {
+		GL_CALL(glEnable(GL_BLEND));
+		GL_CALL(glBlendColor(1, 1, 1, .5f));
+		//GL_CALL(glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE));
+		GL_CALL(glBlendFunc(GL_ONE, GL_CONSTANT_ALPHA));
+		GL_CALL(glBlendEquation(GL_FUNC_ADD));
+	}
+
 	if (distance < 5000.f)
 		renderDrawSet(model, &model->detailed);
 	else
 		renderDrawSet(model, &model->coarse);
+
+	if (params->selected) {
+		GL_CALL(glDisable(GL_BLEND));
+	}
 }
 
 void renderResize(int w, int h) {

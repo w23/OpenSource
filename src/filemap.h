@@ -2,7 +2,7 @@
 
 #include "libc.h"
 
-struct AFile {
+typedef struct AFile {
 	size_t size;
 	struct {
 #ifndef _WIN32
@@ -11,7 +11,7 @@ struct AFile {
 		HANDLE handle;
 #endif
 	} impl_;
-};
+} AFile;
 
 #define AFileError ((size_t)-1)
 

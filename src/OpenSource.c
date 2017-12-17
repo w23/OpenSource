@@ -6,6 +6,7 @@
 #include "texture.h"
 #include "profiler.h"
 #include "camera.h"
+#include "vmfparser.h"
 
 #include "atto/app.h"
 #include "atto/math.h"
@@ -25,24 +26,29 @@ static struct Stack stack_persistent = {
 	.cursor = 0
 };
 
-struct Map {
+static struct Memories mem = {
+	&stack_temp,
+	&stack_persistent
+};
+
+typedef struct Map {
 	char *name;
 	int loaded;
 	struct AVec3f offset;
 	struct BSPModel model;
 	struct Map *next;
-};
+} Map;
 
 static struct {
 	struct Camera camera;
 	int forward, right, run;
 	struct AVec3f center;
 	float R;
-	float lmn;
 
 	struct ICollection *collection_chain;
-	struct Map *maps_begin, *maps_end;
+	Map *maps_begin, *maps_end;
 	int maps_count, maps_limit;
+	Map *selected_map;
 } g;
 
 void openSourceAddMap(const char* mapname, int mapname_length) {
@@ -59,18 +65,18 @@ void openSourceAddMap(const char* mapname, int mapname_length) {
 		map = map->next;
 	}
 
-	char *mem = stackAlloc(&stack_persistent, sizeof(struct Map) + mapname_length + 1);
-	if (!mem) {
+	char *buffer = stackAlloc(&stack_persistent, sizeof(struct Map) + mapname_length + 1);
+	if (!buffer) {
 		PRINT("Not enough memory");
 		return;
 	}
 
-	memcpy(mem, mapname, mapname_length);
-	mem[mapname_length] = '\0';
+	memcpy(buffer, mapname, mapname_length);
+	buffer[mapname_length] = '\0';
 
-	map = (void*)(mem + mapname_length + 1);
+	map = (void*)(buffer + mapname_length + 1);
 	memset(map, 0, sizeof(*map));
-	map->name = mem;
+	map->name = buffer;
 
 	if (!g.maps_end)
 		g.maps_begin = map;
@@ -139,7 +145,7 @@ static enum BSPLoadResult loadMap(struct Map *map, struct ICollection *collectio
 	return BSPLoadResult_Success;
 }
 
-static void opensrcInit(const char *map, int max_maps) {
+static void opensrcInit() {
 	cacheInit(&stack_persistent);
 
 	if (!renderInit()) {
@@ -148,10 +154,6 @@ static void opensrcInit(const char *map, int max_maps) {
 	}
 
 	bspInit();
-
-	g.maps_limit = max_maps > 0 ? max_maps : 1;
-	g.maps_count = 0;
-	openSourceAddMap(map, strlen(map));
 
 	if (BSPLoadResult_Success != loadMap(g.maps_begin, g.collection_chain))
 		aAppTerminate(-2);
@@ -203,7 +205,7 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 		const RDrawParams params = {
 			.camera = &g.camera,
 			.translation = map->offset,
-			.lmn = g.lmn
+			.selected = map == g.selected_map
 		};
 
 		renderModelDraw(&params, &map->model);
@@ -222,6 +224,10 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 	(void)(timestamp); (void)(key); (void)(pressed);
 	//printf("KEY %u %d %d\n", timestamp, key, pressed);
+
+	struct AVec3f map_offset = aVec3ff(0);
+	int moved_map = 0;
+
 	switch (key) {
 	case AK_Esc:
 		if (!pressed) break;
@@ -235,8 +241,38 @@ static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 	case AK_A: g.right += pressed?-1:1; break;
 	case AK_D: g.right += pressed?1:-1; break;
 	case AK_LeftShift: g.run = pressed; break;
-	case AK_E: g.lmn = (float)pressed; break;
+
 	default: break;
+	}
+
+	if (pressed) {
+		switch(key) {
+		case AK_Up: map_offset.x += 1.f; moved_map = 1; break;
+		case AK_Down: map_offset.x -= 1.f; moved_map = 1; break;
+		case AK_Left: map_offset.y -= 1.f; moved_map = 1; break;
+		case AK_Right: map_offset.y += 1.f; moved_map = 1; break;
+		case AK_PageUp: map_offset.z += 1.f; moved_map = 1; break;
+		case AK_PageDown: map_offset.z -= 1.f; moved_map = 1; break;
+		case AK_Tab:
+			g.selected_map = g.selected_map ? g.selected_map->next : g.maps_begin;
+			break;
+		case AK_Q:
+			g.selected_map = NULL;
+			break;
+		default: break;
+		}
+
+		if (moved_map && g.selected_map) {
+			Map *map = g.selected_map;
+			if (g.run) {
+				map_offset.x *= 100.f;
+				map_offset.y *= 100.f;
+				map_offset.z *= 100.f;
+			}
+			PRINTF("Map offset: %f %f %f", map_offset.x, map_offset.y, map_offset.z);
+			map->offset = aVec3fAdd(map->offset, map_offset);
+			PRINTF("Map offset: %f %f %f", map->offset.x, map->offset.y, map->offset.z);
+		}
 	}
 }
 
@@ -263,21 +299,123 @@ static struct ICollection *addToCollectionChain(struct ICollection *chain, struc
 	return next;
 }
 
+typedef struct {
+	StringView gamedir;
+} Config;
+
+static char *buildSteamPath(const StringView *gamedir, const StringView *path) {
+	// FIXME windows and macos paths?
+	const char *home_dir = getenv("HOME");
+	const int home_dir_length = strlen(home_dir);
+
+	const char steam_basedir[] = ".local/share/Steam/steamapps/common";
+	const int steam_basedir_length = sizeof(steam_basedir) - 1;
+
+	const int length = home_dir_length + steam_basedir_length + gamedir->length + path->length + 4;
+	char *value = stackAlloc(&stack_temp, length);
+	if (!value)
+		return 0;
+
+	int offset = 0;
+	memcpy(value + offset, home_dir, home_dir_length); offset += home_dir_length;
+	value[offset++] = '/';
+	memcpy(value + offset, steam_basedir, steam_basedir_length); offset += steam_basedir_length;
+	value[offset++] = '/';
+	memcpy(value + offset, gamedir->str, gamedir->length); offset += gamedir->length; 
+	value[offset++] = '/';
+	memcpy(value + offset, path->str, path->length); offset += path->length;
+	value[offset] = '\0';
+
+	return value;
+}
+
+static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv) {
+	Config *cfg = state->user_data;
+
+	switch (entry) {
+	case VMFEntryType_KeyValue:
+		if (strncasecmp("gamedir", kv->key.str, kv->key.length) == 0) {
+			cfg->gamedir = kv->value;
+		} else if (strncasecmp("vpk", kv->key.str, kv->key.length) == 0) {
+			char *value = buildSteamPath(&cfg->gamedir, &kv->value);
+			g.collection_chain = addToCollectionChain(g.collection_chain, collectionCreateVPK(&mem, value));
+			stackFreeUpToPosition(&stack_temp, value);
+		} else if (strncasecmp("dir", kv->key.str, kv->key.length) == 0) {
+			char *value = buildSteamPath(&cfg->gamedir, &kv->value);
+			g.collection_chain = addToCollectionChain(g.collection_chain, collectionCreateFilesystem(&mem, value));
+			stackFreeUpToPosition(&stack_temp, value);
+		} else if (strncasecmp("max_maps", kv->key.str, kv->key.length) == 0) {
+			// FIXME null-terminate
+			g.maps_limit = atoi(kv->value.str);
+		} else if (strncasecmp("map", kv->key.str, kv->key.length) == 0) {
+			openSourceAddMap(kv->value.str, kv->value.length);
+		} 
+		break;
+	case VMFEntryType_SectionOpen:
+		return VMFAction_Exit;
+		break;
+
+	default:
+		return VMFAction_SemanticError;
+	}
+
+	return VMFAction_Continue;
+}
+
+static int configReadFile(const char *cfgfile) {
+	AFile file;
+	aFileReset(&file);
+	if (AFile_Success != aFileOpen(&file, cfgfile))
+		return 0;
+
+	char *buffer = stackAlloc(&stack_temp, file.size); 
+	if (!buffer)
+		return 0;
+
+	if (file.size != aFileReadAtOffset(&file, 0, file.size, buffer))
+		return 0;
+
+	Config config = {
+		.gamedir = { .str = NULL, .length = 0 }
+	};
+
+	VMFState pstate = {
+		.user_data = &config,
+		.data = { .str = buffer, .length = file.size },
+		.callback = configReadCallback
+	};
+
+	aFileClose(&file);
+
+	int result = VMFResult_Success == vmfParse(&pstate);
+
+	stackFreeUpToPosition(&stack_temp, buffer);
+	return result;
+}
+
 void attoAppInit(struct AAppProctable *proctable) {
 	profilerInit();
 	//aGLInit();
-	const char *map = 0;
-	int max_maps = 1;
 	g.collection_chain = NULL;
-
-	struct Memories mem = {
-		&stack_temp,
-		&stack_persistent
-	};
+	g.maps_limit = 1;
+	g.maps_count = 0;
+	g.selected_map = NULL;
 
 	for (int i = 1; i < a_app_state->argc; ++i) {
 		const char *argv = a_app_state->argv[i];
-		if (strcmp(argv, "-p") == 0) {
+		if (strcmp(argv, "-c") == 0) {
+			if (i == a_app_state->argc - 1) {
+				aAppDebugPrintf("-c requires an argument");
+				goto print_usage_and_exit;
+			}
+			const char *value = a_app_state->argv[++i];
+
+			PRINTF("Reading config file %s", value);
+			if (!configReadFile(value)) {
+				PRINTF("Cannot read config file %s", value);
+				goto print_usage_and_exit;
+			}
+		} else if (strcmp(argv, "-p") == 0) {
 			if (i == a_app_state->argc - 1) {
 				aAppDebugPrintf("-p requires an argument");
 				goto print_usage_and_exit;
@@ -302,22 +440,20 @@ void attoAppInit(struct AAppProctable *proctable) {
 			}
 			const char *value = a_app_state->argv[++i];
 
-			max_maps = atoi(value);
+			g.maps_limit = atoi(value);
+			if (g.maps_limit < 1)
+				g.maps_limit = 1;
 		} else {
-			if (map) {
-				aAppDebugPrintf("Only one map can be specified");
-				goto print_usage_and_exit;
-			}
-			map = argv;
+			openSourceAddMap(argv, strlen(argv));
 		}
 	}
 
-	if (!map || !g.collection_chain) {
+	if (!g.maps_count || !g.collection_chain) {
 		aAppDebugPrintf("At least one map and one collection required");
 		goto print_usage_and_exit;
 	}
 
-	opensrcInit(map, max_maps);
+	opensrcInit();
 
 	proctable->resize = opensrcResize;
 	proctable->paint = opensrcPaint;
@@ -326,6 +462,6 @@ void attoAppInit(struct AAppProctable *proctable) {
 	return;
 
 print_usage_and_exit:
-	aAppDebugPrintf("usage: %s <-d path> ... mapname", a_app_state->argv[0]);
+	aAppDebugPrintf("usage: %s <-c config> <-p vpk> <-d path> ... <mapname0> <mapname1> ...", a_app_state->argv[0]);
 	aAppTerminate(1);
 }

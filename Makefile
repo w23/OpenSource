@@ -1,10 +1,8 @@
 .SUFFIXES:
 MAKEOPTS+=-r
 
-MAP ?= d1_trainstation_01
-VPKDIR ?= ~/.local/share/Steam/steamapps/common/Half-Life\ 2/hl2
 MAX_MAPS ?= 99
-ARGS ?= -p $(VPKDIR)/hl2_textures_dir.vpk -p $(VPKDIR)/hl2_misc_dir.vpk -p $(VPKDIR)/hl2_pak_dir.vpk -d $(VPKDIR) -n $(MAX_MAPS)
+ARGS ?= -n $(MAX_MAPS) -c hl2.cfg
 
 CFLAGS += -Wall -Wextra -D_GNU_SOURCE -Isrc/atto -fPIE
 BUILDDIR ?= build
@@ -94,9 +92,9 @@ clean:
 	rm -f $(OBJECTS) $(DEPS) $(EXE)
 
 run: $(EXE)
-	$(EXE) $(ARGS) $(MAP)
+	$(EXE) $(ARGS)
 
 debug: $(EXE)
-	gdb --args $(EXE) $(ARGS) $(MAP)
+	gdb --args $(EXE) $(ARGS)
 
 .PHONY: all clean run_tool debug_tool

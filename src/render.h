@@ -62,7 +62,7 @@ void renderBegin();
 typedef struct {
 	const struct Camera *camera;
 	struct AVec3f translation;
-	float lmn;
+	int selected;
 } RDrawParams;
 
 void renderModelDraw(const RDrawParams *params, const struct BSPModel *model);
