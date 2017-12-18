@@ -22,10 +22,10 @@ struct BSPDraw {
 #define BSP_LANDMARK_NAME_LENGTH 64
 #define BSP_MAX_LANDMARKS 32
 
-struct BSPLandmark {
+typedef struct BSPLandmark {
 	char name[BSP_LANDMARK_NAME_LENGTH];
 	struct AVec3f origin;
-};
+} BSPLandmark;
 
 struct BSPDrawSet {
 	int draws_count;

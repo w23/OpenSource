@@ -35,9 +35,17 @@ typedef struct Map {
 	char *name;
 	int loaded;
 	struct AVec3f offset;
+	struct AVec3f debug_offset;
 	struct BSPModel model;
 	struct Map *next;
 } Map;
+
+typedef struct Patch {
+	const char *map_name;
+	int delete;
+	BSPLandmark landmark;
+	struct Patch *next;
+} Patch;
 
 static struct {
 	struct Camera camera;
@@ -46,6 +54,9 @@ static struct {
 	float R;
 
 	struct ICollection *collection_chain;
+
+	Patch *patches;
+
 	Map *maps_begin, *maps_end;
 	int maps_count, maps_limit;
 	Map *selected_map;
@@ -90,6 +101,29 @@ void openSourceAddMap(const char* mapname, int mapname_length) {
 	PRINTF("Added new map to the queue: %.*s", mapname_length, mapname);
 }
 
+static void mapUpdatePosition(Map *map) {
+	if (map == g.maps_begin && map->model.landmarks_count == 0)
+		return;
+
+	for (struct Map *map2 = g.maps_begin; map2; map2 = map2->next) {
+		if (map2 == map || map2->loaded != 1)
+			continue;
+
+		for (int j = 0; j < map2->model.landmarks_count; ++j) {
+			const struct BSPLandmark *m2 = map2->model.landmarks + j;
+			for (int k = 0; k < map->model.landmarks_count; ++k) {
+				const struct BSPLandmark *m1 = map->model.landmarks + k;
+				if (strcmp(m1->name, m2->name) == 0) {
+					map->offset = aVec3fAdd(aVec3fAdd(map2->offset, map2->debug_offset), aVec3fSub(m2->origin, m1->origin));
+					PRINTF("Map %s landmark %s parent map %s offset %f, %f, %f",
+						map->name, m1->name, map2->name, map->offset.x, map->offset.y, map->offset.z);
+					return;
+				} // if landmarks match
+			} // for all landmarks of map 1
+		} // for all landmarks of map 2
+	} // for all maps (2)
+}
+
 static enum BSPLoadResult loadMap(struct Map *map, struct ICollection *collection) {
 	struct BSPLoadModelContext loadctx = {
 		.collection = collection,
@@ -113,34 +147,79 @@ static enum BSPLoadResult loadMap(struct Map *map, struct ICollection *collectio
 			map->model.aabb.max.y,
 			map->model.aabb.max.z);
 
+	for (const Patch *p = g.patches; p; p = p->next) {
+		if (p->delete || strcasecmp(p->map_name, map->name) != 0)
+			continue;
+
+		int found = 0;
+		for (int i = 0; i < map->model.landmarks_count; ++i) {
+			struct BSPLandmark *lm = map->model.landmarks + i;
+			if (strcasecmp(p->landmark.name, lm->name) == 0) {
+				found = 1;
+				break;
+			}
+		}
+
+		if (found)
+			continue;
+
+		if (map->model.landmarks_count == BSP_MAX_LANDMARKS) {
+			PRINTF("Too many landmarks for map %s", map->name);
+			break;
+		}
+
+		PRINTF("Injecting landmark %s %f %f %f to map %s",
+			p->landmark.name,
+			p->landmark.origin.x,
+			p->landmark.origin.y,
+			p->landmark.origin.z,
+			map->name);
+		memmove(map->model.landmarks + 1, map->model.landmarks, sizeof(BSPLandmark) * map->model.landmarks_count);
+		map->model.landmarks[0] = p->landmark;
+		++map->model.landmarks_count;
+	}
+
 	PRINTF("Landmarks: %d", map->model.landmarks_count);
 	for (int i = 0; i < map->model.landmarks_count; ++i) {
 		struct BSPLandmark *lm = map->model.landmarks + i;
+
+		int deleted = 0;
+		for (const Patch *p = g.patches; p; p = p->next) {
+			if (strcasecmp(p->map_name, map->name) == 0 && strcasecmp(p->landmark.name, lm->name) == 0) {
+				if (p->delete) {
+					PRINTF("Deleting landmark %s", p->landmark.name);
+					--map->model.landmarks_count;
+					memmove(lm, lm + 1, sizeof(BSPLandmark) * (map->model.landmarks_count - i));
+					deleted = 1;
+				} else {
+					PRINTF("Modifying landmark %s %f %f %f -> %f %f %f of map %s",
+						p->landmark.name,
+						p->landmark.origin.x,
+						p->landmark.origin.y,
+						p->landmark.origin.z,
+						lm->origin.x,
+						lm->origin.y,
+						lm->origin.z,
+						map->name);
+					lm->origin = p->landmark.origin;
+				}
+
+				continue;
+			}
+		}
+
+		if (deleted) {
+			--i;
+			continue;
+		}
+
 		PRINTF("\t%d: %s -> (%f, %f, %f)", i + 1, lm->name,
 			lm->origin.x, lm->origin.y, lm->origin.z);
 	}
 
+	map->offset = map->debug_offset = aVec3ff(0);
 	map->loaded = 1;
-
-	if (map != g.maps_begin && map->model.landmarks_count != 0) {
-		for (struct Map *map2 = g.maps_begin; map2; map2 = map2->next) {
-			if (map2->loaded != 1)
-				continue;
-
-			for (int j = 0; j < map2->model.landmarks_count; ++j) {
-				const struct BSPLandmark *m2 = map2->model.landmarks + j;
-				for (int k = 0; k < map->model.landmarks_count; ++k) {
-					const struct BSPLandmark *m1 = map->model.landmarks + k;
-					if (strcmp(m1->name, m2->name) == 0) {
-						map->offset = aVec3fAdd(map2->offset, aVec3fSub(m2->origin, m1->origin));
-						PRINTF("Map %s offset %f, %f, %f",
-							map->name, map->offset.x, map->offset.y, map->offset.z);
-						return BSPLoadResult_Success;
-					} // if landmarks match
-				} // for all landmarks of map 1
-			} // for all landmarks of map 2
-		} // for all maps (2)
-	} // if neet to position map
+	mapUpdatePosition(map);
 
 	return BSPLoadResult_Success;
 }
@@ -204,7 +283,7 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 
 		const RDrawParams params = {
 			.camera = &g.camera,
-			.translation = map->offset,
+			.translation = aVec3fAdd(map->offset, map->debug_offset),
 			.selected = map == g.selected_map
 		};
 
@@ -255,6 +334,8 @@ static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 		case AK_PageDown: map_offset.z -= 1.f; moved_map = 1; break;
 		case AK_Tab:
 			g.selected_map = g.selected_map ? g.selected_map->next : g.maps_begin;
+			if (g.selected_map)
+				PRINTF("Selected map %s", g.selected_map->name);
 			break;
 		case AK_Q:
 			g.selected_map = NULL;
@@ -269,9 +350,11 @@ static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 				map_offset.y *= 100.f;
 				map_offset.z *= 100.f;
 			}
-			PRINTF("Map offset: %f %f %f", map_offset.x, map_offset.y, map_offset.z);
-			map->offset = aVec3fAdd(map->offset, map_offset);
-			PRINTF("Map offset: %f %f %f", map->offset.x, map->offset.y, map->offset.z);
+			map->debug_offset = aVec3fAdd(map->debug_offset, map_offset);
+			PRINTF("Map %s offset: %f %f %f", map->name, map->debug_offset.x, map->debug_offset.y, map->debug_offset.z);
+
+			for (Map *m = map; m; m = m->next)
+				mapUpdatePosition(m);
 		}
 	}
 }
@@ -299,8 +382,38 @@ static struct ICollection *addToCollectionChain(struct ICollection *chain, struc
 	return next;
 }
 
+static void opensrcAddLandmarkPatch(StringView map, StringView key, StringView value) {
+	if (key.length >= BSP_LANDMARK_NAME_LENGTH) {
+		PRINTF(PRI_SV " is too long", PRI_SVV(key));
+		return;
+	}
+
+	struct AVec3f origin = aVec3ff(0);
+	// FIXME sscanf limit by value.length
+	if (value.length >= 5 && 3 != sscanf(value.str, "%f %f %f", &origin.x, &origin.y, &origin.z)) {
+		PRINTF(PRI_SV " format is wrong", PRI_SVV(value));
+		return;
+	}
+
+	Patch *new_patch = stackAlloc(mem.persistent, sizeof(Patch));
+	new_patch->next = g.patches;
+	g.patches = new_patch;
+
+	char *map_name = stackAlloc(mem.persistent, map.length + 1);
+	memcpy(map_name, map.str, map.length);
+	map_name[map.length] = '\0';
+	new_patch->map_name = map_name;
+
+	new_patch->delete = value.length < 5;
+
+	memcpy(new_patch->landmark.name, key.str, key.length);
+	new_patch->landmark.name[key.length] = '\0';
+	new_patch->landmark.origin = origin;
+}
+
 typedef struct {
 	StringView gamedir;
+	StringView current_patched_map;
 } Config;
 
 static char *buildSteamPath(const StringView *gamedir, const StringView *path) {
@@ -329,6 +442,46 @@ static char *buildSteamPath(const StringView *gamedir, const StringView *path) {
 	return value;
 }
 
+static VMFAction configPatchCallback(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv);
+static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv);
+
+static VMFAction configLandmarkCallback(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv) {
+	Config *cfg = state->user_data;
+
+	switch (entry) {
+	case VMFEntryType_KeyValue:
+		opensrcAddLandmarkPatch(cfg->current_patched_map, kv->key, kv->value);
+		break;
+	case VMFEntryType_SectionClose:
+		cfg->current_patched_map.length = 0;
+		state->callback = configPatchCallback;
+		break;
+	default:
+		return VMFAction_SemanticError;
+	}
+
+	return VMFAction_Continue;
+}
+
+static VMFAction configPatchCallback(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv) {
+	Config *cfg = state->user_data;
+
+	switch (entry) {
+	case VMFEntryType_SectionOpen:
+		if (kv->key.length < 1)
+			return VMFAction_SemanticError;
+		cfg->current_patched_map = kv->key;
+		state->callback = configLandmarkCallback;
+		break;
+	case VMFEntryType_SectionClose:
+		return VMFAction_Exit;
+	default:
+		return VMFAction_SemanticError;
+	}
+
+	return VMFAction_Continue;
+}
+
 static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv) {
 	Config *cfg = state->user_data;
 
@@ -352,9 +505,10 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 		} 
 		break;
 	case VMFEntryType_SectionOpen:
-		return VMFAction_Exit;
+		if (strncasecmp("patch_landmarks", kv->key.str, kv->key.length) != 0)
+			return VMFAction_SemanticError;
+		state->callback = configPatchCallback;
 		break;
-
 	default:
 		return VMFAction_SemanticError;
 	}
@@ -397,6 +551,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 	profilerInit();
 	//aGLInit();
 	g.collection_chain = NULL;
+	g.patches = NULL;
 	g.maps_limit = 1;
 	g.maps_count = 0;
 	g.selected_map = NULL;
