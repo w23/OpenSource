@@ -108,6 +108,8 @@ static void a__GlPrintError(const char *message, int error) {
 
 #ifdef _WIN32
 #define WGL__FUNCLIST \
+	WGL__FUNCLIST_DO(PFNGLBLENDCOLORPROC, BlendColor) \
+	WGL__FUNCLIST_DO(PFNGLBLENDEQUATIONPROC, BlendEquation) \
 	WGL__FUNCLIST_DO(PFNGLGENBUFFERSPROC, GenBuffers) \
 	WGL__FUNCLIST_DO(PFNGLBINDBUFFERPROC, BindBuffer) \
 	WGL__FUNCLIST_DO(PFNGLBUFFERDATAPROC, BufferData) \
