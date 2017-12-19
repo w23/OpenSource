@@ -260,13 +260,17 @@ static void opensrcInit() {
 		aAppTerminate(-2);
 
 	g.center = aVec3fMulf(aVec3fAdd(g.maps_begin->model.aabb.min, g.maps_begin->model.aabb.max), .5f);
-	g.R = aVec3fLength(aVec3fSub(g.maps_begin->model.aabb.max, g.maps_begin->model.aabb.min)) * .5f;
+	float r = aVec3fLength(aVec3fSub(g.maps_begin->model.aabb.max, g.maps_begin->model.aabb.min)) * .5f;
 
-	aAppDebugPrintf("Center %f, %f, %f, R~=%f", g.center.x, g.center.y, g.center.z, g.R);
+	if (g.R < 10000.f) {
+		g.R = r * 30.f;
+	}
+
+	aAppDebugPrintf("Center %f, %f, %f, R~=%f", g.center.x, g.center.y, g.center.z, r);
 
 	const float t = 0;
 	cameraLookAt(&g.camera,
-			aVec3fAdd(g.center, aVec3fMulf(aVec3f(cosf(t*.5f), sinf(t*.5f), .25f), g.R*.5f)),
+			aVec3fAdd(g.center, aVec3fMulf(aVec3f(cosf(t*.5f), sinf(t*.5f), .25f), r*.5f)),
 			g.center, aVec3f(0.f, 0.f, 1.f));
 }
 
@@ -274,7 +278,7 @@ static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int ol
 	(void)(timestamp); (void)(old_w); (void)(old_h);
 	renderResize(a_app_state->width, a_app_state->height);
 
-	cameraProjection(&g.camera, 1.f, g.R * 20.f, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
+	cameraProjection(&g.camera, 1.f, g.R, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
 	cameraRecompute(&g.camera);
 }
 
@@ -561,7 +565,11 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 			g.maps_limit = atoi(kv->value.str);
 		} else if (strncasecmp("map", kv->key.str, kv->key.length) == 0) {
 			openSourceAddMap(kv->value);
-		} 
+		} else if (strncasecmp("z_far", kv->key.str, kv->key.length) == 0) {
+			// FIXME null-terminate
+			g.R = atof(kv->value.str);
+		} else
+			return VMFAction_SemanticError;
 		break;
 	case VMFEntryType_SectionOpen:
 		if (strncasecmp("patch_landmarks", kv->key.str, kv->key.length) == 0)
@@ -618,6 +626,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 	g.maps_limit = 1;
 	g.maps_count = 0;
 	g.selected_map = NULL;
+	g.R = 0;
 
 	for (int i = 1; i < a_app_state->argc; ++i) {
 		const char *argv = a_app_state->argv[i];
