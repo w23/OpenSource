@@ -14,6 +14,7 @@
 #include <windows.h>
 #undef near
 #undef far
+#define strcasecmp _stricmp
 #define strncasecmp _strnicmp
 #define alloca _alloca
 #endif
