@@ -31,13 +31,23 @@ static struct Memories mem = {
 	&stack_persistent
 };
 
+typedef enum {
+	MapFlags_Empty = 0,
+	MapFlags_Loaded = 1,
+	MapFlags_FixedOffset = 2,
+	MapFlags_Broken = 4
+} MapFlags;
+
 typedef struct Map {
 	char *name;
-	int loaded;
+	char *depend_name;
+	int flags;
 	struct AVec3f offset;
 	struct AVec3f debug_offset;
 	struct BSPModel model;
 	struct Map *next;
+	const struct Map *parent;
+	struct AVec3f parent_offset;
 } Map;
 
 typedef struct Patch {
@@ -62,32 +72,33 @@ static struct {
 	Map *selected_map;
 } g;
 
-void openSourceAddMap(const char* mapname, int mapname_length) {
+static Map *opensrcAllocMap(StringView name) {
 	if (g.maps_count >= g.maps_limit) {
-		PRINTF("Map limit reached, not trying to add map %.*s",
-				mapname_length, mapname);
-		return;
+		PRINTF("Map limit reached, not trying to add map " PRI_SV, PRI_SVV(name));
+		return NULL;
 	}
 
-	struct Map *map = g.maps_begin;
+	Map *map = g.maps_begin;
 	while (map) {
-		if (strncmp(map->name, mapname, mapname_length) == 0)
-			return;
+		if (strncmp(map->name, name.str, name.length) == 0)
+			return map;
 		map = map->next;
 	}
 
-	char *buffer = stackAlloc(&stack_persistent, sizeof(struct Map) + mapname_length + 1);
+	const int total_size = sizeof(Map) + name.length + 1;
+	char *buffer = stackAlloc(&stack_persistent, total_size);
 	if (!buffer) {
 		PRINT("Not enough memory");
-		return;
+		return NULL;
 	}
 
-	memcpy(buffer, mapname, mapname_length);
-	buffer[mapname_length] = '\0';
+	memset(buffer, 0, total_size);
 
-	map = (void*)(buffer + mapname_length + 1);
-	memset(map, 0, sizeof(*map));
-	map->name = buffer;
+	map = (void*)buffer;
+	map->name = buffer + sizeof(Map);
+	map->depend_name = map->name + name.length + 1;
+
+	memcpy(map->name, name.str, name.length);
 
 	if (!g.maps_end)
 		g.maps_begin = map;
@@ -98,30 +109,20 @@ void openSourceAddMap(const char* mapname, int mapname_length) {
 
 	++g.maps_count;
 
-	PRINTF("Added new map to the queue: %.*s", mapname_length, mapname);
+	PRINTF("Added new map to the queue: " PRI_SV, PRI_SVV(name));
+	return map;
+}
+
+void openSourceAddMap(StringView name) {
+	opensrcAllocMap(name);
 }
 
 static void mapUpdatePosition(Map *map) {
-	if (map == g.maps_begin && map->model.landmarks_count == 0)
-		return;
+	if (map->parent && !(map->flags & MapFlags_FixedOffset))
+		map->offset = aVec3fAdd(map->parent_offset, aVec3fAdd(map->parent->offset, map->parent->debug_offset));
 
-	for (struct Map *map2 = g.maps_begin; map2; map2 = map2->next) {
-		if (map2 == map || map2->loaded != 1)
-			continue;
-
-		for (int j = 0; j < map2->model.landmarks_count; ++j) {
-			const struct BSPLandmark *m2 = map2->model.landmarks + j;
-			for (int k = 0; k < map->model.landmarks_count; ++k) {
-				const struct BSPLandmark *m1 = map->model.landmarks + k;
-				if (strcmp(m1->name, m2->name) == 0) {
-					map->offset = aVec3fAdd(aVec3fAdd(map2->offset, map2->debug_offset), aVec3fSub(m2->origin, m1->origin));
-					PRINTF("Map %s landmark %s parent map %s offset %f, %f, %f",
-						map->name, m1->name, map2->name, map->offset.x, map->offset.y, map->offset.z);
-					return;
-				} // if landmarks match
-			} // for all landmarks of map 1
-		} // for all landmarks of map 2
-	} // for all maps (2)
+	PRINTF("Map %s global_offset %f %f %f", map->name,
+		map->offset.x, map->offset.y, map->offset.z);
 }
 
 static enum BSPLoadResult loadMap(struct Map *map, struct ICollection *collection) {
@@ -217,8 +218,29 @@ static enum BSPLoadResult loadMap(struct Map *map, struct ICollection *collectio
 			lm->origin.x, lm->origin.y, lm->origin.z);
 	}
 
-	map->offset = map->debug_offset = aVec3ff(0);
-	map->loaded = 1;
+	if (map != g.maps_begin && map->model.landmarks_count > 0 && !(map->flags & MapFlags_FixedOffset)) {
+		for (int k = 0; k < map->model.landmarks_count; ++k) {
+			const struct BSPLandmark *m1 = map->model.landmarks + k;
+
+			for (struct Map *map2 = g.maps_begin; map2; map2 = map2->next) {
+				if (map2 == map || !(map2->flags & MapFlags_Loaded))
+					continue;
+
+				for (int j = 0; j < map2->model.landmarks_count; ++j) {
+					const struct BSPLandmark *m2 = map2->model.landmarks + j;
+					if (strcmp(m1->name, m2->name) == 0) {
+						map->parent = map2;
+						map->parent_offset = aVec3fSub(m2->origin, m1->origin);
+						PRINTF("Map %s parent: %s", map->name, map2->name); 
+						goto loaded;
+					} // if landmarks match
+				} // for all landmarks of map 2
+			} // for all maps (2)
+		} // for all landmarks of map 1
+	}
+
+loaded:
+	map->flags |= MapFlags_Loaded;
 	mapUpdatePosition(map);
 
 	return BSPLoadResult_Success;
@@ -268,13 +290,13 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 	int triangles = 0;
 	int can_load_map = 1;
 	for (struct Map *map = g.maps_begin; map; map = map->next) {
-		if (map->loaded < 0)
+		if (map->flags & MapFlags_Broken)
 			continue;
 
-		if (map->loaded == 0) {
+		if (!(map->flags & MapFlags_Loaded)) {
 			if (can_load_map) {
 				if (BSPLoadResult_Success != loadMap(map, g.collection_chain))
-					map->loaded = -1;
+					map->flags |= MapFlags_Broken;
 			}
 
 			can_load_map = 0;
@@ -413,7 +435,8 @@ static void opensrcAddLandmarkPatch(StringView map, StringView key, StringView v
 
 typedef struct {
 	StringView gamedir;
-	StringView current_patched_map;
+	StringView map_name;
+	StringView map_offset;
 } Config;
 
 static char *buildSteamPath(const StringView *gamedir, const StringView *path) {
@@ -450,11 +473,47 @@ static VMFAction configLandmarkCallback(VMFState *state, VMFEntryType entry, con
 
 	switch (entry) {
 	case VMFEntryType_KeyValue:
-		opensrcAddLandmarkPatch(cfg->current_patched_map, kv->key, kv->value);
+		opensrcAddLandmarkPatch(cfg->map_name, kv->key, kv->value);
 		break;
 	case VMFEntryType_SectionClose:
-		cfg->current_patched_map.length = 0;
+		cfg->map_name.length = 0;
 		state->callback = configPatchCallback;
+		break;
+	default:
+		return VMFAction_SemanticError;
+	}
+
+	return VMFAction_Continue;
+}
+
+static VMFAction configMapCallback(VMFState *state, VMFEntryType entry, const VMFKeyValue *kv) {
+	Config *cfg = state->user_data;
+
+	switch (entry) {
+	case VMFEntryType_KeyValue:
+		if (strncasecmp("name", kv->key.str, kv->key.length) == 0) {
+			cfg->map_name = kv->value;
+		} else if (strncasecmp("offset", kv->key.str, kv->key.length) == 0) {
+			cfg->map_offset = kv->value;
+		} else {
+			return VMFAction_SemanticError;
+		}
+		break;
+	case VMFEntryType_SectionClose:
+		if (cfg->map_name.length < 1)
+			return VMFAction_SemanticError;
+		Map *m = opensrcAllocMap(cfg->map_name);
+		if (m && cfg->map_offset.length >= 5) {
+			float x, y, z;
+			// FIXME map_offset is not null-terminated
+			if (3 == sscanf(cfg->map_offset.str, "%f %f %f", &x, &y, &z)) {
+				m->flags |= MapFlags_FixedOffset;
+				m->offset = aVec3f(x, y, z);
+			} else {
+				PRINTF("Cannot read offset " PRI_SV, PRI_SVV(cfg->map_offset));
+			}
+		}
+		state->callback = configReadCallback;
 		break;
 	default:
 		return VMFAction_SemanticError;
@@ -470,7 +529,7 @@ static VMFAction configPatchCallback(VMFState *state, VMFEntryType entry, const 
 	case VMFEntryType_SectionOpen:
 		if (kv->key.length < 1)
 			return VMFAction_SemanticError;
-		cfg->current_patched_map = kv->key;
+		cfg->map_name = kv->key;
 		state->callback = configLandmarkCallback;
 		break;
 	case VMFEntryType_SectionClose:
@@ -501,13 +560,17 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 			// FIXME null-terminate
 			g.maps_limit = atoi(kv->value.str);
 		} else if (strncasecmp("map", kv->key.str, kv->key.length) == 0) {
-			openSourceAddMap(kv->value.str, kv->value.length);
+			openSourceAddMap(kv->value);
 		} 
 		break;
 	case VMFEntryType_SectionOpen:
-		if (strncasecmp("patch_landmarks", kv->key.str, kv->key.length) != 0)
+		if (strncasecmp("patch_landmarks", kv->key.str, kv->key.length) == 0)
+			state->callback = configPatchCallback;
+		else if (strncasecmp("map", kv->key.str, kv->key.length) == 0) {
+			cfg->map_name.length = cfg->map_offset.length = 0;
+			state->callback = configMapCallback;
+		} else
 			return VMFAction_SemanticError;
-		state->callback = configPatchCallback;
 		break;
 	default:
 		return VMFAction_SemanticError;
@@ -599,7 +662,8 @@ void attoAppInit(struct AAppProctable *proctable) {
 			if (g.maps_limit < 1)
 				g.maps_limit = 1;
 		} else {
-			openSourceAddMap(argv, strlen(argv));
+			const StringView map = { .str = argv, .length = strlen(argv) };
+			openSourceAddMap(map);
 		}
 	}
 

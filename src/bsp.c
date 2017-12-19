@@ -819,8 +819,7 @@ BSPLoadResult bspProcessEntityInfoLandmark(BSPLoadModelContext *ctx, const Entit
 
 BSPLoadResult bspProcessEntityTriggerChangelevel(struct BSPLoadModelContext *ctx, const Entity *entity) {
 	(void)ctx;
-	const StringView map = entity->props[EntityPropIndex_Map].value;
-	openSourceAddMap(map.str, map.length);
+	openSourceAddMap(entity->props[EntityPropIndex_Map].value);
 	return BSPLoadResult_Success;
 }
 

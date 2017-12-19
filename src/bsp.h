@@ -2,6 +2,7 @@
 #include "material.h"
 #include "render.h"
 #include "atto/math.h"
+#include "common.h"
 
 struct AABB { struct AVec3f min, max; };
 
@@ -85,4 +86,4 @@ void bspInit();
 
 enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const char *mapname);
 
-void openSourceAddMap(const char* mapname, int mapname_length);
+void openSourceAddMap(StringView name);
