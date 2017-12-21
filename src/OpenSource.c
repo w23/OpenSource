@@ -458,22 +458,17 @@ typedef struct {
 	StringView map_offset;
 } Config;
 
+const char *steam_basedir = "";
+
 static char *buildSteamPath(const StringView *gamedir, const StringView *path) {
-	// FIXME windows and macos paths?
-	const char *home_dir = getenv("HOME");
-	const int home_dir_length = strlen(home_dir);
+	const int steam_basedir_length = strlen(steam_basedir);
 
-	const char steam_basedir[] = ".local/share/Steam/steamapps/common";
-	const int steam_basedir_length = sizeof(steam_basedir) - 1;
-
-	const int length = home_dir_length + steam_basedir_length + gamedir->length + path->length + 4;
+	const int length = steam_basedir_length + gamedir->length + path->length + 4;
 	char *value = stackAlloc(&stack_temp, length);
 	if (!value)
 		return 0;
 
 	int offset = 0;
-	memcpy(value + offset, home_dir, home_dir_length); offset += home_dir_length;
-	value[offset++] = '/';
 	memcpy(value + offset, steam_basedir, steam_basedir_length); offset += steam_basedir_length;
 	value[offset++] = '/';
 	memcpy(value + offset, gamedir->str, gamedir->length); offset += gamedir->length; 
@@ -643,9 +638,28 @@ void attoAppInit(struct AAppProctable *proctable) {
 	g.selected_map = NULL;
 	g.R = 0;
 
+	// FIXME windows and macos paths?
+	const char *home_dir = getenv("HOME");
+	const int home_dir_length = strlen(home_dir);
+	const char steam_prefix[] = ".local/share/Steam/steamapps/common";
+	const int steam_basedir_length = strlen(steam_prefix) + home_dir_length + 2;
+	char *steam_basedir_w= stackAlloc(mem.persistent, steam_basedir_length);
+	sprintf(steam_basedir_w, "%s/%s", home_dir, steam_prefix);
+	steam_basedir = steam_basedir_w;
+	PRINTF("Steam basedir = %s", steam_basedir);
+
 	for (int i = 1; i < a_app_state->argc; ++i) {
 		const char *argv = a_app_state->argv[i];
-		if (strcmp(argv, "-c") == 0) {
+		if (strcmp(argv, "-s") == 0) {
+			if (i == a_app_state->argc - 1) {
+				aAppDebugPrintf("-s requires an argument");
+				goto print_usage_and_exit;
+			}
+			const char *value = a_app_state->argv[++i];
+
+			steam_basedir = value;
+			PRINTF("Steam basedir = %s", steam_basedir);
+		} else if (strcmp(argv, "-c") == 0) {
 			if (i == a_app_state->argc - 1) {
 				aAppDebugPrintf("-c requires an argument");
 				goto print_usage_and_exit;
