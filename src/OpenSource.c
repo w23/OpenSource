@@ -45,7 +45,7 @@ typedef struct Map {
 	struct AVec3f offset;
 	struct AVec3f debug_offset;
 	struct BSPModel model;
-	struct Map *next;
+	struct Map *prev, *next;
 	const struct Map *parent;
 	struct AVec3f parent_offset;
 } Map;
@@ -102,8 +102,10 @@ static Map *opensrcAllocMap(StringView name) {
 
 	if (!g.maps_end)
 		g.maps_begin = map;
-	else
+	else {
 		g.maps_end->next = map;
+		map->prev = g.maps_end;
+	}
 
 	g.maps_end = map;
 
@@ -125,15 +127,28 @@ static void mapUpdatePosition(Map *map) {
 		map->offset.x, map->offset.y, map->offset.z);
 }
 
-static enum BSPLoadResult loadMap(struct Map *map, struct ICollection *collection) {
-	struct BSPLoadModelContext loadctx = {
+static enum BSPLoadResult loadMap(Map *map, ICollection *collection) {
+	BSPLoadModelContext loadctx = {
 		.collection = collection,
 		.persistent = &stack_persistent,
 		.tmp = &stack_temp,
-		.model = &map->model
+		.model = &map->model,
+		.name = { .str = map->name, .length = strlen(map->name) },
+		.prev_map_name = { .str = NULL, .length = 0 },
+		.next_map_name = { .str = NULL, .length = 0 },
 	};
 
-	const enum BSPLoadResult result = bspLoadWorldspawn(loadctx, map->name);
+	if (map->prev) {
+		loadctx.prev_map_name.str = map->prev->name;
+		loadctx.prev_map_name.length = strlen(map->prev->name);
+	}
+
+	if (map->next) {
+		loadctx.next_map_name.str = map->next->name;
+		loadctx.next_map_name.length = strlen(map->next->name);
+	}
+
+	const enum BSPLoadResult result = bspLoadWorldspawn(loadctx);
 	if (result != BSPLoadResult_Success) {
 		PRINTF("Cannot load map \"%s\": %d", map->name, result);
 		return result;

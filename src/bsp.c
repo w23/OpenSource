@@ -782,9 +782,7 @@ typedef struct {
 
 typedef BSPLoadResult (*BspProcessEntityProc)(BSPLoadModelContext *ctx, const Entity *entity);
 
-BSPLoadResult bspProcessEntityInfoLandmark(BSPLoadModelContext *ctx, const Entity *entity) {
-	const StringView target_name = entity->props[EntityPropIndex_TargetName].value;
-	const StringView origin = entity->props[EntityPropIndex_Origin].value;
+BSPLoadResult bspReadAndAddLandmark(BSPLoadModelContext *ctx, StringView target_name, StringView origin) {
 
 	struct BSPModel *model = ctx->model;
 	if (model->landmarks_count == BSP_MAX_LANDMARKS) {
@@ -817,13 +815,54 @@ BSPLoadResult bspProcessEntityInfoLandmark(BSPLoadModelContext *ctx, const Entit
 	return BSPLoadResult_Success;
 }
 
-BSPLoadResult bspProcessEntityTriggerChangelevel(struct BSPLoadModelContext *ctx, const Entity *entity) {
+static BSPLoadResult bspProcessEntityInfoLandmark(BSPLoadModelContext *ctx, const Entity *entity) {
+	const StringView target_name = entity->props[EntityPropIndex_TargetName].value;
+	const StringView origin = entity->props[EntityPropIndex_Origin].value;
+
+	return bspReadAndAddLandmark(ctx, target_name, origin);
+}
+
+static BSPLoadResult bspProcessEntityInfoLandmarkEntry(BSPLoadModelContext *ctx, const Entity *entity) {
+	const int landmark_name_length = ctx->prev_map_name.length + ctx->name.length + 5;
+	char *landmark_name_buf = stackAlloc(ctx->tmp, landmark_name_length);
+	memcpy(landmark_name_buf, ctx->prev_map_name.str, ctx->prev_map_name.length);
+	memcpy(landmark_name_buf + ctx->prev_map_name.length, "_to_", 4);
+	memcpy(landmark_name_buf + ctx->prev_map_name.length + 4, ctx->name.str, ctx->name.length);
+	landmark_name_buf[landmark_name_length-1] = '\0';
+
+	const StringView target_name = { .str = landmark_name_buf, .length = landmark_name_length };
+	const StringView origin = entity->props[EntityPropIndex_Origin].value;
+
+	const BSPLoadResult result = bspReadAndAddLandmark(ctx, target_name, origin);
+	stackFreeUpToPosition(ctx->tmp, landmark_name_buf);
+
+	return result;
+}
+
+static BSPLoadResult bspProcessEntityInfoLandmarkExit(BSPLoadModelContext *ctx, const Entity *entity) {
+	const int landmark_name_length = ctx->next_map_name.length + ctx->name.length + 5;
+	char *landmark_name_buf = stackAlloc(ctx->tmp, landmark_name_length);
+	memcpy(landmark_name_buf, ctx->name.str, ctx->name.length);
+	memcpy(landmark_name_buf + ctx->name.length, "_to_", 4);
+	memcpy(landmark_name_buf + ctx->name.length + 4, ctx->next_map_name.str, ctx->next_map_name.length);
+	landmark_name_buf[landmark_name_length-1] = '\0';
+
+	const StringView target_name = { .str = landmark_name_buf, .length = landmark_name_length };
+	const StringView origin = entity->props[EntityPropIndex_Origin].value;
+
+	const BSPLoadResult result = bspReadAndAddLandmark(ctx, target_name, origin);
+	stackFreeUpToPosition(ctx->tmp, landmark_name_buf);
+
+	return result;
+}
+
+static BSPLoadResult bspProcessEntityTriggerChangelevel(struct BSPLoadModelContext *ctx, const Entity *entity) {
 	(void)ctx;
 	openSourceAddMap(entity->props[EntityPropIndex_Map].value);
 	return BSPLoadResult_Success;
 }
 
-BSPLoadResult bspProcessEntityWorldspawn(struct BSPLoadModelContext *ctx, const Entity *entity) {
+static BSPLoadResult bspProcessEntityWorldspawn(struct BSPLoadModelContext *ctx, const Entity *entity) {
 	(void)ctx;
 	const StringView skyname = entity->props[EntityPropIndex_SkyName].value;
 
@@ -840,6 +879,8 @@ static struct {
 	BspProcessEntityProc proc;
 } entity_procs[] = {
 	{"info_landmark", bspProcessEntityInfoLandmark},
+	{"info_landmark_entry", bspProcessEntityInfoLandmarkEntry},
+	{"info_landmark_exit", bspProcessEntityInfoLandmarkExit},
 	{"trigger_changelevel", bspProcessEntityTriggerChangelevel},
 	{"worldspawn", bspProcessEntityWorldspawn},
 };
@@ -925,11 +966,11 @@ static int lumpRead(const char *name, const struct VBSPLumpHeader *header,
 	return 1;
 }
 
-enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const char *mapname) {
+enum BSPLoadResult bspLoadWorldspawn(BSPLoadModelContext context) {
 	enum BSPLoadResult result = BSPLoadResult_Success;
 	struct IFile *file = 0;
 	if (CollectionOpen_Success !=
-			collectionChainOpen(context.collection, mapname, File_Map, &file)) {
+			collectionChainOpen(context.collection, context.name.str /* FIXME assumes null-terminated string */, File_Map, &file)) {
 		return BSPLoadResult_ErrorFileOpen;
 	}
 
@@ -952,8 +993,8 @@ enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const c
 		goto exit;
 	}
 
-	if (vbsp_header.version != 19 && vbsp_header.version != 20) {
-		PRINTF("Error: invalid version: %d != 19 or 20", vbsp_header.version);
+	if (vbsp_header.version < 19 && vbsp_header.version > 21) {
+		PRINTF("Error: invalid version: %d != 19 or 20 or 21", vbsp_header.version);
 		result = BSPLoadResult_ErrorFileFormat;
 		goto exit;
 	}

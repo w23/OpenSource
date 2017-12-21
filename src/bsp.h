@@ -70,6 +70,9 @@ typedef struct BSPLoadModelContext {
 
 	/* allocated by caller, populated by callee */
 	struct BSPModel *model;
+
+	StringView name;
+	StringView prev_map_name, next_map_name;
 } BSPLoadModelContext;
 
 typedef enum BSPLoadResult {
@@ -84,6 +87,6 @@ typedef enum BSPLoadResult {
 /* should be called AFTER renderInit() */
 void bspInit();
 
-enum BSPLoadResult bspLoadWorldspawn(struct BSPLoadModelContext context, const char *mapname);
+enum BSPLoadResult bspLoadWorldspawn(BSPLoadModelContext context);
 
 void openSourceAddMap(StringView name);
