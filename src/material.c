@@ -147,8 +147,11 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, Material *
 		return 0;
 	}
 
-	if (file->size != file->read(file, 0, file->size, buffer))
+	const int read_size = file->read(file, 0, file->size, buffer);
+	if ((int)file->size != read_size) {
+		PRINTF("Cannot read material file: %d != %d", (int)file->size, read_size);
 		return 0;
+	}
 
 	MaterialContext ctx = {
 		.collection = coll,
@@ -164,6 +167,9 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, Material *
 	};
 
 	const int success = VMFResult_Success == vmfParse(&parser_state);
+
+	if (!success)
+		PRINTF("Failed to read material with contents:\n" PRI_SV, PRI_SVV(parser_state.data));
 
 	if (success && ctx.mat->base_texture.texture)
 		ctx.mat->average_color = ctx.mat->base_texture.texture->avg_color;

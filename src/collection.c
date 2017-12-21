@@ -172,7 +172,7 @@ struct VPKFileMetadata {
 	} dir, arc;
 };
 
-#define MAX_VPK_ARCHIVES 32
+#define MAX_VPK_ARCHIVES 152
 
 struct VPKCollection {
 	struct ICollection head;
@@ -205,7 +205,7 @@ static size_t vpkCollectionFileRead(struct IFile *file, size_t offset, size_t si
 	if (offset < meta->dir.size) {
 		const void *begin = ((char*)f->collection->dir.data) + offset + meta->dir.off;
 		const size_t dir_size_left = meta->dir.size - offset;
-		if (size < dir_size_left) {
+		if (size <= dir_size_left) {
 			memcpy(buffer, begin, size);
 			return size;
 		}
@@ -324,19 +324,19 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_fi
 	const char *dir = collection->dir.data;
 	const size_t size = collection->dir.size;
 
-	if (size <= sizeof(struct VPK2Header)) {
+	if (size <= sizeof(VPK1Header)) {
 		PRINT("VPK header is too small");
 		exit(-1);
 	}
 
-	const struct VPK2Header *header = (void*)collection->dir.data;
+	const VPK1Header *header = (void*)collection->dir.data;
 
 	if (header->signature != VPK_SIGNATURE) {
 		PRINTF("Wrong VPK signature %08x", header->signature);
 		exit(-1);
 	}
 
-	if (header->version != 2) {
+	if (header->version < 1 || header->version > 2) {
 		PRINTF("VPK version %d is not supported", header->version);
 		exit(-1);
 	}
@@ -345,7 +345,7 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_fi
 
 	int max_archives = -1;
 	const char *const end = dir + size;
-	const char *c = dir + sizeof(struct VPK2Header);
+	const char *c = dir + ((header->version == 1) ? sizeof(VPK1Header) : sizeof(VPK2Header));
 	for (;;) {
 		// read extension
 		const struct StringView ext = readString(&c, end);

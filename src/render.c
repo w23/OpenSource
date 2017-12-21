@@ -643,6 +643,8 @@ static void renderSkybox(const struct Camera *camera, const struct BSPModel *mod
 
 	GL_CALL(glDisable(GL_CULL_FACE));
 	for (int i = 0; i < BSPSkyboxDir_COUNT; ++i) {
+		if (!model->skybox[i] || !model->skybox[i]->base_texture.texture)
+			continue;
 		renderUseMaterial(model->skybox[i]);
 		renderApplyAttribs(attribs, &box_buffer, 0);
 		GL_CALL(glDrawArrays(GL_TRIANGLES, i*6, 6));

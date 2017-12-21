@@ -3,12 +3,17 @@
 
 #pragma pack(1)
 #define VPK_SIGNATURE (0x55aa1234ul)
-struct VPK2Header {
+typedef struct {
+	uint32_t signature;
+	uint32_t version;
+	uint32_t treeSize;
+} VPK1Header;
+typedef struct {
 	uint32_t signature;
 	uint32_t version;
 	uint32_t treeSize;
 	uint32_t dontCareSize[4];
-};
+} VPK2Header;
 
 #define VPK_TERMINATOR (0xffffu)
 struct VPKTreeEntry {
