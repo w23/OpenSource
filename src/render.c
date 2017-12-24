@@ -58,10 +58,8 @@
 #define RENDER_GL_PROFILE_FUNC(...)
 #endif
 
-#if 0 //ndef RENDER_GL_DEBUG
-#define GL_CALL(f) (f)
-#else
-#if 0
+//#define RENDER_GL_DEBUG
+#ifdef RENDER_GL_DEBUG
 static void a__GlPrintError(const char *message, int error) {
 	const char *errstr = "UNKNOWN";
 	switch (error) {
@@ -104,7 +102,6 @@ static void a__GlPrintError(const char *message, int error) {
 		RENDER_GL_PROFILE_FUNC(#f, aAppTime() - profile_time_start__); \
 		RENDER_GL_GETERROR(f) \
 	} while(0)
-#endif /* RENDER_GL_DEBUG */
 
 #ifdef _WIN32
 #define WGL__FUNCLIST \
@@ -143,6 +140,20 @@ WGL__FUNCLIST
 #undef WGL__FUNCLIST_DO
 #endif /* ifdef _WIN32 */
 
+static struct {
+	int textures_count;
+	int textures_size;
+	int buffers_count;
+	int buffers_size;
+} stats;
+
+static void renderPrintMemUsage() {
+	PRINTF("Render Tc: %u, Ts: %uMiB, Bc: %u, Bs: %uMiB, Total: %uMiB",
+		stats.textures_count, stats.textures_size >> 20,
+		stats.buffers_count, stats.buffers_size >> 20,
+		(stats.buffers_size + stats.textures_size) >> 20);
+}
+
 static GLint render_ShaderCreate(GLenum type, const char *sources[]) {
 	int n;
 	GLuint shader = glCreateShader(type);
@@ -170,23 +181,18 @@ static GLint render_ShaderCreate(GLenum type, const char *sources[]) {
 }
 
 void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
+	int pixel_bits = 0;
 	GLenum internal, format, type;
 
 	if (texture->gl_name == -1) {
 		GL_CALL(glGenTextures(1, (GLuint*)&texture->gl_name));
 		texture->type_flags = 0;
-	}
-
-	switch (params.format) {
-		case RTexFormat_RGB565:
-			internal = format = GL_RGB; type = GL_UNSIGNED_SHORT_5_6_5; break;
-		default:
-			ATTO_ASSERT(!"Impossible texture format");
+		++stats.textures_count;
 	}
 
 	const GLenum binding = (params.type == RTexType_2D) ? GL_TEXTURE_2D : GL_TEXTURE_CUBE_MAP;
 	const GLint wrap = (params.type == RTexType_2D && params.wrap == RTexWrap_Repeat)
-		? GL_REPEAT : GL_CLAMP;
+		? GL_REPEAT : GL_CLAMP_TO_EDGE;
 
 	GL_CALL(glBindTexture(binding, texture->gl_name));
 
@@ -201,20 +207,50 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 		case RTexType_CubeNZ: upload_binding = GL_TEXTURE_CUBE_MAP_NEGATIVE_Z; break;
 	}
 
-	GL_CALL(glTexImage2D(upload_binding, 0, internal, params.width, params.height, 0,
-			format, type, params.pixels));
+	int compressed = 0;
+	switch (params.format) {
+		case RTexFormat_RGB565:
+			pixel_bits = 16;
+			internal = format = GL_RGB; type = GL_UNSIGNED_SHORT_5_6_5;
+			break;
+#ifdef ATTO_PLATFORM_RPI
+		case RTexFormat_Compressed_ETC1:
+			pixel_bits = 4;
+			internal = GL_ETC1_RGB8_OES;
+			compressed = 1;
+			break;
+#endif
+		default:
+			ATTO_ASSERT(!"Impossible texture format");
+	}
 
-	if (params.generate_mipmaps)
+	const int image_size = params.width * params.height * pixel_bits / 8;
+
+	if (!compressed) {
+		GL_CALL(glTexImage2D(upload_binding, params.mip_level < 0 ? 0 : params.mip_level, internal, params.width, params.height, 0,
+				format, type, params.pixels));
+	} else {
+		GL_CALL(glCompressedTexImage2D(upload_binding, params.mip_level < 0 ? 0 : params.mip_level, internal, params.width, params.height,
+					0, image_size, params.pixels));
+	}
+
+	stats.textures_size += image_size;
+	renderPrintMemUsage();
+
+	if (params.mip_level == -1)
 		GL_CALL(glGenerateMipmap(binding));
 
-	GL_CALL(glTexParameteri(binding, GL_TEXTURE_MIN_FILTER, params.generate_mipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR));
+	GL_CALL(glTexParameteri(binding, GL_TEXTURE_MIN_FILTER, params.mip_level >= -1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR));
 	GL_CALL(glTexParameteri(binding, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 
 	GL_CALL(glTexParameteri(binding, GL_TEXTURE_WRAP_S, wrap));
 	GL_CALL(glTexParameteri(binding, GL_TEXTURE_WRAP_T, wrap));
 
-	texture->width = params.width;
-	texture->height = params.height;
+	if (params.mip_level < 1) {
+		texture->width = params.width;
+		texture->height = params.height;
+	}
+
 	texture->format = params.format;
 	texture->type_flags |= params.type;
 }
@@ -226,8 +262,12 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 	default: ASSERT(!"Invalid buffer type");
 	}
 	GL_CALL(glGenBuffers(1, (GLuint*)&buffer->gl_name));
+	++stats.buffers_count;
+
 	GL_CALL(glBindBuffer(buffer->type, (GLuint)buffer->gl_name));
 	GL_CALL(glBufferData(buffer->type, size, data, GL_STATIC_DRAW));
+	stats.buffers_size += size;
+	renderPrintMemUsage();
 }
 
 typedef struct {
@@ -540,6 +580,7 @@ static int render_ProgramInit(RProgram *prog) {
 }
 
 int renderInit() {
+	PRINTF("GL extensions: %s", glGetString(GL_EXTENSIONS));
 #ifdef _WIN32
 #define WGL__FUNCLIST_DO(T, N) \
 	gl##N = (T)wglGetProcAddress("gl" #N); \
@@ -548,6 +589,8 @@ int renderInit() {
 	WGL__FUNCLIST
 #undef WGL__FUNCLIST_DO
 #endif
+
+	memset(&stats, 0, sizeof(stats));
 
 	r.current_program = NULL;
 	r.current_tex0 = NULL;
@@ -567,7 +610,7 @@ int renderInit() {
 	params.width = 2;
 	params.height = 2;
 	params.pixels = (uint16_t[]){0xffffu, 0, 0, 0xffffu};
-	params.generate_mipmaps = 0;
+	params.mip_level = -2;
 	params.wrap = RTexWrap_Clamp;
 	renderTextureInit(&default_texture.texture);
 	renderTextureUpload(&default_texture.texture, params);
@@ -694,7 +737,7 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 		GL_CALL(glBlendEquation(GL_FUNC_ADD));
 	}
 
-	if (distance < 5000.f)
+	if (distance < 0.f)
 		renderDrawSet(model, &model->detailed);
 	else
 		renderDrawSet(model, &model->coarse);

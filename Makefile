@@ -41,6 +41,7 @@ ifeq ($(RASPBERRY), 1)
 	LIBS += -lGLESv2 -lEGL -lbcm_host -lvcos -lvchiq_arm -L$(RPI_VCDIR)/lib -lrt -lm
 
 	SOURCES += \
+		src/etcpack.c \
 		src/atto/src/app_linux.c \
 		src/atto/src/app_rpi.c
 

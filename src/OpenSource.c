@@ -691,7 +691,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			g.collection_chain = addToCollectionChain(g.collection_chain, collectionCreateFilesystem(&mem, value));
 		} else if (strcmp(argv, "-n") == 0) {
 			if (i == a_app_state->argc - 1) {
-				aAppDebugPrintf("-p requires an argument");
+				aAppDebugPrintf("-n requires an argument");
 				goto print_usage_and_exit;
 			}
 			const char *value = a_app_state->argv[++i];

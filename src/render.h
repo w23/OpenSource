@@ -2,7 +2,10 @@
 #include "atto/math.h"
 
 typedef enum {
-	RTexFormat_RGB565
+	RTexFormat_RGB565,
+#ifdef ATTO_PLATFORM_RPI
+	RTexFormat_Compressed_ETC1,
+#endif
 } RTexFormat;
 
 typedef enum {
@@ -32,7 +35,7 @@ typedef struct {
 	int width, height;
 	RTexFormat format;
 	const void *pixels;
-	int generate_mipmaps;
+	int mip_level; // -1 means generate; -2 means don't need
 	RTexWrap wrap;
 } RTextureUploadParams;
 

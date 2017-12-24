@@ -1,4 +1,5 @@
 #include "texture.h"
+#include "etcpack.h"
 #include "dxt.h"
 #include "vtf.h"
 #include "cache.h"
@@ -223,6 +224,46 @@ static int textureUploadMipmapType(struct Stack *tmp, struct IFile *file, size_t
 		return 0;
 	}
 
+#ifdef ATTO_PLATFORM_RPI
+	{
+		const uint16_t *p565 = dst_texture;
+		uint8_t *etc1_data = stackAlloc(tmp, hdr->width * hdr->height / 2);
+		uint8_t *block = etc1_data;
+
+		// FIXME assumes w and h % 4 == 0
+		for (int by = 0; by < hdr->height; by += 4) {
+			for (int bx = 0; bx < hdr->width; bx += 4) {
+				const uint16_t *bp = p565 + bx + by * hdr->width;
+				ETC1Color ec[16];
+				for (int x = 0; x < 4; ++x) {
+					for (int y = 0; y < 4; ++y) {
+						const unsigned p = bp[x + y * hdr->width];
+						ec[x*4+y].r = (p & 0xf800u) >> 8;
+						ec[x*4+y].g = (p & 0x07e0u) >> 3;
+						ec[x*4+y].b = (p & 0x001fu) << 3;
+					}
+				}
+				
+				etc1PackBlock(ec, block);
+				block += 8;
+			}
+		}
+
+		const RTextureUploadParams params = {
+			.type = tex_type,
+			.width = hdr->width,
+			.height = hdr->height,
+			.format = RTexFormat_Compressed_ETC1,
+			.pixels = etc1_data,
+			.mip_level = -2,//miplevel,
+			.wrap =  RTexWrap_Repeat
+		};
+
+		renderTextureUpload(tex, params);
+
+		stackFreeUpToPosition(tmp, etc1_data);
+	}
+#else
 
 	const RTextureUploadParams params = {
 		.type = tex_type,
@@ -230,11 +271,13 @@ static int textureUploadMipmapType(struct Stack *tmp, struct IFile *file, size_t
 		.height = hdr->height,
 		.format = RTexFormat_RGB565,
 		.pixels = dst_texture,
-		.generate_mipmaps = 1,
+		.mip_level = -1,//miplevel,
 		.wrap =  RTexWrap_Repeat
 	};
 
 	renderTextureUpload(tex, params);
+#endif
+
 	return 1;
 }
 
@@ -305,7 +348,11 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp, RTex
 		hdr.lores_width, hdr.lores_height, vtfFormatStr(hdr.lores_format), hdr.mipmap_count, hdr.header_size);
 	*/
 
-	retval = textureUploadMipmapType(tmp, file, cursor, &hdr, 0, &tex->texture, type);
+	for (int mip = 0; mip <= 0/*< hdr.mipmap_count*/; ++mip) {
+		retval = textureUploadMipmapType(tmp, file, cursor, &hdr, mip, &tex->texture, type);
+		if (retval != 1)
+			break;
+	}
 	stackFreeUpToPosition(tmp, pre_alloc_cursor);
 
 	return retval;

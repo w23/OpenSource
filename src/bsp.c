@@ -357,7 +357,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 	upload.height = atlas_context.height;
 	upload.format = RTexFormat_RGB565;
 	upload.pixels = pixels;
-	upload.generate_mipmaps = 0;
+	upload.mip_level = -2;
 	upload.type = RTexType_2D;
 	upload.wrap = RTexWrap_Clamp;
 	renderTextureInit(&ctx->lightmap.texture);
