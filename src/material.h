@@ -5,8 +5,6 @@ struct ICollection;
 struct Texture;
 struct Stack;
 
-typedef struct AVec2f AVec2f;
-
 typedef enum {
 	MShader_Unknown,
 	MShader_LightmappedOnly,
