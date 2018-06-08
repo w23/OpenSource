@@ -458,7 +458,7 @@ typedef struct {
 	StringView map_offset;
 } Config;
 
-const char *steam_basedir = "";
+const char *steam_basedir = NULL;
 
 static char *buildSteamPath(const StringView *gamedir, const StringView *path) {
 	const int steam_basedir_length = strlen(steam_basedir);
@@ -628,6 +628,21 @@ static int configReadFile(const char *cfgfile) {
 	return result;
 }
 
+const char *getDefaultSteamBaseDir() {
+#ifdef _WIN32
+	const char *base_dir = getenv("programfiles(x86)");
+	const char *steam_prefix = "Steam/steamapps/common";
+#else // LINUX
+	const char *base_dir = getenv("HOME");
+	const char *steam_prefix = ".local/share/Steam/steamapps/common";
+#endif
+	const int base_dir_length = base_dir ? strlen(base_dir) : 0;
+	const int steam_basedir_length = strlen(steam_prefix) + base_dir_length + 2;
+	char *steam_basedir_w = stackAlloc(mem.persistent, steam_basedir_length);
+	sprintf(steam_basedir_w, "%s/%s", base_dir, steam_prefix);
+	return steam_basedir_w;
+}
+
 void attoAppInit(struct AAppProctable *proctable) {
 	profilerInit();
 	//aGLInit();
@@ -638,14 +653,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 	g.selected_map = NULL;
 	g.R = 0;
 
-	// FIXME windows and macos paths?
-	const char *home_dir = getenv("HOME");
-	const int home_dir_length = strlen(home_dir);
-	const char steam_prefix[] = ".local/share/Steam/steamapps/common";
-	const int steam_basedir_length = strlen(steam_prefix) + home_dir_length + 2;
-	char *steam_basedir_w= stackAlloc(mem.persistent, steam_basedir_length);
-	sprintf(steam_basedir_w, "%s/%s", home_dir, steam_prefix);
-	steam_basedir = steam_basedir_w;
+	steam_basedir = getDefaultSteamBaseDir();
 	PRINTF("Steam basedir = %s", steam_basedir);
 
 	for (int i = 1; i < a_app_state->argc; ++i) {
