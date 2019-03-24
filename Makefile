@@ -38,7 +38,7 @@ ifeq ($(RASPBERRY), 1)
 
 	CFLAGS += -I$(RPI_VCDIR)/include -I$(RPI_VCDIR)/include/interface/vcos/pthreads
 	CFLAGS += -I$(RPI_VCDIR)/include/interface/vmcs_host/linux -DATTO_PLATFORM_RPI
-	LIBS += -lGLESv2 -lEGL -lbcm_host -lvcos -lvchiq_arm -L$(RPI_VCDIR)/lib -lrt -lm
+	LIBS += -lbrcmGLESv2 -lbrcmEGL -lbcm_host -lvcos -lvchiq_arm -L$(RPI_VCDIR)/lib -lrt -lm
 
 	SOURCES += \
 		src/etcpack.c \
