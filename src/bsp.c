@@ -130,7 +130,7 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 		struct Face *face, unsigned index) {
 	const struct Lumps * const lumps = ctx->lumps;
 #define FACE_CHECK(cond) \
-	if (!(cond)) { PRINTF("F%d: check failed: (%s)", index, #cond); return FacePreload_Inconsistent; }
+	if (!(cond)) { PRINTF("F%u: check failed: (%s)", index, #cond); return FacePreload_Inconsistent; }
 	FACE_CHECK(index < lumps->faces.n);
 
 	const struct VBSPLumpFace * const vface = lumps->faces.p + index;
@@ -210,7 +210,7 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 		}
 
 		if (edge_index >= lumps->edges.n) {
-			PRINTF("Error: face%u surfedge%u/%u references edge %u > max edges %u",
+			PRINTF("Error: face%u surfedge%d/%d references edge %u > max edges %u",
 					index, i, vface->num_edges, edge_index, lumps->edges.n);
 			return FacePreload_Inconsistent;
 		}
@@ -314,7 +314,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 	for(;;) {
 		const enum AtlasResult result = atlasCompute(&atlas_context);
 
-		PRINTF("atlas: %u %u %u", atlas_context.width, atlas_context.height, result);
+		PRINTF("atlas: %u %u %d", atlas_context.width, atlas_context.height, result);
 
 		if (result == Atlas_Success)
 			break;
@@ -481,7 +481,7 @@ static void bspLoadDisplacement(
 			v->vertex = aVec3fAdd(aVec3fMix(vl, vr, tx), aVec3fMulf(aVec3f(dv->x, dv->y, dv->z), dv->dist));
 
 			if (v->lightmap_uv.x < 0 || v->lightmap_uv.y < 0 || v->lightmap_uv.x > face->width || v->lightmap_uv.y > face->height)
-				PRINTF("Error: DISP OOB LM F:V%u: x=%f y=%f z=%f tx=%f, ty=%f u=%f v=%f w=%d h=%d",
+				PRINTF("Error: DISP OOB LM F:V%d: x=%f y=%f z=%f tx=%f, ty=%f u=%f v=%f w=%d h=%d",
 						x + y * side, v->vertex.x, v->vertex.y, v->vertex.z, tx, ty, v->lightmap_uv.x, v->lightmap_uv.y, face->width, face->height);
 
 			v->lightmap_uv = aVec2fMul(aVec2fAdd(v->lightmap_uv, atlas_offset), atlas_scale);
@@ -949,7 +949,7 @@ static int lumpRead(const char *name, const struct VBSPLumpHeader *header,
 		struct AnyLump *out_ptr, uint32_t item_size) {
 	out_ptr->p = stackAlloc(tmp, header->size);
 	if (!out_ptr->p) {
-		PRINTF("Not enough temp memory to allocate storage for lump %s; need: %d (%x)", name, header->size, header->size);
+		PRINTF("Not enough temp memory to allocate storage for lump %s; need: %u (%x)", name, header->size, header->size);
 		return -1;
 	}
 
@@ -993,8 +993,8 @@ enum BSPLoadResult bspLoadWorldspawn(BSPLoadModelContext context) {
 		goto exit;
 	}
 
-	if (vbsp_header.version < 19 && vbsp_header.version > 21) {
-		PRINTF("Error: invalid version: %d != 19 or 20 or 21", vbsp_header.version);
+	if (vbsp_header.version < 19 || vbsp_header.version > 21) {
+		PRINTF("Error: invalid version: %u != 19 or 20 or 21", vbsp_header.version);
 		result = BSPLoadResult_ErrorFileFormat;
 		goto exit;
 	}
