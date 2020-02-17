@@ -306,12 +306,12 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_fi
 
 		char *data = stackAlloc(mem->persistent, dir_file.size);
 		if (!data) {
-			PRINTF("Cannot allocate %zd bytes of persistent memory", dir_file.size);
+			PRINTF("Cannot allocate %zu bytes of persistent memory", dir_file.size);
 			exit(-1);
 		}
 
 		if (aFileReadAtOffset(&dir_file, 0, dir_file.size, data) != dir_file.size) {
-			PRINTF("Cannot read entire directory of %zd bytes", dir_file.size);
+			PRINTF("Cannot read entire directory of %zu bytes", dir_file.size);
 			exit(-1);
 		}
 
