@@ -38,6 +38,6 @@ const struct Texture *cacheGetTexture(const char *name) {
 	return aHashGet(&g.textures, name);
 }
 
-void cachePutTexture(const char *name, const struct Texture *mat /* copied */) {
-	aHashInsert(&g.textures, name, mat);
+void cachePutTexture(const char *name, const struct Texture *tex /* copied */) {
+	aHashInsert(&g.textures, name, tex);
 }
