@@ -150,8 +150,8 @@ static struct {
 
 static void renderPrintMemUsage() {
 	PRINTF("Render Tc: %u, Ts: %uMiB, Bc: %u, Bs: %uMiB, Total: %uMiB",
-		stats.textures_count, stats.textures_size >> 20,
-		stats.buffers_count, stats.buffers_size >> 20,
+		(unsigned)stats.textures_count, (unsigned)stats.textures_size >> 20,
+		(unsigned)stats.buffers_count, (unsigned)stats.buffers_size >> 20,
 		(stats.buffers_size + stats.textures_size) >> 20);
 }
 
