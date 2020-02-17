@@ -337,7 +337,7 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_fi
 	}
 
 	if (header->version < 1 || header->version > 2) {
-		PRINTF("VPK version %d is not supported", header->version);
+		PRINTF("VPK version %u is not supported", header->version);
 		exit(-1);
 	}
 
@@ -598,7 +598,7 @@ struct ICollection *collectionCreatePakfile(struct Memories *mem, const void *pa
 	}
 
 	if (eod->dir_offset > size || eod->dir_size > size || eod->dir_size + eod->dir_offset > size) {
-		PRINTF("Wrong pakfile directory sizes; size=%d, dir_offset=%d, dir_size=%d",
+		PRINTF("Wrong pakfile directory sizes; size=%u, dir_offset=%u, dir_size=%u",
 				size, eod->dir_offset, eod->dir_size);
 		return NULL;
 	}
