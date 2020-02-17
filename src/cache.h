@@ -2,7 +2,7 @@
 
 struct Stack;
 
-void cacheInit(struct Stack* persistent);
+void cacheInit(struct Stack* pool);
 
 struct Material;
 struct Texture;
