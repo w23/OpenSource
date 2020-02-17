@@ -993,7 +993,7 @@ enum BSPLoadResult bspLoadWorldspawn(BSPLoadModelContext context) {
 		goto exit;
 	}
 
-	if (vbsp_header.version < 19 && vbsp_header.version > 21) {
+	if (vbsp_header.version < 19 || vbsp_header.version > 21) {
 		PRINTF("Error: invalid version: %u != 19 or 20 or 21", vbsp_header.version);
 		result = BSPLoadResult_ErrorFileFormat;
 		goto exit;
