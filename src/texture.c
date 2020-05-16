@@ -77,6 +77,9 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 		case VTFImage_DXT3:
 		case VTFImage_DXT5:
 			pixel_bits = 4;
+#ifdef __GNUC__
+			__attribute__ ((fallthrough));
+#endif
 		case VTFImage_DXT1:
 		case VTFImage_DXT1_A1:
 			pixel_bits += 4;

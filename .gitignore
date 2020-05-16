@@ -3,8 +3,10 @@ Release/
 .DS_Store
 xcuserdata
 project.xcworkspace
+compile_commands.json
 *~
 *.swp
+*.swo
 *.o
 *.a
 *.log
