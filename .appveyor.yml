@@ -21,6 +21,7 @@ environment:
       ARCHITECTURE: Win32
 
 build_script:
+  - git submodule update --init --recursive
   - mkdir build
   - cd build
   - cmake .. -G "%COMPILER%" -A %ARCHITECTURE%
