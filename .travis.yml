@@ -1,4 +1,5 @@
 language: c
+dist: bionic
 addons:
   apt:
     packages:
@@ -13,6 +14,7 @@ script:
   - cd build
   - cmake -DCMAKE_BUILD_TYPE=Release ..
   - cmake --build .
+
 matrix:
   include:
     - name: "MSVC2017"
