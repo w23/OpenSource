@@ -3,10 +3,13 @@
 #include "vpk.h"
 #include "zip.h"
 
+#include "atto/app.h"
+
 #ifndef _WIN32
 #include <alloca.h>
 #else
 #define alloca _alloca
+#pragma warning(disable:4204)
 #endif
 
 enum CollectionOpenResult collectionChainOpen(struct ICollection *collection,
@@ -64,12 +67,13 @@ static char *makeResourceFilename(struct Stack *temp, const char *prefix, const 
 		case File_Material: subdir = "materials/"; suffix = ".vmt"; break;
 		case File_Texture: subdir = "materials/"; suffix = ".vtf"; break;
 		case File_Model: subdir = "models/"; suffix = ".mdl"; break;
+		default: ASSERT(!"Invalid class");
 	}
 
-	const int prefix_len = prefix ? strlen(prefix) : 0;
-	const int subdir_len = strlen(subdir);
-	const int name_len = strlen(name);
-	const int suffix_len = strlen(suffix);
+	const int prefix_len = prefix ? (int)strlen(prefix) : 0;
+	const int subdir_len = (int)strlen(subdir);
+	const int name_len = (int)strlen(name);
+	const int suffix_len = (int)strlen(suffix);
 	const int name_length = prefix_len + subdir_len + name_len + suffix_len + 1;
 
 	char *output = stackAlloc(temp, name_length);
@@ -84,7 +88,7 @@ static char *makeResourceFilename(struct Stack *temp, const char *prefix, const 
 		*c++ = subdir[i];
 
 	for (int i = 0; i < name_len; ++i) {
-		char C = tolower(name[i]);
+		const char C = (char)tolower(name[i]);
 		*c++ = (C == '\\') ? '/' : C;
 	}
 
@@ -129,7 +133,7 @@ static enum CollectionOpenResult filesystemCollectionOpen(struct ICollection *co
 }
 
 struct ICollection *collectionCreateFilesystem(struct Memories *mem, const char *dir) {
-	int dir_len = strlen(dir);
+	const int dir_len = (int)strlen(dir);
 	struct FilesystemCollection *collection = stackAlloc(mem->persistent, sizeof(*collection) + dir_len + 2);
 
 	if (!collection)
@@ -159,7 +163,7 @@ struct StringView {
 static struct StringView readString(const char **c, const char *end) {
 	struct StringView ret = { *c, 0 };
 	while (*c < end && **c != '\0') ++(*c);
-	ret.len = *c - ret.s;
+	ret.len = (int)(*c - ret.s);
 	++(*c);
 	return ret;
 }
@@ -301,22 +305,22 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_fi
 		struct AFile dir_file;
 		if (AFile_Success != aFileOpen(&dir_file, dir_filename)) {
 			PRINTF("Cannot open %s", dir_filename);
-			exit(-1);
+			aAppTerminate(-1);
 		}
 
 		char *data = stackAlloc(mem->persistent, dir_file.size);
 		if (!data) {
 			PRINTF("Cannot allocate %zu bytes of persistent memory", dir_file.size);
-			exit(-1);
+			aAppTerminate(-1);
 		}
 
 		if (aFileReadAtOffset(&dir_file, 0, dir_file.size, data) != dir_file.size) {
 			PRINTF("Cannot read entire directory of %zu bytes", dir_file.size);
-			exit(-1);
+			aAppTerminate(-1);
 		}
 
 		collection->dir.data = data;
-		collection->dir.size = dir_file.size;
+		collection->dir.size = (int)dir_file.size;
 
 		aFileClose(&dir_file);
 	}
@@ -452,7 +456,7 @@ struct ICollection *collectionCreateVPK(struct Memories *mem, const char *dir_fi
 		exit(-1);
 	}
 
-	const int dirfile_len = strlen(dir_filename) + 1;
+	const int dirfile_len = (int)strlen(dir_filename) + 1;
 	char *arcname = alloca(dirfile_len);
 	if (!arcname || dirfile_len < 8) {
 		PRINT("WTF");
@@ -692,4 +696,3 @@ struct ICollection *collectionCreatePakfile(struct Memories *mem, const void *pa
 
 	return &collection->head;
 }
-

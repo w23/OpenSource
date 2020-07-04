@@ -3,6 +3,10 @@
 
 #include <stdint.h>
 
+#ifdef _MSC_VER
+#pragma warning(disable:4214)
+#endif
+
 enum {
 	VBSP_Lump_Entity = 0,
 	VBSP_Lump_Plane = 1,

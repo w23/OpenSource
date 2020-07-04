@@ -9,6 +9,10 @@
 // DEBUG
 #include "texture.h"
 
+#ifdef _MSC_VER
+#pragma warning(disable:4221)
+#endif
+
 #define R2S(r) bspLoadResultString(r)
 
 const char *bspLoadResultString(enum BSPLoadResult result) {
@@ -220,9 +224,9 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 
 		if (face->dispinfo) {
 			face->dispquadvtx[i] = vstart;
-			if (fabs(lumps->vertices.p[vstart].x - face->dispinfo->start_pos.x) < .5f
-					&& fabs(lumps->vertices.p[vstart].y - face->dispinfo->start_pos.y) < .5f
-					&& fabs(lumps->vertices.p[vstart].z - face->dispinfo->start_pos.z) < .5f) {
+			if (fabsf(lumps->vertices.p[vstart].x - face->dispinfo->start_pos.x) < .5f
+					&& fabsf(lumps->vertices.p[vstart].y - face->dispinfo->start_pos.y) < .5f
+					&& fabsf(lumps->vertices.p[vstart].z - face->dispinfo->start_pos.z) < .5f) {
 				face->dispstartvtx = i;
 			}
 		}
@@ -249,14 +253,14 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 
 const int c_max_draw_vertices = 65536;
 
-static int scaleLightmapColor(int c, int exp) {
-	const int c2 =
+static uint8_t scaleLightmapColor(int c, int exp) {
+	const unsigned c2 =
 		(bsp_global.lightmap_tables.exponent[exp+128] * bsp_global.lightmap_tables.color[c]) >> 12;
 
 	//const int c1 = 255.f * pow(c * powf(2.f, exp) / 255.f, 1.0f / 2.2f) * .5f;
 	//PRINTF("%d^%d => %d, %d => %d", c, exp, c1, c2, c2 - c1);
 
-	return c2 < 255 ? c2 : 255;
+	return c2 < 255 ? (uint8_t)c2 : 255;
 }
 
 static enum BSPLoadResult bspLoadModelPreloadFaces(struct LoadModelContext *ctx) {
@@ -298,7 +302,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 
 	struct AtlasContext atlas_context;
 	atlas_context.temp_storage.ptr = stackGetCursor(ctx->tmp);
-	atlas_context.temp_storage.size = stackGetFree(ctx->tmp);
+	atlas_context.temp_storage.size = (int)stackGetFree(ctx->tmp);
 	atlas_context.width = 16; /* TODO opengl caps */
 	atlas_context.height = 16;
 	atlas_context.rects = (void*)(&ctx->faces[0].width);
@@ -339,7 +343,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 		ASSERT((unsigned)face->atlas_y + face->height <= atlas_context.height);
 		for (int y = 0; y < face->height; ++y) {
 			for (int x = 0; x < face->width; ++x) {
-				const struct VBSPLumpLightMap *const pixel = face->samples + x + y * face->width;
+				const struct VBSPLumpLightMap *const pixel = face->samples + x + (int)(y * face->width);
 
 				const unsigned int
 					r = scaleLightmapColor(pixel->r, pixel->exponent),
@@ -347,7 +351,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 					b = scaleLightmapColor(pixel->b, pixel->exponent);
 
 				pixels[face->atlas_x + x + (face->atlas_y + y) * atlas_context.width]
-					= ((r&0xf8) << 8) | ((g&0xfc) << 3) | (b >> 3);
+					= (uint16_t)(((r&0xf8) << 8) | ((g&0xfc) << 3) | (b >> 3));
 			} /* for x */
 		} /* for y */
 	} /* fot all visible faces */
@@ -499,13 +503,15 @@ static void bspLoadDisplacement(
 
 	for (int y = 0; y < side - 1; ++y) {
 		for (int x = 0; x < side - 1; ++x) {
-			const int base = index_shift + y * side + x;
+			const int ibase = index_shift + y * side + x;
+			ASSERT(ibase + side + 1 < 65536);
+			const uint16_t base = (uint16_t)ibase;
 			*out_indices++ = base;
-			*out_indices++ = base + side + 1;
-			*out_indices++ = base + side;
+			*out_indices++ = base + (uint16_t)side + 1;
+			*out_indices++ = base + (uint16_t)side;
 			*out_indices++ = base;
 			*out_indices++ = base + 1;
-			*out_indices++ = base + side + 1;
+			*out_indices++ = base + (uint16_t)side + 1;
 		}
 	}
 }
@@ -554,8 +560,8 @@ static void bspLoadFace(
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_u),
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_v));
 
-		vertex->lightmap_uv.x = clamp(vertex->lightmap_uv.x, 0.f, face->width);
-		vertex->lightmap_uv.y = clamp(vertex->lightmap_uv.y, 0.f, face->height);
+		vertex->lightmap_uv.x = clamp(vertex->lightmap_uv.x, 0.f, (float)face->width);
+		vertex->lightmap_uv.y = clamp(vertex->lightmap_uv.y, 0.f, (float)face->height);
 
 		/*
 		if (vertex->lightmap_uv.x < 0 || vertex->lightmap_uv.y < 0 || vertex->lightmap_uv.x > face->width || vertex->lightmap_uv.y > face->height)
@@ -566,9 +572,9 @@ static void bspLoadFace(
 		vertex->lightmap_uv.y = (vertex->lightmap_uv.y + face->atlas_y + .5f) / ctx->lightmap.texture.height;
 
 		if (iedge > 1) {
-			out_indices[(iedge-2)*3+0] = index_shift + 0;
-			out_indices[(iedge-2)*3+1] = index_shift + iedge;
-			out_indices[(iedge-2)*3+2] = index_shift + iedge - 1;
+			out_indices[(iedge-2)*3+0] = (uint16_t)(index_shift + 0);
+			out_indices[(iedge-2)*3+1] = (uint16_t)(index_shift + iedge);
+			out_indices[(iedge-2)*3+2] = (uint16_t)(index_shift + iedge - 1);
 		}
 	}
 }
@@ -579,7 +585,7 @@ static int faceMaterialCompare(const void *a, const void *b) {
 	if (fa->material == fb->material)
 		return 0;
 
-	return fa->material->base_texture.texture - fb->material->base_texture.texture;
+	return (int)(fa->material->base_texture.texture - fb->material->base_texture.texture);
 }
 
 static enum BSPLoadResult bspLoadModelDraws(const struct LoadModelContext *ctx, struct Stack *persistent,
@@ -744,7 +750,7 @@ static void bspLoadSkybox(StringView name, ICollection *coll, Stack *tmp, struct
 	PRINTF("Loading skybox %.*s", name.length, name.str);
 
 	char *zname = alloca(name.length + 3 + 7);
-	memset(zname, 0, name.length + 3 + 7);
+	memset(zname, 0, (int)name.length + 3 + 7);
 	memcpy(zname, "skybox/", 7);
 	memcpy(zname + 7, name.str, name.length);
 

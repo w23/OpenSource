@@ -1,11 +1,29 @@
 language: c
-script: make
-compiler:
-  - clang
-  - gcc
+dist: bionic
 addons:
   apt:
     packages:
       - libxfixes-dev
       - mesa-common-dev
       - libgl1-mesa-dev
+compiler:
+  - clang
+  - gcc
+script:
+  - mkdir build
+  - cd build
+  - cmake -DCMAKE_BUILD_TYPE=Release ..
+  - cmake --build .
+
+matrix:
+  include:
+    - name: "MSVC2017"
+      os: windows
+      env:
+        - MSBUILD_PATH="c:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\MSBuild\15.0\Bin"
+      script:
+        - export PATH=$MSBUILD_PATH:$PATH
+        - mkdir build
+        - cd build
+        - cmake -G "Visual Studio 15 2017" -A x64 ..
+        - cmake --build . --config Release

@@ -5,6 +5,10 @@
 #include "vmfparser.h"
 #include "common.h"
 
+#ifdef _MSC_VER
+#pragma warning(disable:4221)
+#endif
+
 typedef struct {
 	ICollection *collection;
 	Stack *temp;
@@ -147,7 +151,7 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, Material *
 		return 0;
 	}
 
-	const int read_size = file->read(file, 0, file->size, buffer);
+	const int read_size = (int)file->read(file, 0, file->size, buffer);
 	if ((int)file->size != read_size) {
 		PRINTF("Cannot read material file: %d != %d", (int)file->size, read_size);
 		return 0;
@@ -162,7 +166,7 @@ static int materialLoad(struct IFile *file, struct ICollection *coll, Material *
 
 	VMFState parser_state = {
 		.user_data = &ctx,
-		.data = { .str = buffer, .length = file->size },
+		.data = { .str = buffer, .length = (int)file->size },
 		.callback = materialParserCallback
 	};
 

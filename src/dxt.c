@@ -15,7 +15,7 @@ static uint16_t dxtColorSum(int m1, uint16_t c1, int m2, uint16_t c2, int add, i
 	const int b =
 		(((c1 & mask_b) >> shift_b) * m1 +
 		((c2 & mask_b) >> shift_b) * m2 + add) / denom;
-	return ((r << shift_r) & mask_r) | ((g << shift_g) & mask_g) | ((b << shift_b) & mask_b);
+	return (uint16_t)(((r << shift_r) & mask_r) | ((g << shift_g) & mask_g) | ((b << shift_b) & mask_b));
 }
 
 void dxtUnpack(struct DXTUnpackContext ctx, int offset) {

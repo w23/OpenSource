@@ -24,6 +24,8 @@ void profilerInit() {
 
 void profileEvent(const char *msg, ATimeUs delta) {
 	ATTO_ASSERT(profiler.cursor < 65536);
+	if (profiler.cursor < 0 || profiler.cursor >= (int)COUNTOF(profiler.event))
+		return;
 	profiler.event[profiler.cursor].msg = msg;
 	profiler.event[profiler.cursor].delta = delta;
 	++profiler.cursor;
@@ -43,7 +45,7 @@ int profilerFrame(struct Stack *stack_temp) {
 	profiler.frame_deltas += start - profiler.last_frame;
 
 	void *tmp_cursor = stackGetCursor(stack_temp);
-	const int max_array_size = stackGetFree(stack_temp) / sizeof(ProfilerLocation);
+	const int max_array_size = (int)(stackGetFree(stack_temp) / sizeof(ProfilerLocation));
 	int array_size = 0;
 	ProfilerLocation *array = tmp_cursor;
 	int total_time = 0;

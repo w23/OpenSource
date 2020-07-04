@@ -11,6 +11,10 @@
 #include "atto/app.h"
 #include "atto/math.h"
 
+#ifdef _MSC_VER
+#pragma warning(disable:4221)
+#endif
+
 static char persistent_data[128*1024*1024];
 static char temp_data[128*1024*1024];
 
@@ -133,19 +137,19 @@ static enum BSPLoadResult loadMap(Map *map, ICollection *collection) {
 		.persistent = &stack_persistent,
 		.tmp = &stack_temp,
 		.model = &map->model,
-		.name = { .str = map->name, .length = strlen(map->name) },
+		.name = { .str = map->name, .length = (int)strlen(map->name) },
 		.prev_map_name = { .str = NULL, .length = 0 },
 		.next_map_name = { .str = NULL, .length = 0 },
 	};
 
 	if (map->prev) {
 		loadctx.prev_map_name.str = map->prev->name;
-		loadctx.prev_map_name.length = strlen(map->prev->name);
+		loadctx.prev_map_name.length = (int)strlen(map->prev->name);
 	}
 
 	if (map->next) {
 		loadctx.next_map_name.str = map->next->name;
-		loadctx.next_map_name.length = strlen(map->next->name);
+		loadctx.next_map_name.length = (int)strlen(map->next->name);
 	}
 
 	const enum BSPLoadResult result = bspLoadWorldspawn(loadctx);
@@ -205,7 +209,7 @@ static enum BSPLoadResult loadMap(Map *map, ICollection *collection) {
 				if (p->delete) {
 					PRINTF("Deleting landmark %s", p->landmark.name);
 					--map->model.landmarks_count;
-					memmove(lm, lm + 1, sizeof(BSPLandmark) * (map->model.landmarks_count - i));
+					memmove(lm, lm + 1, sizeof(BSPLandmark) * ((size_t)map->model.landmarks_count - (size_t)i));
 					deleted = 1;
 				} else {
 					PRINTF("Modifying landmark %s %f %f %f -> %f %f %f of map %s",
@@ -440,7 +444,7 @@ static void opensrcAddLandmarkPatch(StringView map, StringView key, StringView v
 	new_patch->next = g.patches;
 	g.patches = new_patch;
 
-	char *map_name = stackAlloc(mem.persistent, map.length + 1);
+	char *map_name = stackAlloc(mem.persistent, (size_t)map.length + 1);
 	memcpy(map_name, map.str, map.length);
 	map_name[map.length] = '\0';
 	new_patch->map_name = map_name;
@@ -461,7 +465,7 @@ typedef struct {
 const char *steam_basedir = NULL;
 
 static char *buildSteamPath(const StringView *gamedir, const StringView *path) {
-	const int steam_basedir_length = strlen(steam_basedir);
+	const int steam_basedir_length = (int)strlen(steam_basedir);
 
 	const int length = steam_basedir_length + gamedir->length + path->length + 4;
 	char *value = stackAlloc(&stack_temp, length);
@@ -577,7 +581,7 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 			openSourceAddMap(kv->value);
 		} else if (strncasecmp("z_far", kv->key.str, kv->key.length) == 0) {
 			// FIXME null-terminate
-			g.R = atof(kv->value.str);
+			g.R = (float)atof(kv->value.str);
 		} else
 			return VMFAction_SemanticError;
 		break;
@@ -616,7 +620,7 @@ static int configReadFile(const char *cfgfile) {
 
 	VMFState pstate = {
 		.user_data = &config,
-		.data = { .str = buffer, .length = file.size },
+		.data = { .str = buffer, .length = (int)file.size },
 		.callback = configReadCallback
 	};
 
@@ -636,8 +640,8 @@ const char *getDefaultSteamBaseDir() {
 	const char *base_dir = getenv("HOME");
 	const char *steam_prefix = ".local/share/Steam/steamapps/common";
 #endif
-	const int base_dir_length = base_dir ? strlen(base_dir) : 0;
-	const int steam_basedir_length = strlen(steam_prefix) + base_dir_length + 2;
+	const int base_dir_length = base_dir ? (int)strlen(base_dir) : 0;
+	const int steam_basedir_length = (int)strlen(steam_prefix) + base_dir_length + 2;
 	char *steam_basedir_w = stackAlloc(mem.persistent, steam_basedir_length);
 	sprintf(steam_basedir_w, "%s/%s", base_dir, steam_prefix);
 	return steam_basedir_w;
@@ -708,7 +712,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 			if (g.maps_limit < 1)
 				g.maps_limit = 1;
 		} else {
-			const StringView map = { .str = argv, .length = strlen(argv) };
+			const StringView map = { .str = argv, .length = (int)strlen(argv) };
 			openSourceAddMap(map);
 		}
 	}

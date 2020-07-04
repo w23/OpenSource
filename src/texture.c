@@ -77,6 +77,7 @@ static int vtfImageSize(enum VTFImageFormat fmt, int width, int height) {
 		case VTFImage_DXT3:
 		case VTFImage_DXT5:
 			pixel_bits = 4;
+			/* fall through */
 		case VTFImage_DXT1:
 		case VTFImage_DXT1_A1:
 			pixel_bits += 4;
@@ -108,20 +109,20 @@ static void textureUnpackDXTto565(uint8_t *src, uint16_t *dst, int width, int he
 static void textureUnpackBGR8to565(uint8_t *src, uint16_t *dst, int width, int height) {
 	const int pixels = width * height;
 	for (int i = 0; i < pixels; ++i, src+=3) {
-		const int r = (src[0] >> 3) << 11;
-		const int g = (src[1] >> 2) << 5;
+		const int r = (src[0] >> 3);
+		const int g = (src[1] >> 2);
 		const int b = (src[2] >> 3);
-		dst[i] = r | g | b;
+		dst[i] = (uint16_t)((r << 11) | (g << 5) | b);
 	}
 }
 
 static void textureUnpackBGRX8to565(uint8_t *src, uint16_t *dst, int width, int height) {
 	const int pixels = width * height;
 	for (int i = 0; i < pixels; ++i, src+=4) {
-		const int r = (src[0] & 0xf8) << 8;
-		const int g = (src[1] & 0xfc) << 3;
+		const int r = (src[0] & 0xf8);
+		const int g = (src[1] & 0xfc);
 		const int b = (src[2] >> 3);
-		dst[i] = r | g | b;
+		dst[i] = (uint16_t)((r << 8) | (g << 3)| b);
 	}
 }
 
@@ -133,7 +134,7 @@ static void textureUnpackBGRA8to565(uint8_t *src, uint16_t *dst, int width, int 
 		const int g = ((a * src[1]) >> 10);
 		const int b = (a * src[2]) >> 11;
 
-		dst[i] = ((r>31?31:r) << 11) | ((g>63?63:g) << 5) | (b>31?31:b);
+		dst[i] = (uint16_t)(((r>31?31:r) << 11) | ((g>63?63:g) << 5) | (b>31?31:b));
 	}
 }
 
@@ -154,7 +155,7 @@ static void textureUnpackRGBA16Fto565(const uint16_t *src, uint16_t *dst, int wi
 		const int rf = (int)(sqrtf(float32(src[0])) * scale) >> 3;
 		const int gf = (int)(sqrtf(float32(src[1])) * scale) >> 2;
 		const int bf = (int)(sqrtf(float32(src[2])) * scale) >> 3;
-		dst[i] = ((rf>31?31:rf) << 11) | ((gf>63?63:gf) << 5) | (bf>31?31:bf);
+		dst[i] = (uint16_t)(((rf>31?31:rf) << 11) | ((gf>63?63:gf) << 5) | (bf>31?31:bf));
 	}
 }
 
