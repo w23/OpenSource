@@ -67,14 +67,14 @@ static VMFToken readNextToken(VMFState *state) {
 					if (*c == '\"')
 						break;
 				}
-				token.string.length = c - token.string.str;
+				token.string.length = (int)(c - token.string.str);
 				token.type = VMFTokenType_String;
 				break;
 
 			default:
 				token.string.str = c;
 				while (!CHECK_END && isgraph(*c)) ++c;
-				token.string.length = c - token.string.str;
+				token.string.length = (int)(c - token.string.str);
 				token.type = VMFTokenType_String;
 		} /* switch(*c) */
 
@@ -88,7 +88,7 @@ exit:
 	//else PRINTF("Token %d, (%.*s)", token.type, PRI_SVV(token.string));
 
 	state->data.str = c + 1;
-	state->data.length = end - c - 1;
+	state->data.length = (int)(end - c - 1);
 	return token;
 }
 

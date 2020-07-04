@@ -223,6 +223,7 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 #endif
 		default:
 			ATTO_ASSERT(!"Impossible texture format");
+			return;
 	}
 
 	const int image_size = params.width * params.height * pixel_bits / 8;
@@ -275,7 +276,7 @@ typedef struct {
 	const char *name;
 	int components;
 	GLenum type;
-	GLint normalize;
+	GLboolean normalize;
 	int stride;
 	const void *ptr;
 } RAttrib;
@@ -292,7 +293,7 @@ typedef struct {
 
 //	RENDER_DECLARE_ATTRIB(normal, 3, GL_FLOAT)
 
-static const RAttrib attribs[] = {
+static const RAttrib g_attribs[] = {
 #define RENDER_DECLARE_ATTRIB(n,c,t,N) \
 	{"a_" # n, c, t, N, sizeof(struct BSPModelVertex), (void*)offsetof(struct BSPModelVertex, n)},
 RENDER_LIST_ATTRIBS
@@ -566,9 +567,9 @@ static int render_ProgramInit(RProgram *prog) {
 	prog->name = program;
 
 	for(int i = 0; i < RAttribKind_COUNT; ++i) {
-		prog->attrib_locations[i] = glGetAttribLocation(prog->name, attribs[i].name);
+		prog->attrib_locations[i] = glGetAttribLocation(prog->name, g_attribs[i].name);
 		if (prog->attrib_locations[i] < 0)
-			PRINTF("Cannot locate attribute %s", attribs[i].name);
+			PRINTF("Cannot locate attribute %s", g_attribs[i].name);
 	}
 
 	for(int i = 0; i < RUniformKind_COUNT; ++i) {
@@ -674,7 +675,7 @@ static void renderDrawSet(const struct BSPModel *model, const struct BSPDrawSet 
 
 		if (renderUseMaterial(draw->material) || i == 0 || draw->vbo_offset != vbo_offset) {
 			vbo_offset = draw->vbo_offset;
-			renderApplyAttribs(attribs, &model->vbo, draw->vbo_offset);
+			renderApplyAttribs(g_attribs, &model->vbo, draw->vbo_offset);
 		}
 
 		GL_CALL(glDrawElements(GL_TRIANGLES, draw->count, GL_UNSIGNED_SHORT, (void*)(sizeof(uint16_t) * draw->start)));
@@ -690,7 +691,7 @@ static void renderSkybox(const struct Camera *camera, const struct BSPModel *mod
 		if (!model->skybox[i] || !model->skybox[i]->base_texture.texture)
 			continue;
 		renderUseMaterial(model->skybox[i]);
-		renderApplyAttribs(attribs, &box_buffer, 0);
+		renderApplyAttribs(g_attribs, &box_buffer, 0);
 		GL_CALL(glDrawArrays(GL_TRIANGLES, i*6, 6));
 	}
 	GL_CALL(glEnable(GL_CULL_FACE));

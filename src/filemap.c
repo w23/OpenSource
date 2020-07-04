@@ -47,7 +47,7 @@ void aFileReset(struct AFile *file) {
 }
 
 enum AFileResult aFileOpen(struct AFile *file, const char *filename) {
-	const int filename_len = strlen(filename);
+	const int filename_len = (int)strlen(filename);
 	char *slashes = _alloca(filename_len + 1);
 	for (int i = 0; filename[i] != '\0'; ++i)
 		slashes[i] = filename[i] != '/' ? filename[i] : '\\';
@@ -55,7 +55,7 @@ enum AFileResult aFileOpen(struct AFile *file, const char *filename) {
 
 	wchar_t *filename_w;
 	const int buf_length = MultiByteToWideChar(CP_UTF8, 0, slashes, -1, NULL, 0);
-	filename_w = _alloca(buf_length);
+	filename_w = _alloca(buf_length * sizeof(wchar_t));
 	MultiByteToWideChar(CP_UTF8, 0, slashes, -1, filename_w, buf_length);
 
 	file->impl_.handle = CreateFileW(filename_w, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -76,10 +76,10 @@ enum AFileResult aFileOpen(struct AFile *file, const char *filename) {
 size_t aFileReadAtOffset(struct AFile *file, size_t off, size_t size, void *buffer) {
 	OVERLAPPED overlapped;
 	memset(&overlapped, 0, sizeof(overlapped));
-	overlapped.Offset = off;
+	overlapped.Offset = (DWORD)off;
 
 	DWORD read = 0;
-	if (!ReadFile(file->impl_.handle, buffer, size, &read, &overlapped))
+	if (!ReadFile(file->impl_.handle, buffer, (DWORD)size, &read, &overlapped))
 		PRINTF("Failed to read from file %p", file->impl_.handle);
 
 	return read;
