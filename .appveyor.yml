@@ -7,14 +7,14 @@ configuration:
 
 environment:
   matrix:
-    - COMPILER: Visual Studio 14 2015
-      ARCHITECTURE: x64
-    - COMPILER: Visual Studio 14 2015
-      ARCHITECTURE: Win32
-    - COMPILER: Visual Studio 15 2017
-      ARCHITECTURE: x64
-    - COMPILER: Visual Studio 15 2017
-      ARCHITECTURE: Win32
+    # - COMPILER: Visual Studio 14 2015
+    #   ARCHITECTURE: x64
+    # - COMPILER: Visual Studio 14 2015
+    #   ARCHITECTURE: Win32
+    # - COMPILER: Visual Studio 15 2017
+    #   ARCHITECTURE: x64
+    # - COMPILER: Visual Studio 15 2017
+    #   ARCHITECTURE: Win32
     - COMPILER: Visual Studio 16 2019
       ARCHITECTURE: x64
     - COMPILER: Visual Studio 16 2019
