@@ -24,7 +24,7 @@ void profilerInit() {
 
 void profileEvent(const char *msg, ATimeUs delta) {
 	ATTO_ASSERT(profiler.cursor < 65536);
-	if (profiler.cursor < 0 || profiler.cursor >= COUNTOF(profiler.event))
+	if (profiler.cursor < 0 || profiler.cursor >= (int)COUNTOF(profiler.event))
 		return;
 	profiler.event[profiler.cursor].msg = msg;
 	profiler.event[profiler.cursor].delta = delta;

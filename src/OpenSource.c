@@ -610,7 +610,7 @@ static int configReadFile(const char *cfgfile) {
 	if (AFile_Success != aFileOpen(&file, cfgfile))
 		return 0;
 
-	char *buffer = stackAlloc(&stack_temp, file.size); 
+	char *buffer = stackAlloc(&stack_temp, file.size);
 	if (!buffer)
 		return 0;
 
@@ -801,7 +801,7 @@ void attoAppInit(struct AAppProctable *proctable) {
 	PRINTF("Default platform steam basedir = %s", g_cfg.steam_basedir);
 
 	if (!argsParse(g_args, COUNTOF(g_args), a_app_state->argc, a_app_state->argv)) {
-		PRINTF("Error parsing command line arguments");
+		PRINT("Error parsing command line arguments");
 		goto print_usage_and_exit;
 	}
 
