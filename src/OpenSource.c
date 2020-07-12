@@ -76,8 +76,13 @@ static struct {
 	Map *selected_map;
 } g;
 
+static struct {
+	const char *steam_basedir;
+	int maps_limit;
+} g_cfg;
+
 static Map *opensrcAllocMap(StringView name) {
-	if (g.maps_count >= g.maps_limit) {
+	if (g.maps_count >= g_cfg.maps_limit) {
 		PRINTF("Map limit reached, not trying to add map " PRI_SV, PRI_SVV(name));
 		return NULL;
 	}
@@ -462,10 +467,8 @@ typedef struct {
 	StringView map_offset;
 } Config;
 
-const char *steam_basedir = NULL;
-
 static char *buildSteamPath(const StringView *gamedir, const StringView *path) {
-	const int steam_basedir_length = (int)strlen(steam_basedir);
+	const int steam_basedir_length = (int)strlen(g_cfg.steam_basedir);
 
 	const int length = steam_basedir_length + gamedir->length + path->length + 4;
 	char *value = stackAlloc(&stack_temp, length);
@@ -473,7 +476,7 @@ static char *buildSteamPath(const StringView *gamedir, const StringView *path) {
 		return 0;
 
 	int offset = 0;
-	memcpy(value + offset, steam_basedir, steam_basedir_length); offset += steam_basedir_length;
+	memcpy(value + offset, g_cfg.steam_basedir, steam_basedir_length); offset += steam_basedir_length;
 	value[offset++] = '/';
 	memcpy(value + offset, gamedir->str, gamedir->length); offset += gamedir->length; 
 	value[offset++] = '/';
@@ -576,7 +579,7 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 			stackFreeUpToPosition(&stack_temp, value);
 		} else if (strncasecmp("max_maps", kv->key.str, kv->key.length) == 0) {
 			// FIXME null-terminate
-			g.maps_limit = atoi(kv->value.str);
+			g_cfg.maps_limit = atoi(kv->value.str);
 		} else if (strncasecmp("map", kv->key.str, kv->key.length) == 0) {
 			openSourceAddMap(kv->value);
 		} else if (strncasecmp("z_far", kv->key.str, kv->key.length) == 0) {
@@ -647,75 +650,163 @@ const char *getDefaultSteamBaseDir() {
 	return steam_basedir_w;
 }
 
+typedef int (*ArgFunc)(const char *value, void *user_ptr);
+
+typedef struct {
+	const char *arg;
+	const char *desc;
+	ArgFunc func;
+	void *user_ptr;
+} Arg;
+
+void argsPrintUsage(const Arg* args, int nargs, char const* prog) {
+	PRINTF("Usage: %s", prog);
+	const Arg* in = NULL;
+	for (int i = 0; i < nargs; ++i) {
+		const Arg* arg = args + i;
+		if (arg) {
+			PRINTF("\t-%s: %s", arg->arg, arg->desc);
+		} else {
+			if (!in)
+				in = arg;
+		}
+	}
+
+	if (in)
+		PRINTF("\tfree arguments: %s", in->desc);
+}
+
+
+int argsParse(const Arg* args, int nargs, int argc, char const* const* argv) {
+	const Arg* in = NULL;
+	for (int i = 0; i < nargs; ++i) {
+		if (!args[i].arg) {
+			in = args + i;
+			break;
+		}
+	}
+
+	// TODO:
+	// - handle '--' as delimiter
+	// - handle boolean flags w/o arguments
+	// - long/short args
+	// - optional/mandatory args
+	for (int i = 1; i < argc; ++i) {
+		char const *arg = argv[i];
+		const Arg *handler = NULL;
+		if (arg[0] == '-') {
+			for (int j = 0; j < nargs; ++j) {
+				const Arg* parg = args + j;
+				if (parg->arg && arg[1] == parg->arg[0]) {
+					if (i == argc - 1) {
+						PRINTF("Option %s requres an argument", arg);
+						return 0;
+					}
+					handler = parg;
+					++i;
+					arg = argv[i];
+					break;
+				}
+			}
+		} else {
+			handler = in;
+		}
+
+		if (!handler) {
+			PRINTF("Unrecognized option %s", arg);
+			return 0;
+		}
+
+		if (handler->func(arg, handler->user_ptr) == 0) {
+			PRINTF("Error handling option -%s with argument '%s'", handler->arg, arg);
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+int argStoreString(const char *str, void *user_ptr) {
+	const char** pstr = user_ptr;
+	*pstr = str;
+	return 1;
+}
+
+int argStoreInt(const char *str, void *user_ptr) {
+	int *pint = user_ptr;
+	// FIXME null-terminate
+	*pint = atoi(str);
+	return 1;
+}
+
+int argAddVpkToCollection(const char *str, void *unused) {
+	(void)unused;
+	ICollection *collection = collectionCreateVPK(&mem, str);
+	if (!collection) {
+		PRINTF("Cannot open VPK %s", str);
+		return 0;
+	}
+	g.collection_chain = addToCollectionChain(g.collection_chain, collection);
+	return 1;
+}
+
+int argAddDirToCollection(const char *str, void *unused) {
+	(void)unused;
+	ICollection *collection = collectionCreateFilesystem(&mem, str);
+	if (!collection) {
+		PRINTF("Cannot open filesystem collection %s", str);
+		return 0;
+	}
+	g.collection_chain = addToCollectionChain(g.collection_chain, collection);
+	return 1;
+}
+
+int argReadConfigFile(const char *str, void *unused) {
+	(void)unused;
+	if (!configReadFile(str)) {
+		PRINTF("Cannot read config file %s", str);
+		return 0;
+	}
+	return 1;
+}
+
+int argAddMap(const char *str, void *unused) {
+	(void)unused;
+	const StringView map = { .str = str, .length = (int)strlen(str) };
+	openSourceAddMap(map);
+	return 1;
+}
+
+static Arg g_args[] = {
+	{"s", "Override steam basedir", argStoreString, (void*)&g_cfg.steam_basedir},
+	{"c", "Read config file", argReadConfigFile, NULL},
+	{"p", "Add VPK file to list of files to load assets from", argAddVpkToCollection, NULL},
+	{"d", "Add directory to list of files to load assets from", argAddDirToCollection, NULL},
+	{"n", "Specify a limit of number of maps to load", argStoreInt, &g_cfg.maps_limit},
+	// TODO -h
+	{NULL, "Add map name to list of maps to load", argAddMap, NULL},
+};
+
 void attoAppInit(struct AAppProctable *proctable) {
 	profilerInit();
 	//aGLInit();
 	g.collection_chain = NULL;
 	g.patches = NULL;
-	g.maps_limit = 1;
+	g_cfg.maps_limit = 1;
 	g.maps_count = 0;
 	g.selected_map = NULL;
 	g.R = 0;
 
-	steam_basedir = getDefaultSteamBaseDir();
-	PRINTF("Steam basedir = %s", steam_basedir);
+	g_cfg.steam_basedir = getDefaultSteamBaseDir();
+	PRINTF("Default platform steam basedir = %s", g_cfg.steam_basedir);
 
-	for (int i = 1; i < a_app_state->argc; ++i) {
-		const char *argv = a_app_state->argv[i];
-		if (strcmp(argv, "-s") == 0) {
-			if (i == a_app_state->argc - 1) {
-				aAppDebugPrintf("-s requires an argument");
-				goto print_usage_and_exit;
-			}
-			const char *value = a_app_state->argv[++i];
-
-			steam_basedir = value;
-			PRINTF("Steam basedir = %s", steam_basedir);
-		} else if (strcmp(argv, "-c") == 0) {
-			if (i == a_app_state->argc - 1) {
-				aAppDebugPrintf("-c requires an argument");
-				goto print_usage_and_exit;
-			}
-			const char *value = a_app_state->argv[++i];
-
-			PRINTF("Reading config file %s", value);
-			if (!configReadFile(value)) {
-				PRINTF("Cannot read config file %s", value);
-				goto print_usage_and_exit;
-			}
-		} else if (strcmp(argv, "-p") == 0) {
-			if (i == a_app_state->argc - 1) {
-				aAppDebugPrintf("-p requires an argument");
-				goto print_usage_and_exit;
-			}
-			const char *value = a_app_state->argv[++i];
-
-			PRINTF("Adding vpk collection at %s", value);
-			g.collection_chain = addToCollectionChain(g.collection_chain, collectionCreateVPK(&mem, value));
-		} else if (strcmp(argv, "-d") == 0) {
-			if (i == a_app_state->argc - 1) {
-				aAppDebugPrintf("-d requires an argument");
-				goto print_usage_and_exit;
-			}
-			const char *value = a_app_state->argv[++i];
-
-			PRINTF("Adding dir collection at %s", value);
-			g.collection_chain = addToCollectionChain(g.collection_chain, collectionCreateFilesystem(&mem, value));
-		} else if (strcmp(argv, "-n") == 0) {
-			if (i == a_app_state->argc - 1) {
-				aAppDebugPrintf("-n requires an argument");
-				goto print_usage_and_exit;
-			}
-			const char *value = a_app_state->argv[++i];
-
-			g.maps_limit = atoi(value);
-			if (g.maps_limit < 1)
-				g.maps_limit = 1;
-		} else {
-			const StringView map = { .str = argv, .length = (int)strlen(argv) };
-			openSourceAddMap(map);
-		}
+	if (!argsParse(g_args, COUNTOF(g_args), a_app_state->argc, a_app_state->argv)) {
+		PRINTF("Error parsing command line arguments");
+		goto print_usage_and_exit;
 	}
+
+	if (g_cfg.maps_limit < 1)
+		g_cfg.maps_limit = 1;
 
 	if (!g.maps_count || !g.collection_chain) {
 		aAppDebugPrintf("At least one map and one collection required");
@@ -731,6 +822,6 @@ void attoAppInit(struct AAppProctable *proctable) {
 	return;
 
 print_usage_and_exit:
-	aAppDebugPrintf("usage: %s <-c config> <-p vpk> <-d path> ... <mapname0> <mapname1> ...", a_app_state->argv[0]);
+	argsPrintUsage(g_args, COUNTOF(g_args), a_app_state->argv[0]);
 	aAppTerminate(1);
 }
