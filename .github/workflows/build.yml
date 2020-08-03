@@ -27,8 +27,12 @@ jobs:
     - name: List assets a
       run: dir ${{ runner.workspace }}/build
     - name: List assets b
+      if: matrix.os == 'windows-latest'
+      shell: cmd
       run: dir ${{ runner.workspace }}\build
     - name: List assets c
+      if: matrix.os == 'windows-latest'
+      shell: cmd
       run: dir ${{ runner.workspace }}\\build
 
   release:
