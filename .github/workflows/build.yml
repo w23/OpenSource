@@ -8,6 +8,9 @@ jobs:
         os: [windows-latest, ubuntu-latest]
 
     steps:
+    - name: Install dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt install libxfixes-dev mesa-common-dev libgl1-mesa-dev
     - name: Checkout
       uses: actions/checkout@v2
       with:
