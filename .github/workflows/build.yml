@@ -1,0 +1,19 @@
+name: CMake release build
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Create build dir
+      run: cmake -E make_directory ${{ runner.workspace }}/build
+    - name: Configure
+      working-directory: ${{ runner.workspace }}/build
+      run: cmake ${{ runner.workspace }} -DCMAKE_BUILD_TYPE=Release
+    - name: Build
+      working-directory: ${{ runner.workspace }}/build
+      run: cmake --build . --config Release
