@@ -46,4 +46,4 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ${{ runner.workspace }}/build/OpenSource.exe
           asset_name: OpenSource.exe
-          asset_countent_type: application/vnd.microsoft.portable-executable
+          asset_content_type: application/vnd.microsoft.portable-executable
