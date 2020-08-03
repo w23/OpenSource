@@ -2,7 +2,7 @@ name: CMake release build
 on: [push, pull_request]
 jobs:
   build:
-    runs-on: ${{ matrix.config.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest]
