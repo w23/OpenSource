@@ -8,7 +8,10 @@ jobs:
         os: [windows-latest, ubuntu-latest]
 
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: true
     - name: Create build dir
       run: cmake -E make_directory ${{ runner.workspace }}/build
     - name: Configure
