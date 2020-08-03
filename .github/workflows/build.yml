@@ -24,3 +24,26 @@ jobs:
     - name: Build
       working-directory: ${{ runner.workspace }}/build
       run: cmake --build . --config Release
+  release:
+    if: contains(github.ref , 'tags/v')
+    runs-on: windows-latest
+    needs: build
+    steps:
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+      - name: Upload release
+        id: upload_release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ runner.workspace }}/build/OpenSource.exe
+          asset_name: OpenSource.exe
+          asset_countent_type: application/vnd.microsoft.portable-executable
