@@ -12,8 +12,9 @@ jobs:
     - name: Create build dir
       run: cmake -E make_directory ${{ runner.workspace }}/build
     - name: Configure
+      shell: bash
       working-directory: ${{ runner.workspace }}/build
-      run: cmake ${{ runner.workspace }} -DCMAKE_BUILD_TYPE=Release
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=Release
     - name: Build
       working-directory: ${{ runner.workspace }}/build
       run: cmake --build . --config Release
