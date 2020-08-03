@@ -44,6 +44,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ runner.workspace }}/build/OpenSource.exe
+          asset_path: ${{ runner.workspace }}/build/Release/OpenSource.exe
           asset_name: OpenSource.exe
           asset_content_type: application/vnd.microsoft.portable-executable
