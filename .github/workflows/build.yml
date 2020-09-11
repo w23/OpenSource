@@ -8,6 +8,9 @@ jobs:
         os: [windows-latest, ubuntu-latest]
 
     steps:
+    - name: Apt update
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt update
     - name: Install dependencies
       if: matrix.os == 'ubuntu-latest'
       run: sudo apt install libxfixes-dev mesa-common-dev libgl1-mesa-dev
