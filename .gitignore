@@ -18,3 +18,4 @@ tags
 *.opendb
 *.db
 *.user
+.clangd

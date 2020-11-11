@@ -12,6 +12,7 @@ struct BSPModelVertex {
 	struct AVec2f lightmap_uv;
 	struct AVec2f tex_uv;
 	struct { uint8_t r, g, b; } average_color;
+	uint8_t padding_;
 };
 
 struct BSPDraw {

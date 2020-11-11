@@ -21,7 +21,8 @@ set(SOURCES
 	src/texture.c
 	src/cache.c
 	src/dxt.c
-	src/render.c
+	# src/render.c
+	src/render_vk.c
 	src/profiler.c
 )
 
@@ -49,9 +50,25 @@ set(HEADERS
 	src/zip.h
 )
 
+function(add_shaders)
+	cmake_parse_arguments(PARSE_ARGV 0 SHADERS "" "TARGET" "FILES")
+	foreach(SHADER ${SHADERS_FILES})
+		add_custom_command(
+			OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv
+			COMMAND glslc
+			${CMAKE_SOURCE_DIR}/src/${SHADER} -o ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv
+			MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/${SHADER}
+			COMMENT "Building ${SHADER}"
+		)
+		list(APPEND SHADERS_DEPS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv")
+	endforeach()
+	add_custom_target(${SHADERS_TARGET} ALL DEPENDS ${SHADERS_DEPS})
+endfunction()
+add_shaders(TARGET vk_shaders FILES m_unknown.frag m_unknown.vert)
+
 add_executable(OpenSource ${EXE_SUBSYSTEM} ${SOURCES} ${HEADERS})
 
-target_link_libraries(OpenSource atto)
+target_link_libraries(OpenSource atto m)
 set_target_properties(OpenSource PROPERTIES
 	C_STANDARD 99
 	C_STANDARD_REQUIRED TRUE

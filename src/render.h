@@ -43,8 +43,10 @@ typedef struct {
 void renderTextureUpload(RTexture *texture, RTextureUploadParams params);
 
 typedef struct {
-	int gl_name;
-	int type;
+	// FIXME GL
+	// int gl_name;
+	// int type;
+	void *vkDevMem, *vkBuf;
 } RBuffer;
 
 typedef enum {
@@ -53,7 +55,13 @@ typedef enum {
 } RBufferType;
 
 int renderInit();
-void renderResize(int w, int h);
+
+
+// FIXME if GL
+void renderGlResize(int w, int h);
+// FIXME elif VK
+void renderVkSwapchainCreated(int w, int h);
+void renderVkSwapchainDestroy();
 
 void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void *data);
 

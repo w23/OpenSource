@@ -293,9 +293,17 @@ static void opensrcInit() {
 			g.center, aVec3f(0.f, 0.f, 1.f));
 }
 
-static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int old_h) {
-	(void)(timestamp); (void)(old_w); (void)(old_h);
-	renderResize(a_app_state->width, a_app_state->height);
+// FIXME GL
+/* static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int old_h) { */
+/* 	(void)(timestamp); (void)(old_w); (void)(old_h); */
+/* 	renderResize(a_app_state->width, a_app_state->height); */
+/*  */
+/* 	cameraProjection(&g.camera, 1.f, g.R, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height); */
+/* 	cameraRecompute(&g.camera); */
+/* } */
+
+static void opensrcResizeVk() {
+	renderVkSwapchainCreated(a_app_state->width, a_app_state->height);
 
 	cameraProjection(&g.camera, 1.f, g.R, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
 	cameraRecompute(&g.camera);
@@ -724,7 +732,12 @@ void attoAppInit(struct AAppProctable *proctable) {
 
 	opensrcInit();
 
-	proctable->resize = opensrcResize;
+// FIXME if GL
+	//proctable->resize = opensrcResize;
+// FIXME elif VK
+	proctable->swapchain_created = opensrcResizeVk;
+	proctable->swapchain_will_destroy = renderVkSwapchainDestroy;
+
 	proctable->paint = opensrcPaint;
 	proctable->key = opensrcKeyPress;
 	proctable->pointer = opensrcPointer;
