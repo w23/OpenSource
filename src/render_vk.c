@@ -299,8 +299,15 @@ void renderBegin() {
 void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 	if (!model->detailed.draws_count) return;
 
-	const struct AMat4f mvp = aMat4fMul(params->camera->view_projection,
-			aMat4fTranslation(params->translation));
+	// Vulkan has Y pointing down, and z should end up in (0, 1)
+	const struct AMat4f vk_fixup = {
+		aVec4f(1, 0, 0, 0),
+		aVec4f(0, -1, 0, 0),
+		aVec4f(0, 0, .5, 0),
+		aVec4f(0, 0, .5, 1)
+	};
+	const struct AMat4f mvp = aMat4fMul(vk_fixup, aMat4fMul(params->camera->view_projection,
+			aMat4fTranslation(params->translation)));
 
 	vkCmdPushConstants(g.cmdbuf, g.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
 
