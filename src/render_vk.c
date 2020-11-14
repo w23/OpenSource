@@ -21,38 +21,82 @@ static struct {
 	VkFramebuffer *framebuffers;
 	VkPipeline pipeline;
 
-	//VkDeviceMemory devmem;
+	VkFormat depth_format;
+	VkImage depth_image;
+	VkImageView depth_image_view;
+	VkDeviceMemory depth_memory;
+
+	// Preallocated device memory
+	//struct DeviceMemoryBumpAllocator alloc;
 
 	VkCommandPool cmdpool;
 	VkCommandBuffer cmdbuf;
 } g;
 
+static VkImage createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage) {
+	VkImageCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+	ici.imageType = VK_IMAGE_TYPE_2D;
+	ici.extent.width = width;
+	ici.extent.height = height;
+	ici.extent.depth = 1;
+	ici.mipLevels = 1;
+	ici.arrayLayers = 1;
+	ici.format = format;
+	ici.tiling = tiling;
+	ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	ici.usage = usage;
+	ici.samples = VK_SAMPLE_COUNT_1_BIT;
+	ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VkImage image;
+	AVK_CHECK_RESULT(vkCreateImage(a_vk.dev, &ici, NULL, &image));
+
+	return image;
+}
+
 static void createRenderPass() {
-	VkAttachmentDescription attachment = {0};
-	attachment.format = VK_FORMAT_B8G8R8A8_SRGB;// FIXME too early a_vk.swapchain.info.imageFormat;
-	attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	//attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	//attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	VkAttachmentDescription attachments[2] = {{
+		.format = VK_FORMAT_B8G8R8A8_SRGB,// FIXME too early a_vk.swapchain.info.imageFormat;
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		//attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		//attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR},
+	{ // Depth
+		.format = g.depth_format,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		//attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		//attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+	}};
 
 	VkAttachmentReference color_attachment = {0};
 	color_attachment.attachment = 0;
 	color_attachment.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+	VkAttachmentReference depth_attachment = {0};
+	depth_attachment.attachment = 1;
+	depth_attachment.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
 	VkSubpassDescription subdesc = {0};
 	subdesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subdesc.colorAttachmentCount = 1;
 	subdesc.pColorAttachments = &color_attachment;
+	subdesc.pDepthStencilAttachment = &depth_attachment;
 
 	VkRenderPassCreateInfo rpci = {0};
 	rpci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	rpci.attachmentCount = 1;
-	rpci.pAttachments = &attachment;
+	rpci.attachmentCount = COUNTOF(attachments);
+	rpci.pAttachments = attachments;
 	rpci.subpassCount = 1;
 	rpci.pSubpasses = &subdesc;
 	AVK_CHECK_RESULT(vkCreateRenderPass(a_vk.dev, &rpci, NULL, &g.render_pass));
@@ -162,6 +206,11 @@ static void createPipeline() {
 	color_blend.attachmentCount = 1;
 	color_blend.pAttachments = &blend_attachment;
 
+	VkPipelineDepthStencilStateCreateInfo depth = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+	depth.depthTestEnable = VK_TRUE;
+	depth.depthWriteEnable = VK_TRUE;
+	depth.depthCompareOp = VK_COMPARE_OP_LESS;
+
 	VkGraphicsPipelineCreateInfo gpci = {0};
 	gpci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gpci.stageCount = COUNTOF(shader_stages);
@@ -172,6 +221,7 @@ static void createPipeline() {
 	gpci.pRasterizationState = &raster_state;
 	gpci.pMultisampleState = &multi_state;
 	gpci.pColorBlendState = &color_blend;
+	gpci.pDepthStencilState = &depth;
 	gpci.layout = g.pipeline_layout;
 	gpci.renderPass = g.render_pass;
 	gpci.subpass = 0;
@@ -185,7 +235,6 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 
 int renderInit() {
 	g.done = aVkCreateSemaphore();
-	createRenderPass();
 	createShaders();
 	createCommandPool();
 
@@ -196,7 +245,74 @@ int renderInit() {
 	return 1;
 }
 
+static VkFormat findSupportedImageFormat(const VkFormat *candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+	for (int i = 0; candidates[i] != VK_FORMAT_UNDEFINED; ++i) {
+		VkFormatProperties props;
+		vkGetPhysicalDeviceFormatProperties(a_vk.phys_dev, candidates[i], &props);
+		VkFormatFeatureFlags props_format;
+		switch (tiling) {
+			case VK_IMAGE_TILING_OPTIMAL:
+				props_format = props.optimalTilingFeatures; break;
+			case VK_IMAGE_TILING_LINEAR:
+				props_format = props.linearTilingFeatures; break;
+			default:
+				return VK_FORMAT_UNDEFINED;
+		}
+		if ((props_format & features) == features)
+			return candidates[i];
+	}
+
+	return VK_FORMAT_UNDEFINED;
+}
+
+static const VkFormat depth_formats[] = {
+	VK_FORMAT_D32_SFLOAT,
+	VK_FORMAT_D32_SFLOAT_S8_UINT,
+	VK_FORMAT_D24_UNORM_S8_UINT,
+	VK_FORMAT_D16_UNORM,
+	VK_FORMAT_D16_UNORM_S8_UINT,
+	VK_FORMAT_UNDEFINED
+};
+
+static void createDepthImage(int w, int h) {
+	const VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
+	const VkFormatFeatureFlags feature = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	const VkImageUsageFlags usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	g.depth_format = findSupportedImageFormat(depth_formats, tiling, feature);
+	g.depth_image = createImage(w, h, g.depth_format, tiling, usage);
+
+	VkMemoryRequirements memreq;
+	vkGetImageMemoryRequirements(a_vk.dev, g.depth_image, &memreq);
+
+	VkMemoryAllocateInfo mai={.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+	mai.allocationSize = memreq.size;
+	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &g.depth_memory));
+	AVK_CHECK_RESULT(vkBindImageMemory(a_vk.dev, g.depth_image, g.depth_memory, 0));
+
+	VkImageViewCreateInfo ivci = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+	ivci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	ivci.format = g.depth_format;
+	ivci.image = g.depth_image;
+	ivci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	ivci.subresourceRange.levelCount = 1;
+	ivci.subresourceRange.layerCount = 1;
+	AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, &g.depth_image_view));
+}
+
+static void destroyDepthImage() {
+	vkDestroyImageView(a_vk.dev, g.depth_image_view, NULL);
+	vkDestroyImage(a_vk.dev, g.depth_image, NULL);
+	vkFreeMemory(a_vk.dev, g.depth_memory, NULL);
+}
+
 void renderVkSwapchainCreated(int w, int h) {
+	createDepthImage(w, h);
+
+	// Needs to know depth and color formats
+	if (!g.render_pass)
+		createRenderPass();
+
 	const uint32_t num_images = a_vk.swapchain.num_images;
 	// FIXME malloc ;_;
 	g.image_views = malloc(num_images * sizeof(VkImageView));
@@ -211,10 +327,14 @@ void renderVkSwapchainCreated(int w, int h) {
 		ivci.subresourceRange.layerCount = 1;
 		AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, g.image_views + i));
 
+		const VkImageView attachments[2] = {
+			g.image_views[i],
+			g.depth_image_view
+		};
 		VkFramebufferCreateInfo fbci = {.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
 		fbci.renderPass = g.render_pass;
-		fbci.attachmentCount = 1;
-		fbci.pAttachments = g.image_views + i;
+		fbci.attachmentCount = COUNTOF(attachments);
+		fbci.pAttachments = attachments;
 		fbci.width = w;
 		fbci.height = h;
 		fbci.layers = 1;
@@ -232,6 +352,8 @@ void renderVkSwapchainDestroy() {
 	}
 	free(g.image_views);
 	free(g.framebuffers);
+
+	destroyDepthImage();
 }
 
 void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void *data) {
@@ -276,7 +398,10 @@ void renderBegin() {
 	beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmdbuf, &beginfo));
 
-	VkClearValue clear_value = {0};
+	VkClearValue clear_value[2] = {
+		{.color = {{0., 0., 0., 0.}}},
+		{.depthStencil = {1., 0.}}
+	};
 	/* clear_value.color.float32[0] = .5f + .5f * sinf(t); */
 	/* clear_value.color.float32[1] = .5f + .5f * sinf(t*3); */
 	/* clear_value.color.float32[2] = .5f + .5f * sinf(t*5); */
@@ -289,8 +414,8 @@ void renderBegin() {
 	rpbi.renderArea.offset.x = rpbi.renderArea.offset.y = 0;
 	rpbi.renderArea.extent.width = a_app_state->width;
 	rpbi.renderArea.extent.height = a_app_state->height;
-	rpbi.clearValueCount = 1;
-	rpbi.pClearValues = &clear_value;
+	rpbi.clearValueCount = COUNTOF(clear_value);
+	rpbi.pClearValues = clear_value;
 	vkCmdBeginRenderPass(g.cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
 	vkCmdBindPipeline(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.pipeline);
