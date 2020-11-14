@@ -402,12 +402,6 @@ void renderBegin() {
 		{.color = {{0., 0., 0., 0.}}},
 		{.depthStencil = {1., 0.}}
 	};
-	/* clear_value.color.float32[0] = .5f + .5f * sinf(t); */
-	/* clear_value.color.float32[1] = .5f + .5f * sinf(t*3); */
-	/* clear_value.color.float32[2] = .5f + .5f * sinf(t*5); */
-	/* clear_value.color.float32[3] = 1.f; */
-	/* clear_value.color.uint32[0] = 0xffffffff; */
-	/* clear_value.color.uint32[3] = 0xffffffff; */
 	VkRenderPassBeginInfo rpbi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
 	rpbi.renderPass = g.render_pass;
 	rpbi.framebuffer = g.framebuffers[a_vk.swapchain.current_frame_image_index];
@@ -443,14 +437,6 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 		vkCmdBindIndexBuffer(g.cmdbuf, (VkBuffer)model->ibo.vkBuf, 0, VK_INDEX_TYPE_UINT16);
 		vkCmdDrawIndexed(g.cmdbuf, draw->count, 1, draw->start, 0, 0);
 	}
-
-	/* const int N = 32; */
-	/* for (int i = 0; i < N; ++i) { */
-	/* 	const float it = i / (float)N; */
-	/* 	const float tt = t*(.8+it*.2) + it * ((1. + sin(t*.3))*.15 + .7) * 20.; */
-	/* 	vkCmdPushConstants(cmdbuf, pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float), &tt); */
-	/* 	vkCmdDraw(cmdbuf, 3, 1, 0, 0); */
-	/* } */
 }
 
 void renderEnd(const struct Camera *camera)
