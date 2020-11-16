@@ -400,7 +400,7 @@ static RProgram programs[MShader_COUNT] = {
 				"vec4 albedo = texture2D(u_tex0, v_tex_uv/u_tex0_size);\n"
 				"vec3 lm = texture2D(u_lightmap, v_lightmap_uv).xyz;\n"
 				"vec3 color = albedo.xyz * lm;\n"
-				"gl_FragColor = vec4(color, 1.);\n"
+				"gl_FragColor = vec4(color * 2., 1.);\n"
 			"}\n"
 			},
 		{ -1 }, { -1 }

@@ -368,6 +368,7 @@ static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 		else
 			aAppTerminate(0);
 		break;
+	// TODO: what if previous !pressed was lost?
 	case AK_W: g.forward += pressed?1:-1; break;
 	case AK_S: g.forward += pressed?-1:1; break;
 	case AK_A: g.right += pressed?-1:1; break;
