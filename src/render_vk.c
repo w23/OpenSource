@@ -8,23 +8,53 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+/* struct DeviceMemoryBumpAllocator { */
+/* 	VkDeviceMemory devmem; */
+/* 	size_t size; */
+/* 	size_t offet; */
+/* }; */
+/*  */
+/* static struct DeviceMemoryBumpAllocator createDeviceMemory(size_t size, uint32_t type_index_bits, VkMemoryPropertyFlags props) { */
+/* 	VkMemoryAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; */
+/* 	alloc_info.allocationSize = size; */
+/* 	alloc_info.memoryTypeIndex = aVkFindMemoryWithType(type_index_bits, props); */
+/*  */
+/* 	struct DeviceMemoryBumpAllocator ret = {0}; */
+/* 	const VkResult alloc_result = vkAllocateMemory(a_vk.dev, &alloc_info, NULL, &ret.devmem); */
+/*  */
+/* 	if (alloc_result == VK_ERROR_OUT_OF_DEVICE_MEMORY) */
+/* 		return ret; */
+/*  */
+/* 	AVK_CHECK_RESULT(alloc_result); */
+/*  */
+/* 	ret.size = size; */
+/* 	return ret; */
+/* } */
+
+#define MAX_DESC_SETS 32
+
 static struct {
 	VkFence fence;
 	VkSemaphore done;
 	VkRenderPass render_pass;
 
-	VkPipelineLayout pipeline_layout;
-	VkShaderModule module_vertex;
-	VkShaderModule module_fragment;
-
 	VkImageView *image_views;
 	VkFramebuffer *framebuffers;
-	VkPipeline pipeline;
 
 	VkFormat depth_format;
 	VkImage depth_image;
 	VkImageView depth_image_view;
 	VkDeviceMemory depth_memory;
+
+	VkDescriptorSetLayout descset_layout;
+	VkPipelineLayout pipeline_layout;
+	VkShaderModule module_vertex;
+	VkShaderModule module_fragment;
+	VkDescriptorPool desc_pool;
+	VkDescriptorSet desc_sets[MAX_DESC_SETS];
+	int next_free_set;
+
+	VkPipeline pipeline;
 
 	// Preallocated device memory
 	//struct DeviceMemoryBumpAllocator alloc;
@@ -148,15 +178,53 @@ static void createShaders() {
 	push_const.size = sizeof(AMat4f);
 	push_const.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+	VkDescriptorSetLayoutBinding bindings[] = {{
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+		},
+	};
+	VkDescriptorSetLayoutCreateInfo dslci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	dslci.bindingCount = COUNTOF(bindings);
+	dslci.pBindings = bindings;
+	dslci.flags = 0;
+	AVK_CHECK_RESULT(vkCreateDescriptorSetLayout(a_vk.dev, &dslci, NULL, &g.descset_layout));
+
 	VkPipelineLayoutCreateInfo plci = {0};
 	plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	plci.setLayoutCount = 0;
+	plci.setLayoutCount = 1;
+	plci.pSetLayouts = &g.descset_layout;
 	plci.pushConstantRangeCount = 1;
 	plci.pPushConstantRanges = &push_const;
 	AVK_CHECK_RESULT(vkCreatePipelineLayout(a_vk.dev, &plci, NULL, &g.pipeline_layout));
 
 	g.module_vertex = loadShaderFromFile("m_unknown.vert.spv");
 	g.module_fragment = loadShaderFromFile("m_unknown.frag.spv");
+
+	VkDescriptorPoolSize dps[] = {
+		{
+			.type = bindings[0].descriptorType,
+			.descriptorCount = MAX_DESC_SETS,
+		}
+	};
+	VkDescriptorPoolCreateInfo dpci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+	dpci.pPoolSizes = dps;
+	dpci.poolSizeCount = COUNTOF(dps);
+	dpci.maxSets = MAX_DESC_SETS;
+	AVK_CHECK_RESULT(vkCreateDescriptorPool(a_vk.dev, &dpci, NULL, &g.desc_pool));
+
+	{
+		VkDescriptorSetLayout layouts[MAX_DESC_SETS];
+		for (int i = 0; i < MAX_DESC_SETS; ++i)
+			layouts[i] = g.descset_layout;
+
+		VkDescriptorSetAllocateInfo dsai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+		dsai.descriptorPool = g.desc_pool;
+		dsai.descriptorSetCount = dpci.maxSets;
+		dsai.pSetLayouts = layouts;
+		AVK_CHECK_RESULT(vkAllocateDescriptorSets(a_vk.dev, &dsai, g.desc_sets));
+	}
 }
 
 static void createCommandPool() {
@@ -194,9 +262,9 @@ static void createPipeline() {
 
 	VkVertexInputAttributeDescription attribs[] = {
 		{.binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct BSPModelVertex, vertex)},
-		/* {.binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, lightmap_uv)}, */
+		{.binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, lightmap_uv)},
 		/* {.binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, tex_uv)}, */
-		{.binding = 0, .location = 1, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
+		{.binding = 0, .location = 2, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
 	};
 
 	VkPipelineVertexInputStateCreateInfo vertex_input = {0};
@@ -390,9 +458,38 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 		AVK_CHECK_RESULT(vkQueueWaitIdle(a_vk.main_queue));
 	}
 
+	VkImageView imview;
+	VkImageViewCreateInfo ivci = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+	ivci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	ivci.format = VK_FORMAT_R5G6B5_UNORM_PACK16;
+	ivci.image = image;
+	ivci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	ivci.subresourceRange.levelCount = 1;
+	ivci.subresourceRange.layerCount = 1;
+	AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, &imview));
+
+	VkSamplerCreateInfo sci = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	sci.magFilter = VK_FILTER_NEAREST;
+	sci.minFilter = VK_FILTER_NEAREST;
+	sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	//sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.anisotropyEnable = VK_FALSE;
+	sci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	sci.unnormalizedCoordinates = VK_FALSE;
+	sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+	VkSampler sampler;
+	AVK_CHECK_RESULT(vkCreateSampler(a_vk.dev, &sci, NULL, &sampler));
+
 	destroyBuffer(staging);
 	texture->vkDevMem = devmem;
 	texture->vkImage = image;
+	texture->vkImageView = imview;
+	texture->vkSampler = sampler;
+	texture->width = params.width;
+	texture->height = params.height;
+	texture->format = params.format;
 }
 
 int renderInit() {
@@ -556,10 +653,15 @@ void renderBegin() {
 	vkCmdBeginRenderPass(g.cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
 	vkCmdBindPipeline(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.pipeline);
+
+	g.next_free_set = 0;
 }
 
 void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 	if (!model->detailed.draws_count) return;
+
+	// FIXME HOW
+	if (g.next_free_set >= MAX_DESC_SETS) return;
 
 	// Vulkan has Y pointing down, and z should end up in (0, 1)
 	const struct AMat4f vk_fixup = {
@@ -572,6 +674,29 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 			aMat4fTranslation(params->translation)));
 
 	vkCmdPushConstants(g.cmdbuf, g.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
+
+	VkDescriptorSet set = g.desc_sets[g.next_free_set];
+	g.next_free_set++;
+
+	VkDescriptorImageInfo dii = {
+		.sampler = model->lightmap.vkSampler,
+		.imageView = model->lightmap.vkImageView,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkWriteDescriptorSet wds[] = {
+		{
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = set,
+			.dstBinding = 0,
+			.dstArrayElement = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.pImageInfo = &dii,
+		}
+	};
+	vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
+
+	vkCmdBindDescriptorSets(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.pipeline_layout, 0, 1, &set, 0, NULL);
 
 	for (int i = 0; i < model->detailed.draws_count; ++i) {
 		const struct BSPDraw* draw = model->detailed.draws + i;
@@ -622,6 +747,7 @@ void renderDestroy() {
 	vkDestroyCommandPool(a_vk.dev, g.cmdpool, NULL);
 
 	vkDestroyPipelineLayout(a_vk.dev, g.pipeline_layout, NULL);
+	vkDestroyDescriptorSetLayout(a_vk.dev, g.descset_layout, NULL);
 
 	vkDestroyShaderModule(a_vk.dev, g.module_fragment, NULL);
 	vkDestroyShaderModule(a_vk.dev, g.module_vertex, NULL);
