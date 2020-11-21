@@ -33,6 +33,46 @@ static struct {
 	VkCommandBuffer cmdbuf;
 } g;
 
+struct AVkMemBuffer {
+	VkBuffer buf;
+	VkDeviceMemory devmem;
+	size_t size;
+};
+
+static void destroyBuffer(struct AVkMemBuffer buf) {
+	vkDestroyBuffer(a_vk.dev, buf.buf, NULL);
+	vkFreeMemory(a_vk.dev, buf.devmem, NULL);
+}
+
+static struct AVkMemBuffer createBufferWithData(VkBufferUsageFlags usage, int size, const void *data) {
+	struct AVkMemBuffer buf;
+	VkBufferCreateInfo bci = {0};
+	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bci.size = size;
+	bci.usage = usage;
+	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &buf.buf));
+
+	VkMemoryRequirements memreq;
+	vkGetBufferMemoryRequirements(a_vk.dev, buf.buf, &memreq);
+	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size);
+
+	VkMemoryAllocateInfo mai={0};
+	mai.allocationSize = memreq.size;
+	mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &buf.devmem));
+	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, buf.buf, buf.devmem, 0));
+
+	void *ptr = NULL;
+	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, buf.devmem, 0, bci.size, 0, &ptr));
+		memcpy(ptr, data, size);
+	vkUnmapMemory(a_vk.dev, buf.devmem);
+
+	buf.size = size;
+	return buf;
+}
+
 static VkImage createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage) {
 	VkImageCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
 	ici.imageType = VK_IMAGE_TYPE_2D;
@@ -231,6 +271,128 @@ static void createPipeline() {
 //#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = -1; } while (0)
 void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	(void)(texture); (void)(params);
+
+	if (params.mip_level > 0)
+		return;
+
+	if (params.format != RTexFormat_RGB565)
+		return;
+
+	// 1. Create VkImage w/ usage = DST|SAMPLED, layout=UNDEFINED
+	// 2. Alloc mem for VkImage and bind it (DEV_LOCAL)
+	const VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
+	const VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	VkImage image = createImage(params.width, params.height, VK_FORMAT_R5G6B5_UNORM_PACK16, tiling, usage);
+	VkDeviceMemory devmem;
+
+	VkMemoryRequirements memreq;
+	vkGetImageMemoryRequirements(a_vk.dev, image, &memreq);
+
+	VkMemoryAllocateInfo mai={.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+	mai.allocationSize = memreq.size;
+	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &devmem));
+	AVK_CHECK_RESULT(vkBindImageMemory(a_vk.dev, image, devmem, 0));
+
+	/* VkImageViewCreateInfo ivci = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; */
+	/* ivci.viewType = VK_IMAGE_VIEW_TYPE_2D; */
+	/* ivci.format = format; */
+	/* ivci.image = image; */
+	/* ivci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT; */
+	/* ivci.subresourceRange.levelCount = 1; */
+	/* ivci.subresourceRange.layerCount = 1; */
+	/* AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, &image_view)); */
+
+	const int bytes_per_pixel = 2;
+	int size = params.width * params.height * bytes_per_pixel;
+
+	// 3. Create/get staging buffer
+	// 		3.1 Create VkBuffer
+	// 		3.2 Alloc mem for VkBuffer and bind it
+	//    3.3 Map staging buffer
+	// 4. memcpy image data to mapped staging buffer
+	struct AVkMemBuffer staging = createBufferWithData(VK_BUFFER_USAGE_TRANSFER_SRC_BIT, size, params.pixels);
+
+	// 5. Create/get cmdbuf for transitions
+	// 	5.1 upload buf -> image:layout:DST
+	// 		5.1.1 transitionToLayout(UNDEFINED -> DST)
+	// 		5.1.2 copyBufferToImage
+	// 	5.2 image:layout:DST -> image:layout:SAMPLED
+	// 		5.2.1 transitionToLayout(DST -> SHADER_READ_ONLY)
+
+	{
+		VkCommandBufferBeginInfo beginfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+		beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmdbuf, &beginfo));
+
+		// 5.1.1
+		VkImageMemoryBarrier image_barrier = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+		image_barrier.image = image;
+		image_barrier.srcAccessMask = 0;
+		image_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		image_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		image_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		image_barrier.subresourceRange = (VkImageSubresourceRange){
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		};
+		vkCmdPipelineBarrier(g.cmdbuf,
+				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				VK_PIPELINE_STAGE_TRANSFER_BIT,
+				0, 0, NULL, 0, NULL, 1, &image_barrier);
+
+		// 5.1.2
+		VkBufferImageCopy region = {0};
+		region.bufferOffset = 0;
+		region.bufferRowLength = 0;
+		region.bufferImageHeight = 0;
+		region.imageSubresource = (VkImageSubresourceLayers){
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.mipLevel = 0,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		};
+		region.imageExtent = (VkExtent3D){
+			.width = params.width,
+			.height = params.height,
+			.depth = 1,
+		};
+		vkCmdCopyBufferToImage(g.cmdbuf, staging.buf, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+		// 5.2.1
+		image_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		image_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		image_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		image_barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		image_barrier.subresourceRange = (VkImageSubresourceRange){
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		};
+		vkCmdPipelineBarrier(g.cmdbuf,
+				VK_PIPELINE_STAGE_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+				0, 0, NULL, 0, NULL, 1, &image_barrier);
+
+		AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmdbuf));
+	}
+
+	{
+		VkSubmitInfo subinfo = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO};
+		subinfo.commandBufferCount = 1;
+		subinfo.pCommandBuffers = &g.cmdbuf;
+		AVK_CHECK_RESULT(vkQueueSubmit(a_vk.main_queue, 1, &subinfo, NULL));
+		AVK_CHECK_RESULT(vkQueueWaitIdle(a_vk.main_queue));
+	}
+
+	destroyBuffer(staging);
+	texture->vkDevMem = devmem;
+	texture->vkImage = image;
 }
 
 int renderInit() {
@@ -357,40 +519,21 @@ void renderVkSwapchainDestroy() {
 }
 
 void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void *data) {
-	VkBuffer buf;
-	VkBufferCreateInfo bci = {0};
-	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bci.size = size;
+	VkBufferUsageFlags usage;
 	switch (type) {
 		case RBufferType_Index:
-			bci.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+			usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 			break;
 		case RBufferType_Vertex:
-			bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+			usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 			break;
+		default:
+			return;
 	}
-	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &buf));
+	struct AVkMemBuffer buf = createBufferWithData(usage, size, data);
 
-	VkMemoryRequirements memreq;
-	vkGetBufferMemoryRequirements(a_vk.dev, buf, &memreq);
-	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size);
-
-	VkDeviceMemory devmem;
-	VkMemoryAllocateInfo mai={0};
-	mai.allocationSize = memreq.size;
-	mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &devmem));
-	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, buf, devmem, 0));
-
-	void *ptr = NULL;
-	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, devmem, 0, bci.size, 0, &ptr));
-		memcpy(ptr, data, size);
-	vkUnmapMemory(a_vk.dev, devmem);
-
-	buffer->vkBuf = buf;
-	buffer->vkDevMem = devmem;
+	buffer->vkBuf = buf.buf;
+	buffer->vkDevMem = buf.devmem;
 }
 
 void renderBegin() {

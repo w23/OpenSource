@@ -26,8 +26,14 @@ typedef enum {
 typedef struct {
 	int width, height;
 	RTexFormat format;
+
+#if ATTO_GL
 	int gl_name;
 	int type_flags;
+#else
+	void *vkImage, *vkDevMem;
+#endif
+
 } RTexture;
 
 typedef struct {
@@ -39,7 +45,9 @@ typedef struct {
 	RTexWrap wrap;
 } RTextureUploadParams;
 
-#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = -1; } while (0)
+//#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = -1; } while (0)
+#define renderTextureInit(texture_ptr) do { *(texture_ptr) = (RTexture){0}; } while (0)
+//void renderTextureInit(RTexture *texture);
 void renderTextureUpload(RTexture *texture, RTextureUploadParams params);
 
 typedef struct {
