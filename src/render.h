@@ -31,7 +31,7 @@ typedef struct {
 	int gl_name;
 	int type_flags;
 #else
-	void *vkImage, *vkDevMem, *vkSampler, *vkImageView;
+	void *vkImage, *vkDevMem, *vkImageView;
 #endif
 
 } RTexture;

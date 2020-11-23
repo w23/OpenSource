@@ -1,6 +1,8 @@
 #include "render.h"
 #include "bsp.h"
 #include "camera.h"
+#include "texture.h"
+#include "material.h"
 
 #include "atto/app.h"
 #include "atto/worobushek.h"
@@ -31,7 +33,7 @@
 /* 	return ret; */
 /* } */
 
-#define MAX_DESC_SETS 32
+#define MAX_DESC_SETS 1024
 
 static struct {
 	VkFence fence;
@@ -45,6 +47,8 @@ static struct {
 	VkImage depth_image;
 	VkImageView depth_image_view;
 	VkDeviceMemory depth_memory;
+
+	VkSampler default_sampler;
 
 	VkDescriptorSetLayout descset_layout;
 	VkPipelineLayout pipeline_layout;
@@ -178,13 +182,34 @@ static void createShaders() {
 	push_const.size = sizeof(AMat4f);
 	push_const.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+	VkSamplerCreateInfo sci = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	sci.magFilter = VK_FILTER_LINEAR;
+	sci.minFilter = VK_FILTER_NEAREST;
+	sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.anisotropyEnable = VK_FALSE;
+	sci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	sci.unnormalizedCoordinates = VK_FALSE;
+	sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+	AVK_CHECK_RESULT(vkCreateSampler(a_vk.dev, &sci, NULL, &g.default_sampler));
+
 	VkDescriptorSetLayoutBinding bindings[] = {{
 			.binding = 0,
 			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 			.descriptorCount = 1,
 			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+			.pImmutableSamplers = &g.default_sampler,
+		},{
+			.binding = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+			.pImmutableSamplers = &g.default_sampler,
 		},
 	};
+
 	VkDescriptorSetLayoutCreateInfo dslci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
 	dslci.bindingCount = COUNTOF(bindings);
 	dslci.pBindings = bindings;
@@ -205,7 +230,7 @@ static void createShaders() {
 	VkDescriptorPoolSize dps[] = {
 		{
 			.type = bindings[0].descriptorType,
-			.descriptorCount = MAX_DESC_SETS,
+			.descriptorCount = MAX_DESC_SETS * 2,
 		}
 	};
 	VkDescriptorPoolCreateInfo dpci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
@@ -263,8 +288,8 @@ static void createPipeline() {
 	VkVertexInputAttributeDescription attribs[] = {
 		{.binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct BSPModelVertex, vertex)},
 		{.binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, lightmap_uv)},
-		/* {.binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, tex_uv)}, */
-		{.binding = 0, .location = 2, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
+		{.binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, tex_uv)},
+		//{.binding = 0, .location = 3, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
 	};
 
 	VkPipelineVertexInputStateCreateInfo vertex_input = {0};
@@ -468,25 +493,10 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	ivci.subresourceRange.layerCount = 1;
 	AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, &imview));
 
-	VkSamplerCreateInfo sci = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
-	sci.magFilter = VK_FILTER_NEAREST;
-	sci.minFilter = VK_FILTER_NEAREST;
-	sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	//sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	sci.anisotropyEnable = VK_FALSE;
-	sci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-	sci.unnormalizedCoordinates = VK_FALSE;
-	sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-
-	VkSampler sampler;
-	AVK_CHECK_RESULT(vkCreateSampler(a_vk.dev, &sci, NULL, &sampler));
-
 	destroyBuffer(staging);
 	texture->vkDevMem = devmem;
 	texture->vkImage = image;
 	texture->vkImageView = imview;
-	texture->vkSampler = sampler;
 	texture->width = params.width;
 	texture->height = params.height;
 	texture->format = params.format;
@@ -501,6 +511,7 @@ int renderInit() {
 	fci.flags = 0;
 	fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	AVK_CHECK_RESULT(vkCreateFence(a_vk.dev, &fci, NULL, &g.fence));
+
 	return 1;
 }
 
@@ -660,9 +671,6 @@ void renderBegin() {
 void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 	if (!model->detailed.draws_count) return;
 
-	// FIXME HOW
-	if (g.next_free_set >= MAX_DESC_SETS) return;
-
 	// Vulkan has Y pointing down, and z should end up in (0, 1)
 	const struct AMat4f vk_fixup = {
 		aVec4f(1, 0, 0, 0),
@@ -675,31 +683,52 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 
 	vkCmdPushConstants(g.cmdbuf, g.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
 
-	VkDescriptorSet set = g.desc_sets[g.next_free_set];
-	g.next_free_set++;
-
-	VkDescriptorImageInfo dii = {
-		.sampler = model->lightmap.vkSampler,
-		.imageView = model->lightmap.vkImageView,
-		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	};
-	VkWriteDescriptorSet wds[] = {
-		{
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet = set,
-			.dstBinding = 0,
-			.dstArrayElement = 0,
-			.descriptorCount = 1,
-			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			.pImageInfo = &dii,
-		}
-	};
-	vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
-
-	vkCmdBindDescriptorSets(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.pipeline_layout, 0, 1, &set, 0, NULL);
-
 	for (int i = 0; i < model->detailed.draws_count; ++i) {
 		const struct BSPDraw* draw = model->detailed.draws + i;
+
+		// FIXME HOW: allocate next descriptor pool
+		if (g.next_free_set >= MAX_DESC_SETS)
+			break;
+
+		{
+			VkDescriptorSet set = g.desc_sets[g.next_free_set];
+			g.next_free_set++;
+
+			{
+				VkDescriptorImageInfo dii_tex = {
+					.imageView = draw->material->base_texture.texture->texture.vkImageView,
+					.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+				};
+				VkDescriptorImageInfo dii_lm = {
+					.imageView = model->lightmap.vkImageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+				VkWriteDescriptorSet wds[] = {
+					{
+						.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+						.dstSet = set,
+						.dstBinding = 1,
+						.dstArrayElement = 0,
+						.descriptorCount = 1,
+						.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+						.pImageInfo = &dii_tex,
+					},
+					{
+						.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+						.dstSet = set,
+						.dstBinding = 0,
+						.dstArrayElement = 0,
+						.descriptorCount = 1,
+						.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+						.pImageInfo = &dii_lm,
+					},
+				};
+				vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
+			}
+
+			vkCmdBindDescriptorSets(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.pipeline_layout, 0, 1, &set, 0, NULL);
+		}
+
 		const VkDeviceSize offset = draw->vbo_offset;
 		vkCmdBindVertexBuffers(g.cmdbuf, 0, 1, (VkBuffer*)&model->vbo.vkBuf, &offset);
 		vkCmdBindIndexBuffer(g.cmdbuf, (VkBuffer)model->ibo.vkBuf, 0, VK_INDEX_TYPE_UINT16);

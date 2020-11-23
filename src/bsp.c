@@ -482,6 +482,7 @@ static void bspLoadDisplacement(
 			v->tex_uv = aVec2f(
 				aVec4fDot(aVec4f3(v->vertex, 1.f), tex_map_u),
 				aVec4fDot(aVec4f3(v->vertex, 1.f), tex_map_v));
+			v->tex_uv = aVec2fAdd(aVec2fMul(face->material->base_texture.transform.scale, v->tex_uv), face->material->base_texture.transform.translate);
 			v->vertex = aVec3fAdd(aVec3fMix(vl, vr, tx), aVec3fMulf(aVec3f(dv->x, dv->y, dv->z), dv->dist));
 
 			if (v->lightmap_uv.x < 0 || v->lightmap_uv.y < 0 || v->lightmap_uv.x > face->width || v->lightmap_uv.y > face->height)
@@ -559,6 +560,7 @@ static void bspLoadFace(
 		vertex->tex_uv = aVec2f(
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_u),
 			aVec4fDot(aVec4f3(vertex->vertex, 1.f), tex_map_v));
+		vertex->tex_uv = aVec2fAdd(aVec2fMul(face->material->base_texture.transform.scale, vertex->tex_uv), face->material->base_texture.transform.translate);
 
 		vertex->lightmap_uv.x = clamp(vertex->lightmap_uv.x, 0.f, (float)face->width);
 		vertex->lightmap_uv.y = clamp(vertex->lightmap_uv.y, 0.f, (float)face->height);
