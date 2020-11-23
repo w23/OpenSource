@@ -312,6 +312,21 @@ static void opensrcResizeVk() {
 static void opensrcPaint(ATimeUs timestamp, float dt) {
 	(void)(timestamp); (void)(dt);
 
+	for (struct Map *map = g.maps_begin; map; map = map->next) {
+		if (map->flags & MapFlags_Broken)
+			continue;
+
+		if (map->flags & MapFlags_Loaded)
+			continue;
+
+		if (BSPLoadResult_Success != loadMap(map, g.collection_chain)) {
+			map->flags |= MapFlags_Broken;
+			continue;
+		}
+
+		break;
+	}
+
 	float move = dt * (g.run?3000.f:300.f);
 	cameraMove(&g.camera, aVec3f(g.right * move, 0.f, -g.forward * move));
 	cameraRecompute(&g.camera);
@@ -319,20 +334,12 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 	renderBegin();
 
 	int triangles = 0;
-	int can_load_map = 1;
 	for (struct Map *map = g.maps_begin; map; map = map->next) {
 		if (map->flags & MapFlags_Broken)
 			continue;
 
-		if (!(map->flags & MapFlags_Loaded)) {
-			if (can_load_map) {
-				if (BSPLoadResult_Success != loadMap(map, g.collection_chain))
-					map->flags |= MapFlags_Broken;
-			}
-
-			can_load_map = 0;
+		if (!(map->flags & MapFlags_Loaded))
 			continue;
-		}
 
 		const RDrawParams params = {
 			.camera = &g.camera,

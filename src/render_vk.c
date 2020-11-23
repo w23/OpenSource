@@ -33,7 +33,7 @@
 /* 	return ret; */
 /* } */
 
-#define MAX_DESC_SETS 1024
+#define MAX_DESC_SETS 65536
 
 static struct {
 	VkFence fence;
@@ -686,9 +686,14 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 	for (int i = 0; i < model->detailed.draws_count; ++i) {
 		const struct BSPDraw* draw = model->detailed.draws + i;
 
-		// FIXME HOW: allocate next descriptor pool
-		if (g.next_free_set >= MAX_DESC_SETS)
+		//if (draw->material->shader != MShader_LightmappedGeneric)
+		if (!draw->material->base_texture.texture)
 			break;
+
+		if (g.next_free_set >= MAX_DESC_SETS) {
+			aAppDebugPrintf("FIXME ran out of descriptor sets");
+			break;
+		}
 
 		{
 			VkDescriptorSet set = g.desc_sets[g.next_free_set];
