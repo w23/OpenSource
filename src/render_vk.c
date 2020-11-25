@@ -70,7 +70,8 @@ static struct {
 	//struct DeviceMemoryBumpAllocator alloc;
 
 	VkCommandPool cmdpool;
-	VkCommandBuffer cmdbuf;
+	VkCommandBuffer cmd_primary;
+	VkCommandBuffer cmd_materials[MShader_COUNT];
 } g;
 
 struct AVkMemBuffer {
@@ -257,7 +258,13 @@ static void createCommandPool() {
 	cbai.commandBufferCount = 1;
 	cbai.commandPool = g.cmdpool;
 	cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	AVK_CHECK_RESULT(vkAllocateCommandBuffers(a_vk.dev, &cbai, &g.cmdbuf));
+	AVK_CHECK_RESULT(vkAllocateCommandBuffers(a_vk.dev, &cbai, &g.cmd_primary));
+
+	cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cbai.commandBufferCount = COUNTOF(g.cmd_materials);
+	cbai.commandPool = g.cmdpool;
+	cbai.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+	AVK_CHECK_RESULT(vkAllocateCommandBuffers(a_vk.dev, &cbai, g.cmd_materials));
 }
 
 static void createPipeline(struct AVkMaterial *material, const VkVertexInputAttributeDescription *attribs, size_t n_attribs) {
@@ -416,7 +423,7 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	{
 		VkCommandBufferBeginInfo beginfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
 		beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-		AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmdbuf, &beginfo));
+		AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmd_primary, &beginfo));
 
 		// 5.1.1
 		VkImageMemoryBarrier image_barrier = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -432,7 +439,7 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 			.baseArrayLayer = 0,
 			.layerCount = 1,
 		};
-		vkCmdPipelineBarrier(g.cmdbuf,
+		vkCmdPipelineBarrier(g.cmd_primary,
 				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 				VK_PIPELINE_STAGE_TRANSFER_BIT,
 				0, 0, NULL, 0, NULL, 1, &image_barrier);
@@ -453,7 +460,7 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 			.height = params.height,
 			.depth = 1,
 		};
-		vkCmdCopyBufferToImage(g.cmdbuf, staging.buf, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+		vkCmdCopyBufferToImage(g.cmd_primary, staging.buf, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
 		// 5.2.1
 		image_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -467,18 +474,18 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 			.baseArrayLayer = 0,
 			.layerCount = 1,
 		};
-		vkCmdPipelineBarrier(g.cmdbuf,
+		vkCmdPipelineBarrier(g.cmd_primary,
 				VK_PIPELINE_STAGE_TRANSFER_BIT,
 				VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 				0, 0, NULL, 0, NULL, 1, &image_barrier);
 
-		AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmdbuf));
+		AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmd_primary));
 	}
 
 	{
 		VkSubmitInfo subinfo = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO};
 		subinfo.commandBufferCount = 1;
-		subinfo.pCommandBuffers = &g.cmdbuf;
+		subinfo.pCommandBuffers = &g.cmd_primary;
 		AVK_CHECK_RESULT(vkQueueSubmit(a_vk.main_queue, 1, &subinfo, NULL));
 		AVK_CHECK_RESULT(vkQueueWaitIdle(a_vk.main_queue));
 	}
@@ -667,25 +674,22 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 }
 
 void renderBegin() {
+	VkCommandBufferInheritanceInfo inherit = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO };
+	inherit.framebuffer = g.framebuffers[a_vk.swapchain.current_frame_image_index];
+	inherit.renderPass = g.render_pass;
+	inherit.subpass = 0;
 	VkCommandBufferBeginInfo beginfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-	beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmdbuf, &beginfo));
+	beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+	beginfo.pInheritanceInfo = &inherit;
 
-	VkClearValue clear_value[2] = {
-		{.color = {{0., 0., 0., 0.}}},
-		{.depthStencil = {1., 0.}}
-	};
-	VkRenderPassBeginInfo rpbi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-	rpbi.renderPass = g.render_pass;
-	rpbi.framebuffer = g.framebuffers[a_vk.swapchain.current_frame_image_index];
-	rpbi.renderArea.offset.x = rpbi.renderArea.offset.y = 0;
-	rpbi.renderArea.extent.width = a_app_state->width;
-	rpbi.renderArea.extent.height = a_app_state->height;
-	rpbi.clearValueCount = COUNTOF(clear_value);
-	rpbi.pClearValues = clear_value;
-	vkCmdBeginRenderPass(g.cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
+	for (int i = 0; i < (int)COUNTOF(g.cmd_materials); ++i) {
+		VkCommandBuffer cb = g.cmd_materials[i];
+		AVK_CHECK_RESULT(vkBeginCommandBuffer(cb, &beginfo));
 
-	vkCmdBindPipeline(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.materials[MShader_LightmappedGeneric].pipeline);
+		struct AVkMaterial *m = g.materials + i;
+		if (m->pipeline)
+			vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline);
+	}
 
 	g.next_free_set = 0;
 }
@@ -703,62 +707,75 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 	const struct AMat4f mvp = aMat4fMul(vk_fixup, aMat4fMul(params->camera->view_projection,
 			aMat4fTranslation(params->translation)));
 
-	vkCmdPushConstants(g.cmdbuf, g.materials[MShader_LightmappedGeneric].pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
+	int seen_material[MShader_COUNT] = {0};
 
 	for (int i = 0; i < model->detailed.draws_count; ++i) {
 		const struct BSPDraw* draw = model->detailed.draws + i;
 
-		if (draw->material->shader != MShader_LightmappedGeneric || !draw->material->base_texture.texture)
+		const int mat_index = draw->material->shader;
+		VkCommandBuffer cb = g.cmd_materials[mat_index];
+		struct AVkMaterial *m = g.materials + mat_index;
+
+		if (!m->pipeline)
+			continue;
+
+		// FIXME why
+		if (!draw->material->base_texture.texture)
 			break;
 
-		if (g.next_free_set >= MAX_DESC_SETS) {
-			aAppDebugPrintf("FIXME ran out of descriptor sets");
-			break;
-		}
-
-		{
-			VkDescriptorSet set = g.desc_sets[g.next_free_set];
-			g.next_free_set++;
-
-			{
-				VkDescriptorImageInfo dii_tex = {
-					.imageView = draw->material->base_texture.texture->texture.vkImageView,
-					.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-				};
-				VkDescriptorImageInfo dii_lm = {
-					.imageView = model->lightmap.vkImageView,
-				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			};
-				VkWriteDescriptorSet wds[] = {
-					{
-						.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-						.dstSet = set,
-						.dstBinding = 1,
-						.dstArrayElement = 0,
-						.descriptorCount = 1,
-						.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-						.pImageInfo = &dii_tex,
-					},
-					{
-						.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-						.dstSet = set,
-						.dstBinding = 0,
-						.dstArrayElement = 0,
-						.descriptorCount = 1,
-						.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-						.pImageInfo = &dii_lm,
-					},
-				};
-				vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
+		if (!seen_material[mat_index]) {
+			if (g.next_free_set >= MAX_DESC_SETS) {
+				aAppDebugPrintf("FIXME ran out of descriptor sets");
+				break;
 			}
 
-			vkCmdBindDescriptorSets(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.materials[MShader_LightmappedGeneric].pipeline_layout, 0, 1, &set, 0, NULL);
+			vkCmdPushConstants(cb, g.materials[MShader_LightmappedGeneric].pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
+			seen_material[mat_index] = 1;
 		}
 
+		VkDescriptorSet set = g.desc_sets[g.next_free_set];
+		g.next_free_set++;
+
+		{
+			VkDescriptorImageInfo dii_tex = {
+				.imageView = draw->material->base_texture.texture->texture.vkImageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkDescriptorImageInfo dii_lm = {
+				.imageView = model->lightmap.vkImageView,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+
+			// TODO: sort by textures to decrease amount of descriptor updates
+			VkWriteDescriptorSet wds[] = {
+				{
+					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+					.dstSet = set,
+					.dstBinding = 1,
+					.dstArrayElement = 0,
+					.descriptorCount = 1,
+					.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+					.pImageInfo = &dii_tex,
+				},
+				{
+					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+					.dstSet = set,
+					.dstBinding = 0,
+					.dstArrayElement = 0,
+					.descriptorCount = 1,
+					.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+					.pImageInfo = &dii_lm,
+				},
+			};
+			vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
+		}
+
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 0, 1, &set, 0, NULL);
+
 		const VkDeviceSize offset = draw->vbo_offset;
-		vkCmdBindVertexBuffers(g.cmdbuf, 0, 1, (VkBuffer*)&model->vbo.vkBuf, &offset);
-		vkCmdBindIndexBuffer(g.cmdbuf, (VkBuffer)model->ibo.vkBuf, 0, VK_INDEX_TYPE_UINT16);
-		vkCmdDrawIndexed(g.cmdbuf, draw->count, 1, draw->start, 0, 0);
+		vkCmdBindVertexBuffers(cb, 0, 1, (VkBuffer*)&model->vbo.vkBuf, &offset);
+		vkCmdBindIndexBuffer(cb, (VkBuffer)model->ibo.vkBuf, 0, VK_INDEX_TYPE_UINT16);
+		vkCmdDrawIndexed(cb, draw->count, 1, draw->start, 0, 0);
 	}
 }
 
@@ -766,16 +783,39 @@ void renderEnd(const struct Camera *camera)
 {
 	(void)(camera);
 
-	vkCmdEndRenderPass(g.cmdbuf);
+	for (int i = 0; i < (int)COUNTOF(g.cmd_materials); ++i) {
+		AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmd_materials[i]));
+	}
 
-	AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmdbuf));
+	VkCommandBufferBeginInfo beginfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+	beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmd_primary, &beginfo));
+
+	VkClearValue clear_value[2] = {
+		{.color = {{0., 0., 0., 0.}}},
+		{.depthStencil = {1., 0.}}
+	};
+	VkRenderPassBeginInfo rpbi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+	rpbi.renderPass = g.render_pass;
+	rpbi.framebuffer = g.framebuffers[a_vk.swapchain.current_frame_image_index];
+	rpbi.renderArea.offset.x = rpbi.renderArea.offset.y = 0;
+	rpbi.renderArea.extent.width = a_app_state->width;
+	rpbi.renderArea.extent.height = a_app_state->height;
+	rpbi.clearValueCount = COUNTOF(clear_value);
+	rpbi.pClearValues = clear_value;
+	vkCmdBeginRenderPass(g.cmd_primary, &rpbi, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+	vkCmdExecuteCommands(g.cmd_primary, COUNTOF(g.cmd_materials), g.cmd_materials);
+	vkCmdEndRenderPass(g.cmd_primary);
+
+	AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmd_primary));
 
 	VkPipelineStageFlags stageflags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkSubmitInfo subinfo = {0};
 	subinfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	subinfo.pNext = NULL;
 	subinfo.commandBufferCount = 1;
-	subinfo.pCommandBuffers = &g.cmdbuf;
+	subinfo.pCommandBuffers = &g.cmd_primary;
 	subinfo.waitSemaphoreCount = 1;
 	subinfo.pWaitSemaphores = &a_vk.swapchain.image_available;
 	subinfo.signalSemaphoreCount = 1;
@@ -798,7 +838,9 @@ void renderEnd(const struct Camera *camera)
 }
 
 void renderDestroy() {
-	vkFreeCommandBuffers(a_vk.dev, g.cmdpool, 1, &g.cmdbuf);
+	// TODO do we need this?
+	vkFreeCommandBuffers(a_vk.dev, g.cmdpool, 1, &g.cmd_primary);
+	vkFreeCommandBuffers(a_vk.dev, g.cmdpool, COUNTOF(g.cmd_materials), g.cmd_materials);
 	vkDestroyCommandPool(a_vk.dev, g.cmdpool, NULL);
 
 	for (int i = 0; i < (int)COUNTOF(g.materials); ++i) {
