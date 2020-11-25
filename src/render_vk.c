@@ -315,7 +315,7 @@ static void createPipeline(struct AVkMaterial *material, const VkVertexInputAttr
 	VkPipelineRasterizationStateCreateInfo raster_state = {0};
 	raster_state.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	raster_state.polygonMode = VK_POLYGON_MODE_FILL;
-	raster_state.cullMode = VK_CULL_MODE_NONE;
+	raster_state.cullMode = VK_CULL_MODE_BACK_BIT;
 	raster_state.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	raster_state.lineWidth = 1.f;
 
@@ -355,17 +355,30 @@ static void createPipeline(struct AVkMaterial *material, const VkVertexInputAttr
 }
 
 static void createPipelines() {
-	VkVertexInputAttributeDescription attribs[] = {
-		{.binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct BSPModelVertex, vertex)},
-		{.binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, lightmap_uv)},
-		{.binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, tex_uv)},
-		//{.binding = 0, .location = 3, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
-	};
-	createPipeline(&g.materials[MShader_LightmappedGeneric], attribs, COUNTOF(attribs));
+	{
+		VkVertexInputAttributeDescription attribs[] = {
+			{.binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct BSPModelVertex, vertex)},
+			//{.binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, lightmap_uv)},
+			//{.binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, tex_uv)},
+			//{.binding = 0, .location = 3, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
+		};
+		createPipeline(&g.materials[MShader_Unknown], attribs, COUNTOF(attribs));
+	}
+
+	{
+		VkVertexInputAttributeDescription attribs[] = {
+			{.binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct BSPModelVertex, vertex)},
+			{.binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, lightmap_uv)},
+			{.binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, tex_uv)},
+			//{.binding = 0, .location = 3, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
+		};
+		createPipeline(&g.materials[MShader_LightmappedGeneric], attribs, COUNTOF(attribs));
+	}
 }
 
 static void createShaders() {
-	createShader(&g.materials[MShader_LightmappedGeneric], "m_unknown.vert.spv", "m_unknown.frag.spv");
+	createShader(&g.materials[MShader_Unknown], "unknown.vert.spv", "unknown.frag.spv");
+	createShader(&g.materials[MShader_LightmappedGeneric], "lightmapped.vert.spv", "lightmapped.frag.spv");
 }
 
 //#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = -1; } while (0)
@@ -720,8 +733,8 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 			continue;
 
 		// FIXME why
-		if (!draw->material->base_texture.texture)
-			break;
+		if (mat_index == MShader_LightmappedGeneric && !draw->material->base_texture.texture)
+			continue;
 
 		if (!seen_material[mat_index]) {
 			if (g.next_free_set >= MAX_DESC_SETS) {
@@ -729,14 +742,15 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 				break;
 			}
 
-			vkCmdPushConstants(cb, g.materials[MShader_LightmappedGeneric].pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
+			vkCmdPushConstants(cb, m->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
 			seen_material[mat_index] = 1;
 		}
 
 		VkDescriptorSet set = g.desc_sets[g.next_free_set];
 		g.next_free_set++;
 
-		{
+		// FIXME proper binding of textures to slots depending on material
+		if (mat_index != MShader_Unknown) {
 			VkDescriptorImageInfo dii_tex = {
 				.imageView = draw->material->base_texture.texture->texture.vkImageView,
 				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -768,9 +782,9 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 				},
 			};
 			vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
-		}
 
-		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 0, 1, &set, 0, NULL);
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 0, 1, &set, 0, NULL);
+		}
 
 		const VkDeviceSize offset = draw->vbo_offset;
 		vkCmdBindVertexBuffers(cb, 0, 1, (VkBuffer*)&model->vbo.vkBuf, &offset);

@@ -56,15 +56,20 @@ function(add_shaders)
 		add_custom_command(
 			OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv
 			COMMAND glslc
-			${CMAKE_SOURCE_DIR}/src/${SHADER} -o ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv
-			MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/${SHADER}
+			${CMAKE_SOURCE_DIR}/assets/${SHADER} -o ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv
+			MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/assets/${SHADER}
 			COMMENT "Building ${SHADER}"
 		)
 		list(APPEND SHADERS_DEPS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv")
 	endforeach()
 	add_custom_target(${SHADERS_TARGET} ALL DEPENDS ${SHADERS_DEPS})
 endfunction()
-add_shaders(TARGET vk_shaders FILES m_unknown.frag m_unknown.vert)
+add_shaders(TARGET vk_shaders FILES
+	unknown.frag
+	unknown.vert
+	lightmapped.frag
+	lightmapped.vert
+)
 
 add_executable(OpenSource ${EXE_SUBSYSTEM} ${SOURCES} ${HEADERS})
 
