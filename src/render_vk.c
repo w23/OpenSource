@@ -35,6 +35,15 @@
 
 #define MAX_DESC_SETS 65536
 
+struct AVkMaterial {
+	VkShaderModule module_vertex;
+	VkShaderModule module_fragment;
+
+	VkPipelineLayout pipeline_layout;
+
+	VkPipeline pipeline;
+};
+
 static struct {
 	VkFence fence;
 	VkSemaphore done;
@@ -51,14 +60,11 @@ static struct {
 	VkSampler default_sampler;
 
 	VkDescriptorSetLayout descset_layout;
-	VkPipelineLayout pipeline_layout;
-	VkShaderModule module_vertex;
-	VkShaderModule module_fragment;
 	VkDescriptorPool desc_pool;
 	VkDescriptorSet desc_sets[MAX_DESC_SETS];
 	int next_free_set;
 
-	VkPipeline pipeline;
+	struct AVkMaterial materials[MShader_COUNT];
 
 	// Preallocated device memory
 	//struct DeviceMemoryBumpAllocator alloc;
@@ -176,32 +182,14 @@ static void createRenderPass() {
 	AVK_CHECK_RESULT(vkCreateRenderPass(a_vk.dev, &rpci, NULL, &g.render_pass));
 }
 
-static void createShaders() {
-	VkPushConstantRange push_const = {0};
-	push_const.offset = 0;
-	push_const.size = sizeof(AMat4f);
-	push_const.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-	VkSamplerCreateInfo sci = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
-	sci.magFilter = VK_FILTER_LINEAR;
-	sci.minFilter = VK_FILTER_NEAREST;
-	sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	sci.anisotropyEnable = VK_FALSE;
-	sci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-	sci.unnormalizedCoordinates = VK_FALSE;
-	sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-
-	AVK_CHECK_RESULT(vkCreateSampler(a_vk.dev, &sci, NULL, &g.default_sampler));
-
+static void createDesriptorSets() {
 	VkDescriptorSetLayoutBinding bindings[] = {{
 			.binding = 0,
 			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 			.descriptorCount = 1,
 			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
 			.pImmutableSamplers = &g.default_sampler,
-		},{
+		}, {
 			.binding = 1,
 			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 			.descriptorCount = 1,
@@ -216,17 +204,6 @@ static void createShaders() {
 	dslci.flags = 0;
 	AVK_CHECK_RESULT(vkCreateDescriptorSetLayout(a_vk.dev, &dslci, NULL, &g.descset_layout));
 
-	VkPipelineLayoutCreateInfo plci = {0};
-	plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	plci.setLayoutCount = 1;
-	plci.pSetLayouts = &g.descset_layout;
-	plci.pushConstantRangeCount = 1;
-	plci.pPushConstantRanges = &push_const;
-	AVK_CHECK_RESULT(vkCreatePipelineLayout(a_vk.dev, &plci, NULL, &g.pipeline_layout));
-
-	g.module_vertex = loadShaderFromFile("m_unknown.vert.spv");
-	g.module_fragment = loadShaderFromFile("m_unknown.frag.spv");
-
 	VkDescriptorPoolSize dps[] = {
 		{
 			.type = bindings[0].descriptorType,
@@ -239,17 +216,33 @@ static void createShaders() {
 	dpci.maxSets = MAX_DESC_SETS;
 	AVK_CHECK_RESULT(vkCreateDescriptorPool(a_vk.dev, &dpci, NULL, &g.desc_pool));
 
-	{
-		VkDescriptorSetLayout layouts[MAX_DESC_SETS];
-		for (int i = 0; i < MAX_DESC_SETS; ++i)
-			layouts[i] = g.descset_layout;
+	VkDescriptorSetLayout layouts[MAX_DESC_SETS];
+	for (int i = 0; i < MAX_DESC_SETS; ++i)
+		layouts[i] = g.descset_layout;
 
-		VkDescriptorSetAllocateInfo dsai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-		dsai.descriptorPool = g.desc_pool;
-		dsai.descriptorSetCount = dpci.maxSets;
-		dsai.pSetLayouts = layouts;
-		AVK_CHECK_RESULT(vkAllocateDescriptorSets(a_vk.dev, &dsai, g.desc_sets));
-	}
+	VkDescriptorSetAllocateInfo dsai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	dsai.descriptorPool = g.desc_pool;
+	dsai.descriptorSetCount = dpci.maxSets;
+	dsai.pSetLayouts = layouts;
+	AVK_CHECK_RESULT(vkAllocateDescriptorSets(a_vk.dev, &dsai, g.desc_sets));
+}
+
+static void createShader(struct AVkMaterial *material, const char *vertex, const char* fragment) {
+	material->module_vertex = loadShaderFromFile(vertex);
+	material->module_fragment = loadShaderFromFile(fragment);
+
+	VkPushConstantRange push_const = {0};
+	push_const.offset = 0;
+	push_const.size = sizeof(AMat4f);
+	push_const.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkPipelineLayoutCreateInfo plci = {0};
+	plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	plci.setLayoutCount = 1;
+	plci.pSetLayouts = &g.descset_layout;
+	plci.pushConstantRangeCount = 1;
+	plci.pPushConstantRanges = &push_const;
+	AVK_CHECK_RESULT(vkCreatePipelineLayout(a_vk.dev, &plci, NULL, &material->pipeline_layout));
 }
 
 static void createCommandPool() {
@@ -267,17 +260,17 @@ static void createCommandPool() {
 	AVK_CHECK_RESULT(vkAllocateCommandBuffers(a_vk.dev, &cbai, &g.cmdbuf));
 }
 
-static void createPipeline() {
+static void createPipeline(struct AVkMaterial *material, const VkVertexInputAttributeDescription *attribs, size_t n_attribs) {
 	VkPipelineShaderStageCreateInfo shader_stages[2] = {0};
 	shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	shader_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 
 	shader_stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-	shader_stages[0].module = g.module_vertex;
+	shader_stages[0].module = material->module_vertex;
 	shader_stages[0].pName = "main";
 
 	shader_stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	shader_stages[1].module = g.module_fragment;
+	shader_stages[1].module = material->module_fragment;
 	shader_stages[1].pName = "main";
 
 	VkVertexInputBindingDescription vibd = {0};
@@ -285,18 +278,11 @@ static void createPipeline() {
 	vibd.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 	vibd.stride = sizeof(struct BSPModelVertex);
 
-	VkVertexInputAttributeDescription attribs[] = {
-		{.binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct BSPModelVertex, vertex)},
-		{.binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, lightmap_uv)},
-		{.binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, tex_uv)},
-		//{.binding = 0, .location = 3, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
-	};
-
 	VkPipelineVertexInputStateCreateInfo vertex_input = {0};
 	vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertex_input.vertexBindingDescriptionCount = 1;
 	vertex_input.pVertexBindingDescriptions = &vibd;
-	vertex_input.vertexAttributeDescriptionCount = COUNTOF(attribs);
+	vertex_input.vertexAttributeDescriptionCount = n_attribs;
 	vertex_input.pVertexAttributeDescriptions = attribs;
 
 	VkPipelineInputAssemblyStateCreateInfo input_assembly = {0};
@@ -355,10 +341,24 @@ static void createPipeline() {
 	gpci.pMultisampleState = &multi_state;
 	gpci.pColorBlendState = &color_blend;
 	gpci.pDepthStencilState = &depth;
-	gpci.layout = g.pipeline_layout;
+	gpci.layout = material->pipeline_layout;
 	gpci.renderPass = g.render_pass;
 	gpci.subpass = 0;
-	AVK_CHECK_RESULT(vkCreateGraphicsPipelines(a_vk.dev, NULL, 1, &gpci, NULL, &g.pipeline));
+	AVK_CHECK_RESULT(vkCreateGraphicsPipelines(a_vk.dev, NULL, 1, &gpci, NULL, &material->pipeline));
+}
+
+static void createPipelines() {
+	VkVertexInputAttributeDescription attribs[] = {
+		{.binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct BSPModelVertex, vertex)},
+		{.binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, lightmap_uv)},
+		{.binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, tex_uv)},
+		//{.binding = 0, .location = 3, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
+	};
+	createPipeline(&g.materials[MShader_LightmappedGeneric], attribs, COUNTOF(attribs));
+}
+
+static void createShaders() {
+	createShader(&g.materials[MShader_LightmappedGeneric], "m_unknown.vert.spv", "m_unknown.frag.spv");
 }
 
 //#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = -1; } while (0)
@@ -503,14 +503,29 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 }
 
 int renderInit() {
-	g.done = aVkCreateSemaphore();
+	VkSamplerCreateInfo sci = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	sci.magFilter = VK_FILTER_LINEAR;
+	sci.minFilter = VK_FILTER_NEAREST;
+	sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.anisotropyEnable = VK_FALSE;
+	sci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	sci.unnormalizedCoordinates = VK_FALSE;
+	sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	AVK_CHECK_RESULT(vkCreateSampler(a_vk.dev, &sci, NULL, &g.default_sampler));
+
+	createDesriptorSets();
 	createShaders();
+
 	createCommandPool();
 
 	VkFenceCreateInfo fci = {0};
 	fci.flags = 0;
 	fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	AVK_CHECK_RESULT(vkCreateFence(a_vk.dev, &fci, NULL, &g.fence));
+
+	g.done = aVkCreateSemaphore();
 
 	return 1;
 }
@@ -611,15 +626,22 @@ void renderVkSwapchainCreated(int w, int h) {
 		AVK_CHECK_RESULT(vkCreateFramebuffer(a_vk.dev, &fbci, NULL, g.framebuffers + i));
 	}
 
-	createPipeline();
+	createPipelines();
 }
 
 void renderVkSwapchainDestroy() {
-	vkDestroyPipeline(a_vk.dev, g.pipeline, NULL);
+	for (int i = 0; i < (int)COUNTOF(g.materials); ++i) {
+		if (!g.materials[i].pipeline)
+			continue;
+
+		vkDestroyPipeline(a_vk.dev, g.materials[i].pipeline, NULL);
+	}
+
 	for (uint32_t i = 0; i < a_vk.swapchain.num_images; ++i) {
 		vkDestroyFramebuffer(a_vk.dev, g.framebuffers[i], NULL);
 		vkDestroyImageView(a_vk.dev, g.image_views[i], NULL);
 	}
+
 	free(g.image_views);
 	free(g.framebuffers);
 
@@ -663,7 +685,7 @@ void renderBegin() {
 	rpbi.pClearValues = clear_value;
 	vkCmdBeginRenderPass(g.cmdbuf, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
-	vkCmdBindPipeline(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.pipeline);
+	vkCmdBindPipeline(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.materials[MShader_LightmappedGeneric].pipeline);
 
 	g.next_free_set = 0;
 }
@@ -681,13 +703,12 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 	const struct AMat4f mvp = aMat4fMul(vk_fixup, aMat4fMul(params->camera->view_projection,
 			aMat4fTranslation(params->translation)));
 
-	vkCmdPushConstants(g.cmdbuf, g.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
+	vkCmdPushConstants(g.cmdbuf, g.materials[MShader_LightmappedGeneric].pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
 
 	for (int i = 0; i < model->detailed.draws_count; ++i) {
 		const struct BSPDraw* draw = model->detailed.draws + i;
 
-		//if (draw->material->shader != MShader_LightmappedGeneric)
-		if (!draw->material->base_texture.texture)
+		if (draw->material->shader != MShader_LightmappedGeneric || !draw->material->base_texture.texture)
 			break;
 
 		if (g.next_free_set >= MAX_DESC_SETS) {
@@ -731,7 +752,7 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 				vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
 			}
 
-			vkCmdBindDescriptorSets(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.pipeline_layout, 0, 1, &set, 0, NULL);
+			vkCmdBindDescriptorSets(g.cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, g.materials[MShader_LightmappedGeneric].pipeline_layout, 0, 1, &set, 0, NULL);
 		}
 
 		const VkDeviceSize offset = draw->vbo_offset;
@@ -780,11 +801,17 @@ void renderDestroy() {
 	vkFreeCommandBuffers(a_vk.dev, g.cmdpool, 1, &g.cmdbuf);
 	vkDestroyCommandPool(a_vk.dev, g.cmdpool, NULL);
 
-	vkDestroyPipelineLayout(a_vk.dev, g.pipeline_layout, NULL);
-	vkDestroyDescriptorSetLayout(a_vk.dev, g.descset_layout, NULL);
+	for (int i = 0; i < (int)COUNTOF(g.materials); ++i) {
+		struct AVkMaterial *m = g.materials + i;
+		if (!m->pipeline_layout)
+			continue;
 
-	vkDestroyShaderModule(a_vk.dev, g.module_fragment, NULL);
-	vkDestroyShaderModule(a_vk.dev, g.module_vertex, NULL);
+		vkDestroyPipelineLayout(a_vk.dev, m->pipeline_layout, NULL);
+		vkDestroyShaderModule(a_vk.dev, m->module_fragment, NULL);
+		vkDestroyShaderModule(a_vk.dev, m->module_vertex, NULL);
+	}
+
+	vkDestroyDescriptorSetLayout(a_vk.dev, g.descset_layout, NULL);
 
 	/* vkFreeMemory(a_vk.dev, g.devmem, NULL); */
 	/* vkDestroyBuffer(a_vk.dev, g.vertex_buf, NULL); */
