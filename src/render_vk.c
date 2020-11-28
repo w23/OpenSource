@@ -12,11 +12,12 @@
 #include <assert.h>
 
 #define MAX_DESC_SETS 65536
-#define MAX_HEAPS 1
+#define MAX_HEAPS 16
 #define HEAP_SIZE (64*1024*1024)
 
 struct DeviceMemoryBumpAllocator {
 	uint32_t type_bit;
+	VkMemoryPropertyFlags props;
 	VkDeviceMemory devmem;
 	size_t size;
 	size_t offset;
@@ -33,6 +34,10 @@ static struct DeviceMemoryBumpAllocator createDeviceMemory(size_t size, uint32_t
 	for (uint32_t i = 0; i < a_vk.mem_props.memoryTypeCount; ++i) {
 		const uint32_t bit = (1 << i);
 		if (!(type_index_bits & bit))
+			continue;
+
+		const uint32_t heap_index = a_vk.mem_props.memoryTypes[i].heapIndex;
+		if (a_vk.mem_props.memoryHeaps[heap_index].size < size)
 			continue;
 
 		if ((a_vk.mem_props.memoryTypes[i].propertyFlags & flags) == flags) {
@@ -57,6 +62,7 @@ static struct DeviceMemoryBumpAllocator createDeviceMemory(size_t size, uint32_t
 	AVK_CHECK_RESULT(alloc_result);
 
 	ret.type_bit = type_bit;
+	ret.props = flags;
 	ret.size = size;
 	ret.offset = 0;
 	return ret;
@@ -106,15 +112,6 @@ static struct {
 
 	struct DeviceMemoryBumpAllocator heaps[MAX_HEAPS];
 
-	// buffer || image
-	// 	HW heap
-	// HW heaps[]
-	// 	buffer || image
-	// 	pool chain []
-	// 		pool
-	// 		  - size: 64M
-	// 		  - free_offset ..
-
 	VkDescriptorSetLayout descset_layout;
 	VkDescriptorPool desc_pool;
 	VkDescriptorSet desc_sets[MAX_DESC_SETS];
@@ -152,17 +149,19 @@ struct AllocatedMemory {
 	size_t offset;
 };
 
-static struct AllocatedMemory allocateDeviceMemory(VkMemoryRequirements req) {
+static struct AllocatedMemory allocateDeviceMemory(VkMemoryRequirements req, VkMemoryPropertyFlags props) {
 	for (int i = 0; i < MAX_HEAPS; ++i) {
 		struct DeviceMemoryBumpAllocator *heap = g.heaps + i;
+
 		if (!heap->devmem) {
 			const size_t size = req.size > HEAP_SIZE ? req.size : HEAP_SIZE;
-			*heap = createDeviceMemory(size, req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			*heap = createDeviceMemory(size, req.memoryTypeBits, props);
 			assert(heap->devmem);
 			assert(heap->type_bit & req.memoryTypeBits);
+			assert((heap->props & props) == props);
 		}
 
-		if (!(heap->type_bit & req.memoryTypeBits))
+		if (!(heap->type_bit & req.memoryTypeBits) && ((heap->props & props) == props))
 			continue;
 
 		const size_t offset = allocateFromAllocator(heap, req.size, req.alignment);
@@ -191,7 +190,7 @@ static struct AVkMemBuffer createBufferWithData(VkBufferUsageFlags usage, int si
 	vkGetBufferMemoryRequirements(a_vk.dev, buf.buf, &memreq);
 	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size);
 
-	struct AllocatedMemory mem = allocateDeviceMemory(memreq);
+	struct AllocatedMemory mem = allocateDeviceMemory(memreq, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	assert(mem.devmem);
 	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, buf.buf, mem.devmem, mem.offset));
 
@@ -487,16 +486,12 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	const VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
 	const VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	VkImage image = createImage(params.width, params.height, VK_FORMAT_R5G6B5_UNORM_PACK16, tiling, usage);
-	VkDeviceMemory devmem;
 
 	VkMemoryRequirements memreq;
 	vkGetImageMemoryRequirements(a_vk.dev, image, &memreq);
 
-	VkMemoryAllocateInfo mai={.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-	mai.allocationSize = memreq.size;
-	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &devmem));
-	AVK_CHECK_RESULT(vkBindImageMemory(a_vk.dev, image, devmem, 0));
+	struct AllocatedMemory mem = allocateDeviceMemory(memreq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	AVK_CHECK_RESULT(vkBindImageMemory(a_vk.dev, image, mem.devmem, mem.offset));
 
 	const int bytes_per_pixel = 2;
 	int size = params.width * params.height * bytes_per_pixel;
@@ -592,7 +587,6 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	ivci.subresourceRange.layerCount = 1;
 	AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, &imview));
 
-	texture->vkDevMem = devmem;
 	texture->vkImage = image;
 	texture->vkImageView = imview;
 	texture->width = params.width;
