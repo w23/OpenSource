@@ -25,6 +25,8 @@ struct DeviceMemoryBumpAllocator {
 static struct DeviceMemoryBumpAllocator createDeviceMemory(size_t size, uint32_t type_index_bits, VkMemoryPropertyFlags flags) {
 	struct DeviceMemoryBumpAllocator ret = {0};
 
+	aAppDebugPrintf("createDeviceMemory: size=%zu bits=%x flags=%x", size, type_index_bits, flags);
+
 	// Find compatible memory type
 	uint32_t type_bit = 0;
 	uint32_t index = 0;
@@ -165,6 +167,7 @@ static struct AllocatedMemory allocateDeviceMemory(VkMemoryRequirements req) {
 
 		const size_t offset = allocateFromAllocator(heap, req.size, req.alignment);
 		if (offset != (size_t)-1) {
+			aAppDebugPrintf("\tallocated %zu KiB\talign=%zu:\tdevmem=%p\toffset=%zu KiB\tleft=%zu KiB", req.size / 1024, req.alignment, (void*)heap->devmem, offset / 1024, (heap->size - heap->offset) / 1024);
 			return (struct AllocatedMemory){
 				heap->devmem,
 				offset
