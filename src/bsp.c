@@ -333,9 +333,13 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 
 	/* Build an atlas texture based on calculated fragment positions */
 	const size_t atlas_size = sizeof(uint16_t) * atlas_context.width * atlas_context.height;
-	uint16_t *const pixels = stackAlloc(ctx->tmp, atlas_size);
-	if (!pixels) return BSPLoadResult_ErrorTempMemory;
+	//uint16_t *const pixels = stackAlloc(ctx->tmp, atlas_size);
+	//if (!pixels) return BSPLoadResult_ErrorTempMemory;
+	RStagingMemory atlas_mem = renderGetStagingBuffer(atlas_size);
+	uint16_t *const pixels = atlas_mem.ptr;
 	memset(pixels, 0x0f, atlas_size); /* TODO debug pattern */
+
+	// TODO 32-bit lightmaps for non-RPi
 
 	for (int i = 0; i < ctx->faces_count; ++i) {
 		const struct Face *const face = ctx->faces + i;
@@ -356,20 +360,25 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 		} /* for y */
 	} /* fot all visible faces */
 
+	RTextureUploadMipmapData mip = {
+		.mip_level = 0,
+		.width = atlas_context.width,
+		.height = atlas_context.height,
+		.offset = 0,
+	};
 	RTextureUploadParams upload;
 	upload.width = atlas_context.width;
 	upload.height = atlas_context.height;
 	upload.format = RTexFormat_RGB565;
-	upload.pixels = pixels;
-	upload.mip_level = -2;
 	upload.type = RTexType_2D;
-	upload.wrap = RTexWrap_Clamp;
-	renderTextureInit(&ctx->lightmap.texture);
-	renderTextureUpload(&ctx->lightmap.texture, upload);
-	//ctx->lightmap.texture.min_filter = RTmF_Nearest;
+	upload.mipmaps = &mip;
+	upload.mipmaps_count = 1;
+	upload.staging = &atlas_mem;
+	ctx->lightmap.texture = renderTextureCreateAndUpload(upload);
 
 	/* pixels buffer is not needed anymore */
-	stackFreeUpToPosition(ctx->tmp, pixels);
+	renderFreeStagingBuffer(atlas_mem);
+	//stackFreeUpToPosition(ctx->tmp, pixels);
 
 	return BSPLoadResult_Success;
 }

@@ -9,11 +9,13 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#undef NDEBUG
 #include <assert.h>
 
 #define MAX_DESC_SETS 65536
 #define MAX_HEAPS 16
 #define HEAP_SIZE (64*1024*1024)
+#define STAGING_SIZE (16*1024*1024)
 
 struct DeviceMemoryBumpAllocator {
 	uint32_t type_bit;
@@ -108,6 +110,7 @@ static struct {
 		size_t size;
 		VkDeviceMemory devmem;
 		VkBuffer buffer;
+		void *mapped;
 	} staging;
 
 	struct DeviceMemoryBumpAllocator heaps[MAX_HEAPS];
@@ -131,14 +134,6 @@ struct AVkMemBuffer {
 	VkBuffer buf;
 	size_t size;
 };
-
-// TODO reverse this: give pointer to data source
-static void stagingUpload(size_t size, const void *data) {
-	void *ptr = NULL;
-	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, g.staging.devmem, 0, size, 0, &ptr));
-	memcpy(ptr, data, size);
-	vkUnmapMemory(a_vk.dev, g.staging.devmem);
-}
 
 /* static void destroyBuffer(struct AVkMemBuffer buf) { */
 /* 	vkDestroyBuffer(a_vk.dev, buf.buf, NULL); */
@@ -471,48 +466,69 @@ static void createShaders() {
 	createShader(&g.materials[MShader_LightmappedGeneric], "lightmapped.vert.spv", "lightmapped.frag.spv");
 }
 
-//#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = -1; } while (0)
-void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
-	(void)(texture); (void)(params);
+RStagingMemory renderGetStagingBuffer(size_t size) {
+	// TODO staging allocation strategy?
+	// - multiple requests
+	// - buffer is too small?
+	// - multiple threads?
+	assert(size <= g.staging.size);
+	return (RStagingMemory){
+		g.staging.mapped,
+		size
+	};
+}
 
-	if (params.mip_level > 0)
-		return;
+void renderFreeStagingBuffer(RStagingMemory mem) {
+	(void)mem;
+	// TODO handle multiple requests
+}
 
-	if (params.format != RTexFormat_RGB565)
-		return;
+RTexture renderTextureCreateAndUpload(RTextureUploadParams params) {
+	VkFormat format;
+	switch (params.format) {
+		case RTexFormat_RGB565: format = VK_FORMAT_R5G6B5_UNORM_PACK16; break;
+		case RTexFormat_Compressed_DXT1: format = VK_FORMAT_BC1_RGB_UNORM_BLOCK; break;
+		case RTexFormat_Compressed_DXT1_A1: format = VK_FORMAT_BC1_RGBA_UNORM_BLOCK; break;
+		case RTexFormat_Compressed_DXT3: format = VK_FORMAT_BC2_UNORM_BLOCK; break;
+		case RTexFormat_Compressed_DXT5: format = VK_FORMAT_BC3_UNORM_BLOCK; break;
+		default:
+			return (RTexture){0};
+	}
 
 	// 1. Create VkImage w/ usage = DST|SAMPLED, layout=UNDEFINED
-	// 2. Alloc mem for VkImage and bind it (DEV_LOCAL)
 	const VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
 	const VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	VkImage image = createImage(params.width, params.height, VK_FORMAT_R5G6B5_UNORM_PACK16, tiling, usage);
+	VkImageCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+	ici.imageType = VK_IMAGE_TYPE_2D;
+	ici.extent.width = params.width;
+	ici.extent.height = params.height;
+	ici.extent.depth = 1;
+	ici.mipLevels = params.mipmaps_count;
+	ici.arrayLayers = 1;
+	ici.format = format;
+	ici.tiling = tiling;
+	ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	ici.usage = usage;
+	ici.samples = VK_SAMPLE_COUNT_1_BIT;
+	ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
+	VkImage image;
+	AVK_CHECK_RESULT(vkCreateImage(a_vk.dev, &ici, NULL, &image));
+
+	// 2. Alloc mem for VkImage and bind it (DEV_LOCAL)
 	VkMemoryRequirements memreq;
 	vkGetImageMemoryRequirements(a_vk.dev, image, &memreq);
-
 	struct AllocatedMemory mem = allocateDeviceMemory(memreq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	AVK_CHECK_RESULT(vkBindImageMemory(a_vk.dev, image, mem.devmem, mem.offset));
 
-	const int bytes_per_pixel = 2;
-	int size = params.width * params.height * bytes_per_pixel;
-
-	// 3. Create/get staging buffer
-	// 4. memcpy image data to mapped staging buffer
-	stagingUpload(size, params.pixels);
-
 	// 5. Create/get cmdbuf for transitions
-	// 	5.1 upload buf -> image:layout:DST
-	// 		5.1.1 transitionToLayout(UNDEFINED -> DST)
-	// 		5.1.2 copyBufferToImage
-	// 	5.2 image:layout:DST -> image:layout:SAMPLED
-	// 		5.2.1 transitionToLayout(DST -> SHADER_READ_ONLY)
-
 	{
 		VkCommandBufferBeginInfo beginfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
 		beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 		AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmd_primary, &beginfo));
 
-		// 5.1.1
+		// 	5.1 upload buf -> image:layout:DST
+		// 		5.1.1 transitionToLayout(UNDEFINED -> DST)
 		VkImageMemoryBarrier image_barrier = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
 		image_barrier.image = image;
 		image_barrier.srcAccessMask = 0;
@@ -522,7 +538,7 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 		image_barrier.subresourceRange = (VkImageSubresourceRange){
 			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 			.baseMipLevel = 0,
-			.levelCount = 1,
+			.levelCount = params.mipmaps_count,
 			.baseArrayLayer = 0,
 			.layerCount = 1,
 		};
@@ -531,25 +547,30 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 				VK_PIPELINE_STAGE_TRANSFER_BIT,
 				0, 0, NULL, 0, NULL, 1, &image_barrier);
 
-		// 5.1.2
-		VkBufferImageCopy region = {0};
-		region.bufferOffset = 0;
-		region.bufferRowLength = 0;
-		region.bufferImageHeight = 0;
-		region.imageSubresource = (VkImageSubresourceLayers){
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.mipLevel = 0,
-			.baseArrayLayer = 0,
-			.layerCount = 1,
-		};
-		region.imageExtent = (VkExtent3D){
-			.width = params.width,
-			.height = params.height,
-			.depth = 1,
-		};
-		vkCmdCopyBufferToImage(g.cmd_primary, g.staging.buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+		// 		5.1.2 copyBufferToImage for all mip levels
+		const size_t staging_offset = 0; // TODO multiple staging buffer users params.staging->ptr
+		for (int i = 0; i < params.mipmaps_count; ++i) {
+			const RTextureUploadMipmapData *mip = params.mipmaps + i;
+			VkBufferImageCopy region = {0};
+			region.bufferOffset = mip->offset + staging_offset;
+			region.bufferRowLength = 0;
+			region.bufferImageHeight = 0;
+			region.imageSubresource = (VkImageSubresourceLayers){
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = mip->mip_level,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			};
+			region.imageExtent = (VkExtent3D){
+				.width = mip->width,
+				.height = mip->height,
+				.depth = 1,
+			};
+			vkCmdCopyBufferToImage(g.cmd_primary, g.staging.buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+		}
 
-		// 5.2.1
+		// 	5.2 image:layout:DST -> image:layout:SAMPLED
+		// 		5.2.1 transitionToLayout(DST -> SHADER_READ_ONLY)
 		image_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		image_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 		image_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -557,7 +578,7 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 		image_barrier.subresourceRange = (VkImageSubresourceRange){
 			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 			.baseMipLevel = 0,
-			.levelCount = 1,
+			.levelCount = params.mipmaps_count,
 			.baseArrayLayer = 0,
 			.layerCount = 1,
 		};
@@ -580,25 +601,29 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	VkImageView imview;
 	VkImageViewCreateInfo ivci = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
 	ivci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	ivci.format = VK_FORMAT_R5G6B5_UNORM_PACK16;
+	ivci.format = format;
 	ivci.image = image;
 	ivci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	ivci.subresourceRange.levelCount = 1;
+	ivci.subresourceRange.baseMipLevel = 0;
+	ivci.subresourceRange.levelCount = params.mipmaps_count;
+	ivci.subresourceRange.baseArrayLayer = 0;
 	ivci.subresourceRange.layerCount = 1;
 	AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, &imview));
 
-	texture->vkImage = image;
-	texture->vkImageView = imview;
-	texture->width = params.width;
-	texture->height = params.height;
-	texture->format = params.format;
+	return (RTexture){
+		params.width,
+			 params.height,
+			 params.format,
+			 image, imview,
+	};
 }
 
 static void createStagingBuffer() {
-#define STAGING_SIZE (16384*1024)
+	g.staging.size = STAGING_SIZE;
+
 	VkBufferCreateInfo bci = {0};
 	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bci.size = STAGING_SIZE;
+	bci.size = g.staging.size;
 	bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &g.staging.buffer));
@@ -613,12 +638,14 @@ static void createStagingBuffer() {
 	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &g.staging.devmem));
 	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, g.staging.buffer, g.staging.devmem, 0));
+
+	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, g.staging.devmem, 0, bci.size, 0, &g.staging.mapped));
 }
 
 int renderInit() {
 	VkSamplerCreateInfo sci = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 	sci.magFilter = VK_FILTER_LINEAR;
-	sci.minFilter = VK_FILTER_NEAREST;
+	sci.minFilter = VK_FILTER_LINEAR;
 	sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
@@ -626,6 +653,8 @@ int renderInit() {
 	sci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
 	sci.unnormalizedCoordinates = VK_FALSE;
 	sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	sci.minLod = 0.f;
+	sci.maxLod = 16.;
 	AVK_CHECK_RESULT(vkCreateSampler(a_vk.dev, &sci, NULL, &g.default_sampler));
 
 	createStagingBuffer();
@@ -948,6 +977,7 @@ void renderEnd(const struct Camera *camera) {
 void renderDestroy() {
 	vkDeviceWaitIdle(a_vk.dev);
 
+	vkUnmapMemory(a_vk.dev, g.staging.devmem);
 	vkDestroyBuffer(a_vk.dev, g.staging.buffer, NULL);
 	vkFreeMemory(a_vk.dev, g.staging.devmem, NULL);
 

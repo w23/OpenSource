@@ -205,82 +205,122 @@ static uint16_t *textureUnpackToTemp(struct Stack *tmp, struct IFile *file, size
 	stackFreeUpToPosition(tmp, src_texture);
 	return dst_texture;
 }
-
-static int textureUploadMipmapType(struct Stack *tmp, struct IFile *file, size_t cursor,
-		const struct VTFHeader *hdr, int miplevel, RTexture *tex, RTexType tex_type) {
-	for (int mip = hdr->mipmap_count - 1; mip > miplevel; --mip) {
-		const unsigned int mip_width = hdr->width >> mip;
-		const unsigned int mip_height = hdr->height >> mip;
-		const int mip_image_size = vtfImageSize(hdr->hires_format, mip_width, mip_height);
-		cursor += mip_image_size * hdr->frames;
-
-		/*PRINTF("cur: %d; size: %d, mip: %d, %dx%d",
-				cursor, mip_image_size, mip, mip_width, mip_height);
-		*/
-	}
-
-	void *dst_texture = textureUnpackToTemp(tmp, file, cursor, hdr->width, hdr->height, hdr->hires_format);
-	if (!dst_texture) {
-		PRINT("Failed to unpack texture");
-		return 0;
-	}
-
-#ifdef ATTO_PLATFORM_RPI
-	{
-		const uint16_t *p565 = dst_texture;
-		uint8_t *etc1_data = stackAlloc(tmp, hdr->width * hdr->height / 2);
-		uint8_t *block = etc1_data;
-
-		// FIXME assumes w and h % 4 == 0
-		for (int by = 0; by < hdr->height; by += 4) {
-			for (int bx = 0; bx < hdr->width; bx += 4) {
-				const uint16_t *bp = p565 + bx + by * hdr->width;
-				ETC1Color ec[16];
-				for (int x = 0; x < 4; ++x) {
-					for (int y = 0; y < 4; ++y) {
-						const unsigned p = bp[x + y * hdr->width];
-						ec[x*4+y].r = (p & 0xf800u) >> 8;
-						ec[x*4+y].g = (p & 0x07e0u) >> 3;
-						ec[x*4+y].b = (p & 0x001fu) << 3;
-					}
-				}
-				
-				etc1PackBlock(ec, block);
-				block += 8;
-			}
-		}
-
-		const RTextureUploadParams params = {
-			.type = tex_type,
-			.width = hdr->width,
-			.height = hdr->height,
-			.format = RTexFormat_Compressed_ETC1,
-			.pixels = etc1_data,
-			.mip_level = -2,//miplevel,
-			.wrap =  RTexWrap_Repeat
-		};
-
-		renderTextureUpload(tex, params);
-
-		stackFreeUpToPosition(tmp, etc1_data);
-	}
-#else
-
-	const RTextureUploadParams params = {
-		.type = tex_type,
-		.width = hdr->width,
-		.height = hdr->height,
-		.format = RTexFormat_RGB565,
-		.pixels = dst_texture,
-		.mip_level = -1,//miplevel,
-		.wrap =  RTexWrap_Repeat
-	};
-
-	renderTextureUpload(tex, params);
-#endif
-
-	return 1;
-}
+/*  */
+/* static int textureUploadMipmapType(struct Stack *tmp, struct IFile *file, size_t cursor, */
+/* 		const struct VTFHeader *hdr, int miplevel, RTexture *tex, RTexType tex_type) { */
+/* 	for (int mip = hdr->mipmap_count - 1; mip > miplevel; --mip) { */
+/* 		const unsigned int mip_width = hdr->width >> mip; */
+/* 		const unsigned int mip_height = hdr->height >> mip; */
+/* 		const int mip_image_size = vtfImageSize(hdr->hires_format, mip_width, mip_height); */
+/* 		cursor += mip_image_size * hdr->frames; */
+/*  */
+/* 		#<{(|PRINTF("cur: %d; size: %d, mip: %d, %dx%d", */
+/* 				cursor, mip_image_size, mip, mip_width, mip_height); */
+/* 		|)}># */
+/* 	} */
+/*  */
+/* 	#<{(| if (hdr->hires_format == VTFImage_DXT1 |)}># */
+/* 	#<{(| 		|| hdr->hires_format == VTFImage_DXT1_A1 |)}># */
+/* 	#<{(| 		|| hdr->hires_format == VTFImage_DXT3 |)}># */
+/* 	#<{(| 		|| hdr->hires_format == VTFImage_DXT5) |)}># */
+/* 	{ */
+/* 		const int src_texture_size = vtfImageSize(hdr->hires_format, hdr->width, hdr->height); */
+/* 		void *src_texture = stackAlloc(tmp, src_texture_size); */
+/* 		if (!src_texture) { */
+/* 			PRINTF("Cannot allocate %d bytes for texture", src_texture_size); */
+/* 			return 0; */
+/* 		} */
+/*  */
+/* 		if (src_texture_size != (int)file->read(file, cursor, src_texture_size, src_texture)) { */
+/* 			PRINT("Cannot read texture data"); */
+/* 			return 0; */
+/* 		} */
+/*  */
+/* 		RTexFormat fmt; */
+/* 		switch (hdr->hires_format) { */
+/* 			case VTFImage_DXT1: fmt = RTexFormat_Compressed_DXT1; break; */
+/* 			case VTFImage_DXT1_A1: fmt = RTexFormat_Compressed_DXT1_A1; break; */
+/* 			case VTFImage_DXT3: fmt = RTexFormat_Compressed_DXT3; break; */
+/* 			case VTFImage_DXT5: fmt = RTexFormat_Compressed_DXT5; break; */
+/* 			default: return 0; */
+/* 		} */
+/*  */
+/* 		const RTextureUploadParams params = { */
+/* 			.type = tex_type, */
+/* 			.width = hdr->width, */
+/* 			.height = hdr->height, */
+/* 			.format = fmt, */
+/* 			.pixels = src_texture, */
+/* 			.mip_level = -2,//miplevel, */
+/* 			.wrap =  RTexWrap_Repeat */
+/* 		}; */
+/*  */
+/* 		renderTextureUpload(tex, params); */
+/* 		return 1; */
+/* 	} */
+/*  */
+/* 	void *dst_texture = textureUnpackToTemp(tmp, file, cursor, hdr->width, hdr->height, hdr->hires_format); */
+/* 	if (!dst_texture) { */
+/* 		PRINT("Failed to unpack texture"); */
+/* 		return 0; */
+/* 	} */
+/*  */
+/* #ifdef ATTO_PLATFORM_RPI */
+/* 	{ */
+/* 		const uint16_t *p565 = dst_texture; */
+/* 		uint8_t *etc1_data = stackAlloc(tmp, hdr->width * hdr->height / 2); */
+/* 		uint8_t *block = etc1_data; */
+/*  */
+/* 		// FIXME assumes w and h % 4 == 0 */
+/* 		for (int by = 0; by < hdr->height; by += 4) { */
+/* 			for (int bx = 0; bx < hdr->width; bx += 4) { */
+/* 				const uint16_t *bp = p565 + bx + by * hdr->width; */
+/* 				ETC1Color ec[16]; */
+/* 				for (int x = 0; x < 4; ++x) { */
+/* 					for (int y = 0; y < 4; ++y) { */
+/* 						const unsigned p = bp[x + y * hdr->width]; */
+/* 						ec[x*4+y].r = (p & 0xf800u) >> 8; */
+/* 						ec[x*4+y].g = (p & 0x07e0u) >> 3; */
+/* 						ec[x*4+y].b = (p & 0x001fu) << 3; */
+/* 					} */
+/* 				} */
+/* 				 */
+/* 				etc1PackBlock(ec, block); */
+/* 				block += 8; */
+/* 			} */
+/* 		} */
+/*  */
+/* 		const RTextureUploadParams params = { */
+/* 			.type = tex_type, */
+/* 			.width = hdr->width, */
+/* 			.height = hdr->height, */
+/* 			.format = RTexFormat_Compressed_ETC1, */
+/* 			.pixels = etc1_data, */
+/* 			.mip_level = -2,//miplevel, */
+/* 			.wrap =  RTexWrap_Repeat */
+/* 		}; */
+/*  */
+/* 		renderTextureUpload(tex, params); */
+/*  */
+/* 		stackFreeUpToPosition(tmp, etc1_data); */
+/* 	} */
+/* #else */
+/*  */
+/* 	const RTextureUploadParams params = { */
+/* 		.type = tex_type, */
+/* 		.width = hdr->width, */
+/* 		.height = hdr->height, */
+/* 		.format = RTexFormat_RGB565, */
+/* 		.pixels = dst_texture, */
+/* 		.mip_level = -1,//miplevel, */
+/* 		.wrap =  RTexWrap_Repeat */
+/* 	}; */
+/*  */
+/* 	renderTextureUpload(tex, params); */
+/* #endif */
+/*  */
+/* 	return 1; */
+/* } */
 
 static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp, RTexType type) {
 	struct VTFHeader hdr;
@@ -297,22 +337,20 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp, RTex
 		return 0;
 	}
 
-	/*
-	if (!(hdr.version[0] > 7 || hdr.version[1] > 2)) {
-		PRINTF("VTF version %d.%d is not supported", hdr.version[0], hdr.version[1]);
+#define MAX_MIPS 12
+	if (hdr.mipmap_count > MAX_MIPS) {
+		PRINTF("Too many mips: %d", (int)hdr.mipmap_count);
 		return 0;
 	}
-	*/
 
-	//PRINTF("Texture: %dx%d, %s",
-	//	hdr.width, hdr.height, vtfFormatStr(hdr.hires_format));
-
-	/*
-	if (hdr.hires_format != VTFImage_DXT1 && hdr.hires_format != VTFImage_DXT5 && hdr.hires_format != VTFImage_BGR8) {
-		PRINTF("Not implemented texture format: %s", vtfFormatStr(hdr.hires_format));
-		return 0;
+	RTexFormat format;
+	switch (hdr.hires_format) {
+		case VTFImage_DXT1: format = RTexFormat_Compressed_DXT1; break;
+		case VTFImage_DXT1_A1: format = RTexFormat_Compressed_DXT1_A1; break;
+		case VTFImage_DXT3: format = RTexFormat_Compressed_DXT3; break;
+		case VTFImage_DXT5: format = RTexFormat_Compressed_DXT5; break;
+		default: return 0;
 	}
-	*/
 
 	cursor += hdr.header_size;
 
@@ -324,6 +362,7 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp, RTex
 	} else {
 		uint16_t *pixels = textureUnpackToTemp(tmp, file, cursor, hdr.lores_width, hdr.lores_height, hdr.lores_format);
 
+		// FIXME clean temp memory properly
 		if (!pixels) {
 			PRINT("Cannot unpack lowres image");
 			return 0;
@@ -344,16 +383,53 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp, RTex
 
 	cursor += vtfImageSize(hdr.lores_format, hdr.lores_width, hdr.lores_height);
 
-	/*
-	PRINTF("Texture lowres: %dx%d, %s; mips %d; header_size: %u",
-		hdr.lores_width, hdr.lores_height, vtfFormatStr(hdr.lores_format), hdr.mipmap_count, hdr.header_size);
-	*/
-
-	for (int mip = 0; mip <= 0/*< hdr.mipmap_count*/; ++mip) {
-		retval = textureUploadMipmapType(tmp, file, cursor, &hdr, mip, &tex->texture, type);
-		if (retval != 1)
-			break;
+	// 1. Compute memory size for all mips
+	RTextureUploadMipmapData mips[MAX_MIPS] = {0};
+	size_t mips_size = 0;
+	for (int mip = hdr.mipmap_count - 1; mip >= 0; --mip) {
+		const unsigned int mip_width = hdr.width >> mip;
+		const unsigned int mip_height = hdr.height >> mip;
+		RTextureUploadMipmapData *const m = mips + mip;
+		m->width = mip_width;
+		m->height = mip_height;
+		m->mip_level = mip;
+		m->offset = mips_size;
+		mips_size += vtfImageSize(hdr.hires_format, mip_width, mip_height);
 	}
+
+	// 2. Request render stage buffer memory for all mipmaps
+	RStagingMemory mem = renderGetStagingBuffer(mips_size);
+	uint8_t * const pixels = mem.ptr;
+
+	// 3. Read texture mipmaps into stage memory, filling mips struct
+	for (int i = 0; i < hdr.mipmap_count; ++i) {
+		RTextureUploadMipmapData *const m = mips + (hdr.mipmap_count - i - 1);
+		const int mip_image_size = vtfImageSize(hdr.hires_format, m->width, m->height);
+
+		if (mip_image_size != (int)file->read(file, cursor, mip_image_size, pixels + m->offset)) {
+			PRINT("Cannot read texture data");
+			// FIXME free
+			return 0;
+		}
+
+		cursor += mip_image_size * hdr.frames;
+	}
+
+	// 4. Create and upload this data to render as a texutre with mips
+	const RTextureUploadParams params = {
+		.type = type,
+		.width = hdr.width,
+		.height = hdr.height,
+		.format = format,
+		.mipmaps_count = hdr.mipmap_count,
+		.mipmaps = mips,
+		.staging = &mem,
+	};
+
+	tex->texture = renderTextureCreateAndUpload(params);
+	retval = !!tex->texture.vkImage;
+
+	renderFreeStagingBuffer(mem);
 	stackFreeUpToPosition(tmp, pre_alloc_cursor);
 
 	return retval;
@@ -369,8 +445,7 @@ const Texture *textureGet(const char *name, struct ICollection *collection, stru
 		return cacheGetTexture("opensource/placeholder");
 	}
 
-	struct Texture localtex;
-	renderTextureInit(&localtex.texture);
+	struct Texture localtex = {0};
 	if (textureLoad(texfile, &localtex, tmp, RTexType_2D) == 0) {
 		PRINTF("Texture \"%s\" found, but could not be loaded", name);
 	} else {

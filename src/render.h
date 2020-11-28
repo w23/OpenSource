@@ -1,11 +1,16 @@
 #pragma once
 #include "atto/math.h"
+#include <stddef.h>
 
 typedef enum {
 	RTexFormat_RGB565,
 #ifdef ATTO_PLATFORM_RPI
 	RTexFormat_Compressed_ETC1,
 #endif
+	RTexFormat_Compressed_DXT1,
+	RTexFormat_Compressed_DXT1_A1,
+	RTexFormat_Compressed_DXT3,
+	RTexFormat_Compressed_DXT5,
 } RTexFormat;
 
 typedef enum {
@@ -37,18 +42,29 @@ typedef struct {
 } RTexture;
 
 typedef struct {
+	void *ptr;
+	size_t size;
+} RStagingMemory;
+RStagingMemory renderGetStagingBuffer(size_t size);
+void renderFreeStagingBuffer(RStagingMemory mem);
+
+typedef struct {
+	int mip_level;
+	int width, height;
+	size_t offset;
+} RTextureUploadMipmapData;
+
+typedef struct {
 	RTexType type;
 	int width, height;
 	RTexFormat format;
-	const void *pixels;
-	int mip_level; // -1 means generate; -2 means don't need
-	RTexWrap wrap;
+
+	RStagingMemory *staging;
+	int mipmaps_count;
+	RTextureUploadMipmapData *mipmaps;
 } RTextureUploadParams;
 
-//#define renderTextureInit(texture_ptr) do { (texture_ptr)->gl_name = -1; } while (0)
-#define renderTextureInit(texture_ptr) do { *(texture_ptr) = (RTexture){0}; } while (0)
-//void renderTextureInit(RTexture *texture);
-void renderTextureUpload(RTexture *texture, RTextureUploadParams params);
+RTexture renderTextureCreateAndUpload(RTextureUploadParams params);
 
 typedef struct {
 	// FIXME GL
