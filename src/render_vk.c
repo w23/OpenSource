@@ -9,31 +9,68 @@
 
 #include <stddef.h>
 #include <stdlib.h>
-
-/* struct DeviceMemoryBumpAllocator { */
-/* 	VkDeviceMemory devmem; */
-/* 	size_t size; */
-/* 	size_t offet; */
-/* }; */
-/*  */
-/* static struct DeviceMemoryBumpAllocator createDeviceMemory(size_t size, uint32_t type_index_bits, VkMemoryPropertyFlags props) { */
-/* 	VkMemoryAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO}; */
-/* 	alloc_info.allocationSize = size; */
-/* 	alloc_info.memoryTypeIndex = aVkFindMemoryWithType(type_index_bits, props); */
-/*  */
-/* 	struct DeviceMemoryBumpAllocator ret = {0}; */
-/* 	const VkResult alloc_result = vkAllocateMemory(a_vk.dev, &alloc_info, NULL, &ret.devmem); */
-/*  */
-/* 	if (alloc_result == VK_ERROR_OUT_OF_DEVICE_MEMORY) */
-/* 		return ret; */
-/*  */
-/* 	AVK_CHECK_RESULT(alloc_result); */
-/*  */
-/* 	ret.size = size; */
-/* 	return ret; */
-/* } */
+#include <assert.h>
 
 #define MAX_DESC_SETS 65536
+#define MAX_HEAPS 1
+#define HEAP_SIZE (64*1024*1024)
+
+struct DeviceMemoryBumpAllocator {
+	uint32_t type_bit;
+	VkDeviceMemory devmem;
+	size_t size;
+	size_t offset;
+};
+
+static struct DeviceMemoryBumpAllocator createDeviceMemory(size_t size, uint32_t type_index_bits, VkMemoryPropertyFlags flags) {
+	struct DeviceMemoryBumpAllocator ret = {0};
+
+	// Find compatible memory type
+	uint32_t type_bit = 0;
+	uint32_t index = 0;
+	for (uint32_t i = 0; i < a_vk.mem_props.memoryTypeCount; ++i) {
+		const uint32_t bit = (1 << i);
+		if (!(type_index_bits & bit))
+			continue;
+
+		if ((a_vk.mem_props.memoryTypes[i].propertyFlags & flags) == flags) {
+			type_bit = bit;
+			index = i;
+			break;
+		}
+	}
+
+	if (!type_bit)
+		return ret;
+
+	VkMemoryAllocateInfo alloc_info = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+	alloc_info.allocationSize = size;
+	alloc_info.memoryTypeIndex = index;
+
+	const VkResult alloc_result = vkAllocateMemory(a_vk.dev, &alloc_info, NULL, &ret.devmem);
+
+	if (alloc_result == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+		return ret;
+
+	AVK_CHECK_RESULT(alloc_result);
+
+	ret.type_bit = type_bit;
+	ret.size = size;
+	ret.offset = 0;
+	return ret;
+}
+
+static size_t allocateFromAllocator(struct DeviceMemoryBumpAllocator* alloc, size_t size, size_t align) {
+	align = align > 0 ? align : 1;
+	const size_t offset = ((alloc->offset + align - 1) / align) * align;
+
+	if (offset + size > alloc->size)
+		return -1;
+
+	alloc->offset = offset + size;
+	return offset;
+}
+
 
 struct AVkMaterial {
 	VkShaderModule module_vertex;
@@ -59,6 +96,23 @@ static struct {
 
 	VkSampler default_sampler;
 
+	struct {
+		size_t size;
+		VkDeviceMemory devmem;
+		VkBuffer buffer;
+	} staging;
+
+	struct DeviceMemoryBumpAllocator heaps[MAX_HEAPS];
+
+	// buffer || image
+	// 	HW heap
+	// HW heaps[]
+	// 	buffer || image
+	// 	pool chain []
+	// 		pool
+	// 		  - size: 64M
+	// 		  - free_offset ..
+
 	VkDescriptorSetLayout descset_layout;
 	VkDescriptorPool desc_pool;
 	VkDescriptorSet desc_sets[MAX_DESC_SETS];
@@ -76,13 +130,49 @@ static struct {
 
 struct AVkMemBuffer {
 	VkBuffer buf;
-	VkDeviceMemory devmem;
 	size_t size;
 };
 
-static void destroyBuffer(struct AVkMemBuffer buf) {
-	vkDestroyBuffer(a_vk.dev, buf.buf, NULL);
-	vkFreeMemory(a_vk.dev, buf.devmem, NULL);
+// TODO reverse this: give pointer to data source
+static void stagingUpload(size_t size, const void *data) {
+	void *ptr = NULL;
+	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, g.staging.devmem, 0, size, 0, &ptr));
+	memcpy(ptr, data, size);
+	vkUnmapMemory(a_vk.dev, g.staging.devmem);
+}
+
+/* static void destroyBuffer(struct AVkMemBuffer buf) { */
+/* 	vkDestroyBuffer(a_vk.dev, buf.buf, NULL); */
+/* } */
+
+struct AllocatedMemory {
+	VkDeviceMemory devmem;
+	size_t offset;
+};
+
+static struct AllocatedMemory allocateDeviceMemory(VkMemoryRequirements req) {
+	for (int i = 0; i < MAX_HEAPS; ++i) {
+		struct DeviceMemoryBumpAllocator *heap = g.heaps + i;
+		if (!heap->devmem) {
+			const size_t size = req.size > HEAP_SIZE ? req.size : HEAP_SIZE;
+			*heap = createDeviceMemory(size, req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			assert(heap->devmem);
+			assert(heap->type_bit & req.memoryTypeBits);
+		}
+
+		if (!(heap->type_bit & req.memoryTypeBits))
+			continue;
+
+		const size_t offset = allocateFromAllocator(heap, req.size, req.alignment);
+		if (offset != (size_t)-1) {
+			return (struct AllocatedMemory){
+				heap->devmem,
+				offset
+			};
+		}
+	}
+
+	return (struct AllocatedMemory){0};
 }
 
 static struct AVkMemBuffer createBufferWithData(VkBufferUsageFlags usage, int size, const void *data) {
@@ -98,17 +188,15 @@ static struct AVkMemBuffer createBufferWithData(VkBufferUsageFlags usage, int si
 	vkGetBufferMemoryRequirements(a_vk.dev, buf.buf, &memreq);
 	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size);
 
-	VkMemoryAllocateInfo mai={0};
-	mai.allocationSize = memreq.size;
-	mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &buf.devmem));
-	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, buf.buf, buf.devmem, 0));
+	struct AllocatedMemory mem = allocateDeviceMemory(memreq);
+	assert(mem.devmem);
+	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, buf.buf, mem.devmem, mem.offset));
 
+	// TODO: reverse this, let the source upload
 	void *ptr = NULL;
-	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, buf.devmem, 0, bci.size, 0, &ptr));
-		memcpy(ptr, data, size);
-	vkUnmapMemory(a_vk.dev, buf.devmem);
+	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, mem.devmem, mem.offset, size, 0, &ptr));
+	memcpy(ptr, data, size);
+	vkUnmapMemory(a_vk.dev, mem.devmem);
 
 	buf.size = size;
 	return buf;
@@ -407,24 +495,12 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &devmem));
 	AVK_CHECK_RESULT(vkBindImageMemory(a_vk.dev, image, devmem, 0));
 
-	/* VkImageViewCreateInfo ivci = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; */
-	/* ivci.viewType = VK_IMAGE_VIEW_TYPE_2D; */
-	/* ivci.format = format; */
-	/* ivci.image = image; */
-	/* ivci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT; */
-	/* ivci.subresourceRange.levelCount = 1; */
-	/* ivci.subresourceRange.layerCount = 1; */
-	/* AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, &image_view)); */
-
 	const int bytes_per_pixel = 2;
 	int size = params.width * params.height * bytes_per_pixel;
 
 	// 3. Create/get staging buffer
-	// 		3.1 Create VkBuffer
-	// 		3.2 Alloc mem for VkBuffer and bind it
-	//    3.3 Map staging buffer
 	// 4. memcpy image data to mapped staging buffer
-	struct AVkMemBuffer staging = createBufferWithData(VK_BUFFER_USAGE_TRANSFER_SRC_BIT, size, params.pixels);
+	stagingUpload(size, params.pixels);
 
 	// 5. Create/get cmdbuf for transitions
 	// 	5.1 upload buf -> image:layout:DST
@@ -473,7 +549,7 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 			.height = params.height,
 			.depth = 1,
 		};
-		vkCmdCopyBufferToImage(g.cmd_primary, staging.buf, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+		vkCmdCopyBufferToImage(g.cmd_primary, g.staging.buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
 		// 5.2.1
 		image_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -513,13 +589,33 @@ void renderTextureUpload(RTexture *texture, RTextureUploadParams params) {
 	ivci.subresourceRange.layerCount = 1;
 	AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, &imview));
 
-	destroyBuffer(staging);
 	texture->vkDevMem = devmem;
 	texture->vkImage = image;
 	texture->vkImageView = imview;
 	texture->width = params.width;
 	texture->height = params.height;
 	texture->format = params.format;
+}
+
+static void createStagingBuffer() {
+#define STAGING_SIZE (16384*1024)
+	VkBufferCreateInfo bci = {0};
+	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bci.size = STAGING_SIZE;
+	bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &g.staging.buffer));
+
+	VkMemoryRequirements memreq;
+	vkGetBufferMemoryRequirements(a_vk.dev, g.staging.buffer, &memreq);
+	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size);
+
+	VkMemoryAllocateInfo mai={0};
+	mai.allocationSize = memreq.size;
+	mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &g.staging.devmem));
+	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, g.staging.buffer, g.staging.devmem, 0));
 }
 
 int renderInit() {
@@ -535,6 +631,7 @@ int renderInit() {
 	sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	AVK_CHECK_RESULT(vkCreateSampler(a_vk.dev, &sci, NULL, &g.default_sampler));
 
+	createStagingBuffer();
 	createDesriptorSets();
 	createShaders();
 
@@ -650,6 +747,8 @@ void renderVkSwapchainCreated(int w, int h) {
 }
 
 void renderVkSwapchainDestroy() {
+	vkDeviceWaitIdle(a_vk.dev);
+
 	for (int i = 0; i < (int)COUNTOF(g.materials); ++i) {
 		if (!g.materials[i].pipeline)
 			continue;
@@ -683,7 +782,6 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 	struct AVkMemBuffer buf = createBufferWithData(usage, size, data);
 
 	buffer->vkBuf = buf.buf;
-	buffer->vkDevMem = buf.devmem;
 }
 
 void renderBegin() {
@@ -793,8 +891,7 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 	}
 }
 
-void renderEnd(const struct Camera *camera)
-{
+void renderEnd(const struct Camera *camera) {
 	(void)(camera);
 
 	for (int i = 0; i < (int)COUNTOF(g.cmd_materials); ++i) {
@@ -852,6 +949,11 @@ void renderEnd(const struct Camera *camera)
 }
 
 void renderDestroy() {
+	vkDeviceWaitIdle(a_vk.dev);
+
+	vkDestroyBuffer(a_vk.dev, g.staging.buffer, NULL);
+	vkFreeMemory(a_vk.dev, g.staging.devmem, NULL);
+
 	// TODO do we need this?
 	vkFreeCommandBuffers(a_vk.dev, g.cmdpool, 1, &g.cmd_primary);
 	vkFreeCommandBuffers(a_vk.dev, g.cmdpool, COUNTOF(g.cmd_materials), g.cmd_materials);
@@ -868,9 +970,6 @@ void renderDestroy() {
 	}
 
 	vkDestroyDescriptorSetLayout(a_vk.dev, g.descset_layout, NULL);
-
-	/* vkFreeMemory(a_vk.dev, g.devmem, NULL); */
-	/* vkDestroyBuffer(a_vk.dev, g.vertex_buf, NULL); */
 
 	vkDestroyRenderPass(a_vk.dev, g.render_pass, NULL);
 	aVkDestroySemaphore(g.done);
