@@ -15,6 +15,7 @@
 #define MAX_DESC_SETS 65536
 #define MAX_HEAPS 16
 #define HEAP_SIZE (64*1024*1024)
+#define IMAGE_HEAP_SIZE (256*1024*1024)
 #define STAGING_SIZE (16*1024*1024)
 
 struct DeviceMemoryBumpAllocator {
@@ -91,6 +92,12 @@ struct AVkMaterial {
 	VkPipeline pipeline;
 };
 
+typedef enum {
+	DMC_Image,
+	DMC_Buffer,
+	DMC_COUNT
+} DeviceMemoryClass;
+
 static struct {
 	VkFence fence;
 	VkSemaphore done;
@@ -113,7 +120,9 @@ static struct {
 		void *mapped;
 	} staging;
 
-	struct DeviceMemoryBumpAllocator heaps[MAX_HEAPS];
+	struct {
+		struct DeviceMemoryBumpAllocator heaps[MAX_HEAPS];
+	} class[DMC_COUNT];
 
 	VkDescriptorSetLayout descset_layout;
 	VkDescriptorPool desc_pool;
@@ -144,12 +153,15 @@ struct AllocatedMemory {
 	size_t offset;
 };
 
-static struct AllocatedMemory allocateDeviceMemory(VkMemoryRequirements req, VkMemoryPropertyFlags props) {
+static struct AllocatedMemory allocateDeviceMemory(DeviceMemoryClass class, VkMemoryRequirements req, VkMemoryPropertyFlags props) {
+	struct DeviceMemoryBumpAllocator *heaps = g.class[class].heaps;
+	const size_t new_heap_size = class == DMC_Image ? IMAGE_HEAP_SIZE : HEAP_SIZE;
+
 	for (int i = 0; i < MAX_HEAPS; ++i) {
-		struct DeviceMemoryBumpAllocator *heap = g.heaps + i;
+		struct DeviceMemoryBumpAllocator *heap = heaps + i;
 
 		if (!heap->devmem) {
-			const size_t size = req.size > HEAP_SIZE ? req.size : HEAP_SIZE;
+			const size_t size = req.size > new_heap_size ? req.size : new_heap_size;
 			*heap = createDeviceMemory(size, req.memoryTypeBits, props);
 			assert(heap->devmem);
 			assert(heap->type_bit & req.memoryTypeBits);
@@ -185,7 +197,7 @@ static struct AVkMemBuffer createBufferWithData(VkBufferUsageFlags usage, int si
 	vkGetBufferMemoryRequirements(a_vk.dev, buf.buf, &memreq);
 	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size);
 
-	struct AllocatedMemory mem = allocateDeviceMemory(memreq, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	struct AllocatedMemory mem = allocateDeviceMemory(DMC_Buffer, memreq, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	assert(mem.devmem);
 	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, buf.buf, mem.devmem, mem.offset));
 
@@ -518,7 +530,7 @@ RTexture renderTextureCreateAndUpload(RTextureUploadParams params) {
 	// 2. Alloc mem for VkImage and bind it (DEV_LOCAL)
 	VkMemoryRequirements memreq;
 	vkGetImageMemoryRequirements(a_vk.dev, image, &memreq);
-	struct AllocatedMemory mem = allocateDeviceMemory(memreq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	struct AllocatedMemory mem = allocateDeviceMemory(DMC_Image, memreq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	AVK_CHECK_RESULT(vkBindImageMemory(a_vk.dev, image, mem.devmem, mem.offset));
 
 	// 5. Create/get cmdbuf for transitions
