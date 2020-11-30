@@ -70,7 +70,8 @@ typedef struct {
 	// FIXME GL
 	// int gl_name;
 	// int type;
-	void *vkBuf;
+	//void *vkBuf;
+	int index, offset;
 } RBuffer;
 
 typedef enum {

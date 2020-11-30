@@ -98,6 +98,42 @@ typedef enum {
 	DMC_COUNT
 } DeviceMemoryClass;
 
+struct GiantBuffer {
+	size_t size;
+	VkDeviceMemory devmem;
+	VkBuffer buffer;
+	void *mapped;
+	size_t offset;
+};
+
+static struct GiantBuffer createGiantBuffer(size_t size, VkBufferUsageFlags usage) {
+	struct GiantBuffer gb;
+	gb.size = size;
+	gb.offset = 0;
+
+	VkBufferCreateInfo bci = {0};
+	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bci.size = gb.size;
+	bci.usage = usage;
+	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &gb.buffer));
+
+	VkMemoryRequirements memreq;
+	vkGetBufferMemoryRequirements(a_vk.dev, gb.buffer, &memreq);
+	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size);
+
+	VkMemoryAllocateInfo mai={0};
+	mai.allocationSize = memreq.size;
+	mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &gb.devmem));
+	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, gb.buffer, gb.devmem, 0));
+
+	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, gb.devmem, 0, bci.size, 0, &gb.mapped));
+
+	return gb;
+}
+
 static struct {
 	VkFence fence;
 	VkSemaphore done;
@@ -124,6 +160,8 @@ static struct {
 		struct DeviceMemoryBumpAllocator heaps[MAX_HEAPS];
 	} class[DMC_COUNT];
 
+	struct GiantBuffer buffers[MAX_HEAPS];
+
 	VkDescriptorSetLayout descset_layout;
 	VkDescriptorPool desc_pool;
 	VkDescriptorSet desc_sets[MAX_DESC_SETS];
@@ -138,15 +176,6 @@ static struct {
 	VkCommandBuffer cmd_primary;
 	VkCommandBuffer cmd_materials[MShader_COUNT];
 } g;
-
-struct AVkMemBuffer {
-	VkBuffer buf;
-	size_t size;
-};
-
-/* static void destroyBuffer(struct AVkMemBuffer buf) { */
-/* 	vkDestroyBuffer(a_vk.dev, buf.buf, NULL); */
-/* } */
 
 struct AllocatedMemory {
 	VkDeviceMemory devmem;
@@ -184,32 +213,32 @@ static struct AllocatedMemory allocateDeviceMemory(DeviceMemoryClass class, VkMe
 	return (struct AllocatedMemory){0};
 }
 
-static struct AVkMemBuffer createBufferWithData(VkBufferUsageFlags usage, int size, const void *data) {
-	struct AVkMemBuffer buf;
-	VkBufferCreateInfo bci = {0};
-	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bci.size = size;
-	bci.usage = usage;
-	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &buf.buf));
-
-	VkMemoryRequirements memreq;
-	vkGetBufferMemoryRequirements(a_vk.dev, buf.buf, &memreq);
-	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size);
-
-	struct AllocatedMemory mem = allocateDeviceMemory(DMC_Buffer, memreq, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	assert(mem.devmem);
-	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, buf.buf, mem.devmem, mem.offset));
-
-	// TODO: reverse this, let the source upload
-	void *ptr = NULL;
-	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, mem.devmem, mem.offset, size, 0, &ptr));
-	memcpy(ptr, data, size);
-	vkUnmapMemory(a_vk.dev, mem.devmem);
-
-	buf.size = size;
-	return buf;
-}
+/* static struct AVkMemBuffer createBufferWithData(VkBufferUsageFlags usage, int size, const void *data) { */
+/* 	struct AVkMemBuffer buf; */
+/* 	VkBufferCreateInfo bci = {0}; */
+/* 	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; */
+/* 	bci.size = size; */
+/* 	bci.usage = usage; */
+/* 	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE; */
+/* 	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &buf.buf)); */
+/*  */
+/* 	VkMemoryRequirements memreq; */
+/* 	vkGetBufferMemoryRequirements(a_vk.dev, buf.buf, &memreq); */
+/* 	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size); */
+/*  */
+/* 	struct AllocatedMemory mem = allocateDeviceMemory(DMC_Buffer, memreq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT); */
+/* 	assert(mem.devmem); */
+/* 	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, buf.buf, mem.devmem, mem.offset)); */
+/*  */
+/* 	// TODO: reverse this, let the source upload */
+/* 	void *ptr = NULL; */
+/* 	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, mem.devmem, mem.offset, size, 0, &ptr)); */
+/* 	memcpy(ptr, data, size); */
+/* 	vkUnmapMemory(a_vk.dev, mem.devmem); */
+/*  */
+/* 	buf.size = size; */
+/* 	return buf; */
+/* } */
 
 static VkImage createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage) {
 	VkImageCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
@@ -806,20 +835,31 @@ void renderVkSwapchainDestroy() {
 }
 
 void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void *data) {
-	VkBufferUsageFlags usage;
-	switch (type) {
-		case RBufferType_Index:
-			usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	(void)type;
+	assert(size <= HEAP_SIZE);
+	struct GiantBuffer *gb = NULL;
+	for (int i = 0; i  < MAX_HEAPS; ++i) {
+		gb = g.buffers + i;
+		if (gb->size == 0)
 			break;
-		case RBufferType_Vertex:
-			usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-			break;
-		default:
-			return;
-	}
-	struct AVkMemBuffer buf = createBufferWithData(usage, size, data);
 
-	buffer->vkBuf = buf.buf;
+		if (gb->offset + size <= gb->size)
+			break;
+	}
+
+	assert(gb);
+
+	if (gb->size == 0) {
+		*gb = createGiantBuffer(HEAP_SIZE, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	}
+
+	memcpy((uint8_t*)gb->mapped + gb->offset, data, size);
+	buffer->index = gb - g.buffers;
+	buffer->offset = gb->offset;
+
+	const size_t align = sizeof(struct BSPModelVertex);
+	//gb->offset += (size + (align - 1)) & ~(align - 1);
+	gb->offset += ((size + (align - 1)) / align) * align;
 }
 
 void renderBegin() {
@@ -836,8 +876,12 @@ void renderBegin() {
 		AVK_CHECK_RESULT(vkBeginCommandBuffer(cb, &beginfo));
 
 		struct AVkMaterial *m = g.materials + i;
-		if (m->pipeline)
+		if (m->pipeline) {
 			vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline);
+			const VkDeviceSize offset = 0;
+			vkCmdBindVertexBuffers(cb, 0, 1, &g.buffers[0].buffer, &offset);
+			vkCmdBindIndexBuffer(cb, g.buffers[0].buffer, 0, VK_INDEX_TYPE_UINT16);
+		}
 	}
 
 	g.next_free_set = 0;
@@ -922,10 +966,8 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 0, 1, &set, 0, NULL);
 		}
 
-		const VkDeviceSize offset = draw->vbo_offset;
-		vkCmdBindVertexBuffers(cb, 0, 1, (VkBuffer*)&model->vbo.vkBuf, &offset);
-		vkCmdBindIndexBuffer(cb, (VkBuffer)model->ibo.vkBuf, 0, VK_INDEX_TYPE_UINT16);
-		vkCmdDrawIndexed(cb, draw->count, 1, draw->start, 0, 0);
+		const VkDeviceSize offset = draw->vbo_offset + model->vbo.offset / sizeof(struct BSPModelVertex);
+		vkCmdDrawIndexed(cb, draw->count, 1, draw->start + model->ibo.offset/sizeof(uint16_t), offset, 0);
 	}
 }
 
