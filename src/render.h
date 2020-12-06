@@ -32,7 +32,7 @@ typedef struct {
 	int width, height;
 	RTexFormat format;
 
-#if ATTO_GL
+#ifdef ATTO_GL
 	int gl_name;
 	int type_flags;
 #else
