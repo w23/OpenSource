@@ -84,5 +84,5 @@ endif()
 target_include_directories(OpenSource PRIVATE src/khronos)
 target_compile_options(OpenSource PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>
-  $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -pedantic -Werror>
+	$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Werror> #-pedantic>
 )

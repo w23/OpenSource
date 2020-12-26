@@ -11,6 +11,10 @@
 #include "atto/app.h"
 #include "atto/math.h"
 
+#define AVK_VK_VERSION VK_MAKE_VERSION(1, 2, 0)
+#define ATTO_VK_IMPLEMENT
+#include "atto/worobushek.h"
+
 #ifdef _MSC_VER
 #pragma warning(disable:4221)
 #endif
@@ -293,24 +297,23 @@ static void opensrcInit() {
 			g.center, aVec3f(0.f, 0.f, 1.f));
 }
 
-// FIXME GL
-/* static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int old_h) { */
-/* 	(void)(timestamp); (void)(old_w); (void)(old_h); */
-/* 	renderResize(a_app_state->width, a_app_state->height); */
-/*  */
-/* 	cameraProjection(&g.camera, 1.f, g.R, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height); */
-/* 	cameraRecompute(&g.camera); */
-/* } */
-
-static void opensrcResizeVk() {
+static void opensrcResize(ATimeUs timestamp, unsigned int old_w, unsigned int old_h) {
+	(void)(timestamp); (void)(old_w); (void)(old_h);
+#ifdef ATTO_GL
+	GL renderResize(a_app_state->width, a_app_state->height);
+#elif defined(ATTO_VK)
+	aVkCreateSwapchain(a_app_state->width, a_app_state->height);
 	renderVkSwapchainCreated(a_app_state->width, a_app_state->height);
+#endif
 
 	cameraProjection(&g.camera, 1.f, g.R, 3.1415926f/2.f, (float)a_app_state->width / (float)a_app_state->height);
 	cameraRecompute(&g.camera);
+
+	// ??? paint(ts, 0);
 }
 
 static void opensrcPaint(ATimeUs timestamp, float dt) {
-	(void)(timestamp); (void)(dt);
+	(void)(timestamp);
 
 	for (struct Map *map = g.maps_begin; map; map = map->next) {
 		if (map->flags & MapFlags_Broken)
@@ -738,14 +741,17 @@ void attoAppInit(struct AAppProctable *proctable) {
 		goto print_usage_and_exit;
 	}
 
+	aVkInitInstance();
+	aVkCreateSurface();
+	aVkInitDevice(NULL, NULL, NULL);
+	aVkPokePresentModes();
+
 	opensrcInit();
 
-// FIXME if GL
-	//proctable->resize = opensrcResize;
-// FIXME elif VK
-	proctable->swapchain_created = opensrcResizeVk;
-	proctable->swapchain_will_destroy = renderVkSwapchainDestroy;
+	opensrcResize(0, 0, 0);
 
+
+	proctable->resize = opensrcResize;
 	proctable->paint = opensrcPaint;
 	proctable->key = opensrcKeyPress;
 	proctable->pointer = opensrcPointer;

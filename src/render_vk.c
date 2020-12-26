@@ -863,6 +863,8 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 }
 
 void renderBegin() {
+	aVkAcquireNextImage();
+
 	VkCommandBufferInheritanceInfo inherit = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO };
 	inherit.framebuffer = g.framebuffers[a_vk.swapchain.current_frame_image_index];
 	inherit.renderPass = g.render_pass;
