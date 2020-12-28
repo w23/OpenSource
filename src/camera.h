@@ -4,6 +4,7 @@
 struct Camera {
 	struct AMat4f projection;
 	struct AMat4f view_projection;
+	struct AMat4f view;
 	struct AMat3f axes, orientation;
 	struct AVec3f pos, dir, up;
 	float z_near, z_far;

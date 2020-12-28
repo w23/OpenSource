@@ -417,6 +417,7 @@ static int textureLoad(struct IFile *file, Texture *tex, struct Stack *tmp, RTex
 
 	// 4. Create and upload this data to render as a texutre with mips
 	const RTextureUploadParams params = {
+		.kind = RTexKind_Material0, // TODO is it?
 		.type = type,
 		.width = hdr.width,
 		.height = hdr.height,

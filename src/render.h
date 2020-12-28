@@ -36,7 +36,7 @@ typedef struct {
 	int gl_name;
 	int type_flags;
 #else
-	void *vkImage, *vkImageView;
+	void* vkImage, * vkImageView, * descriptor;
 #endif
 
 } RTexture;
@@ -54,7 +54,13 @@ typedef struct {
 	size_t offset;
 } RTextureUploadMipmapData;
 
+typedef enum {
+	RTexKind_Lightmap,
+	RTexKind_Material0,
+} RTexKind;
+
 typedef struct {
+	RTexKind kind; // TODO this is needed for vk desc set binding. Is there a better way?
 	RTexType type;
 	int width, height;
 	RTexFormat format;
@@ -71,7 +77,7 @@ typedef struct {
 	// int gl_name;
 	// int type;
 	//void *vkBuf;
-	int index, offset;
+	uint32_t index, offset;
 } RBuffer;
 
 typedef enum {
@@ -93,14 +99,13 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 struct BSPModel;
 struct Camera;
 
-void renderBegin();
+void renderBegin(const struct Camera* camera);
 
 typedef struct {
-	const struct Camera *camera;
 	struct AVec3f translation;
 	int selected;
 } RDrawParams;
 
-void renderModelDraw(const RDrawParams *params, const struct BSPModel *model);
-
+void renderModelDraw(const RDrawParams* params, struct BSPModel* model);
+void renderResize(int w, int h);
 void renderEnd(const struct Camera *camera);

@@ -5,6 +5,24 @@
 #include "material.h"
 
 #include "atto/app.h"
+
+#define RTX 0
+
+#if RTX
+#define ATTO_VK_INSTANCE_EXTENSIONS \
+		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME, \
+
+#define ATTO_VK_DEVICE_EXTENSIONS \
+		VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, \
+		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, \
+		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, \
+
+#define AVK_VK_VERSION VK_MAKE_VERSION(1, 2, 0)
+#else
+#define AVK_VK_VERSION VK_MAKE_VERSION(1, 0, 0)
+#endif
+
+#define ATTO_VK_IMPLEMENT
 #include "atto/worobushek.h"
 
 #include <stddef.h>
@@ -12,8 +30,9 @@
 #undef NDEBUG
 #include <assert.h>
 
-#define MAX_DESC_SETS 65536
+#define MAX_DESC_SETS 1024 // TODO how many textures can we have?
 #define MAX_HEAPS 16
+#define MAX_LEVELS 128
 #define HEAP_SIZE (64*1024*1024)
 #define IMAGE_HEAP_SIZE (256*1024*1024)
 #define STAGING_SIZE (16*1024*1024)
@@ -76,12 +95,11 @@ static size_t allocateFromAllocator(struct DeviceMemoryBumpAllocator* alloc, siz
 	const size_t offset = ((alloc->offset + align - 1) / align) * align;
 
 	if (offset + size > alloc->size)
-		return -1;
+		return (size_t)-1;
 
 	alloc->offset = offset + size;
 	return offset;
 }
-
 
 struct AVkMaterial {
 	VkShaderModule module_vertex;
@@ -134,6 +152,20 @@ static struct GiantBuffer createGiantBuffer(size_t size, VkBufferUsageFlags usag
 	return gb;
 }
 
+struct DescriptorKasha {
+		VkDescriptorSetLayout layout;
+		int count;
+		int next_free;
+		VkDescriptorSet descriptors[];
+};
+
+enum {
+		Descriptors_Global,
+		Descriptors_Lightmaps,
+		Descriptors_Textures,
+		Descriptors_COUNT
+};
+
 static struct {
 	VkFence fence;
 	VkSemaphore done;
@@ -162,20 +194,56 @@ static struct {
 
 	struct GiantBuffer buffers[MAX_HEAPS];
 
-	VkDescriptorSetLayout descset_layout;
-	VkDescriptorPool desc_pool;
-	VkDescriptorSet desc_sets[MAX_DESC_SETS];
-	int next_free_set;
+	VkBuffer ubo;
+
+	VkDescriptorPool descriptor_pool;
+	struct DescriptorKasha *descriptors[Descriptors_COUNT];
 
 	struct AVkMaterial materials[MShader_COUNT];
-
-	// Preallocated device memory
-	//struct DeviceMemoryBumpAllocator alloc;
 
 	VkCommandPool cmdpool;
 	VkCommandBuffer cmd_primary;
 	VkCommandBuffer cmd_materials[MShader_COUNT];
+
+	/*
+#if RTX
+	struct {
+			VkPipeline ray_pipeline;
+
+			struct {
+				VkShaderModule raygen;
+				VkShaderModule raymiss;
+				VkShaderModule rayclosesthit;
+			} modules;
+
+			VkDescriptorSetLayout desc_layout;
+			VkDescriptorPool descriptor_pool;
+			VkDescriptorSet desc_set;
+
+			struct Buffer sbt_buf, aabb_buf, tri_buf, tl_geom_buffer;
+	} rtx;
+#endif
+*/
 } g;
+
+enum {
+		DescriptorIndex_Ubo = 0,
+#if RTX
+		DescriptorIndex_Tlas,
+#endif
+		DescriptorIndex_TexturesStart,
+};
+
+enum {
+		DescriptorBinding_Ubo = 0,
+		DescriptorBinding_Lightmap,
+		DescriptorBinding_BaseMaterialTexture,
+};
+
+struct Ubo {
+		AMat4f model_view;
+		AMat4f projection;
+};
 
 struct AllocatedMemory {
 	VkDeviceMemory devmem;
@@ -212,33 +280,6 @@ static struct AllocatedMemory allocateDeviceMemory(DeviceMemoryClass class, VkMe
 
 	return (struct AllocatedMemory){0};
 }
-
-/* static struct AVkMemBuffer createBufferWithData(VkBufferUsageFlags usage, int size, const void *data) { */
-/* 	struct AVkMemBuffer buf; */
-/* 	VkBufferCreateInfo bci = {0}; */
-/* 	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; */
-/* 	bci.size = size; */
-/* 	bci.usage = usage; */
-/* 	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE; */
-/* 	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &buf.buf)); */
-/*  */
-/* 	VkMemoryRequirements memreq; */
-/* 	vkGetBufferMemoryRequirements(a_vk.dev, buf.buf, &memreq); */
-/* 	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size); */
-/*  */
-/* 	struct AllocatedMemory mem = allocateDeviceMemory(DMC_Buffer, memreq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT); */
-/* 	assert(mem.devmem); */
-/* 	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, buf.buf, mem.devmem, mem.offset)); */
-/*  */
-/* 	// TODO: reverse this, let the source upload */
-/* 	void *ptr = NULL; */
-/* 	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, mem.devmem, mem.offset, size, 0, &ptr)); */
-/* 	memcpy(ptr, data, size); */
-/* 	vkUnmapMemory(a_vk.dev, mem.devmem); */
-/*  */
-/* 	buf.size = size; */
-/* 	return buf; */
-/* } */
 
 static VkImage createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage) {
 	VkImageCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
@@ -309,49 +350,96 @@ static void createRenderPass() {
 	AVK_CHECK_RESULT(vkCreateRenderPass(a_vk.dev, &rpci, NULL, &g.render_pass));
 }
 
-static void createDesriptorSets() {
-	VkDescriptorSetLayoutBinding bindings[] = {{
-			.binding = 0,
-			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			.descriptorCount = 1,
-			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-			.pImmutableSamplers = &g.default_sampler,
-		}, {
-			.binding = 1,
-			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			.descriptorCount = 1,
-			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-			.pImmutableSamplers = &g.default_sampler,
-		},
+static struct DescriptorKasha* createDescriptorKasha(const VkDescriptorSetLayoutBinding *bindings, uint32_t num_bindings, uint32_t num_descriptors) {
+	struct DescriptorKasha* kasha = malloc(sizeof(struct DescriptorKasha) + sizeof(VkDescriptorSet) * num_descriptors);
+	kasha->count = (int)num_descriptors;
+	kasha->next_free = 0;
+
+	VkDescriptorSetLayoutCreateInfo dslci = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = num_bindings,
+		.pBindings = bindings,
 	};
+	AVK_CHECK_RESULT(vkCreateDescriptorSetLayout(a_vk.dev, &dslci, NULL, &kasha->layout));
 
-	VkDescriptorSetLayoutCreateInfo dslci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-	dslci.bindingCount = COUNTOF(bindings);
-	dslci.pBindings = bindings;
-	dslci.flags = 0;
-	AVK_CHECK_RESULT(vkCreateDescriptorSetLayout(a_vk.dev, &dslci, NULL, &g.descset_layout));
+	VkDescriptorSetLayout* tmp_layouts = malloc(sizeof(VkDescriptorSetLayout) * num_descriptors);
+	for (int i = 0; i < (int)num_descriptors; ++i)
+			tmp_layouts[i] = kasha->layout;
 
+	VkDescriptorSetAllocateInfo dsai = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.descriptorPool = g.descriptor_pool,
+		.descriptorSetCount = num_descriptors,
+		.pSetLayouts = tmp_layouts,
+	};
+	AVK_CHECK_RESULT(vkAllocateDescriptorSets(a_vk.dev, &dsai, kasha->descriptors));
+
+	free(tmp_layouts);
+	return kasha;
+}
+
+static void createDesriptorSets() {
 	VkDescriptorPoolSize dps[] = {
 		{
-			.type = bindings[0].descriptorType,
-			.descriptorCount = MAX_DESC_SETS * 2,
-		}
+			.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = MAX_DESC_SETS + MAX_LEVELS,
+		}, {
+			.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.descriptorCount = 1,
+#if RTX
+		}, {
+			.type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+			.descriptorCount = 1,
+#endif
+		},
 	};
 	VkDescriptorPoolCreateInfo dpci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
 	dpci.pPoolSizes = dps;
 	dpci.poolSizeCount = COUNTOF(dps);
-	dpci.maxSets = MAX_DESC_SETS;
-	AVK_CHECK_RESULT(vkCreateDescriptorPool(a_vk.dev, &dpci, NULL, &g.desc_pool));
+	dpci.maxSets = MAX_DESC_SETS + MAX_LEVELS + 1;
+	AVK_CHECK_RESULT(vkCreateDescriptorPool(a_vk.dev, &dpci, NULL, &g.descriptor_pool));
 
-	VkDescriptorSetLayout layouts[MAX_DESC_SETS];
-	for (int i = 0; i < MAX_DESC_SETS; ++i)
-		layouts[i] = g.descset_layout;
+	{
+			VkDescriptorSetLayoutBinding bindings[] = { {
+					.binding = DescriptorBinding_Ubo,
+					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+					.descriptorCount = 1,
+					.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		#if RTX
+				}, {
+					.binding = 3, // TLAS for rays
+					.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+					.descriptorCount = 1,
+					.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+		#endif
+		} };
 
-	VkDescriptorSetAllocateInfo dsai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
-	dsai.descriptorPool = g.desc_pool;
-	dsai.descriptorSetCount = dpci.maxSets;
-	dsai.pSetLayouts = layouts;
-	AVK_CHECK_RESULT(vkAllocateDescriptorSets(a_vk.dev, &dsai, g.desc_sets));
+			g.descriptors[Descriptors_Global] = createDescriptorKasha(bindings, COUNTOF(bindings), 1);
+	}
+
+	{
+			VkDescriptorSetLayoutBinding bindings[] = { {
+					.binding = DescriptorBinding_Lightmap,
+					.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+					.descriptorCount = 1,
+					.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+					.pImmutableSamplers = &g.default_sampler,
+			}};
+
+			g.descriptors[Descriptors_Lightmaps] = createDescriptorKasha(bindings, COUNTOF(bindings), MAX_LEVELS);
+	}
+
+	{
+			VkDescriptorSetLayoutBinding bindings[] = { {
+					.binding = DescriptorBinding_BaseMaterialTexture,
+					.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+					.descriptorCount = 1,
+					.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+					.pImmutableSamplers = &g.default_sampler,
+			}};
+
+			g.descriptors[Descriptors_Textures] = createDescriptorKasha(bindings, COUNTOF(bindings), MAX_DESC_SETS);
+	}
 }
 
 static void createShader(struct AVkMaterial *material, const char *vertex, const char* fragment) {
@@ -363,10 +451,16 @@ static void createShader(struct AVkMaterial *material, const char *vertex, const
 	push_const.size = sizeof(AMat4f);
 	push_const.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+	VkDescriptorSetLayout descriptor_layouts[] = {
+			g.descriptors[Descriptors_Global]->layout,
+			g.descriptors[Descriptors_Lightmaps]->layout,
+			g.descriptors[Descriptors_Textures]->layout,
+	};
+
 	VkPipelineLayoutCreateInfo plci = {0};
 	plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	plci.setLayoutCount = 1;
-	plci.pSetLayouts = &g.descset_layout;
+	plci.setLayoutCount = COUNTOF(descriptor_layouts);
+	plci.pSetLayouts = descriptor_layouts;
 	plci.pushConstantRangeCount = 1;
 	plci.pPushConstantRanges = &push_const;
 	AVK_CHECK_RESULT(vkCreatePipelineLayout(a_vk.dev, &plci, NULL, &material->pipeline_layout));
@@ -393,7 +487,7 @@ static void createCommandPool() {
 	AVK_CHECK_RESULT(vkAllocateCommandBuffers(a_vk.dev, &cbai, g.cmd_materials));
 }
 
-static void createPipeline(struct AVkMaterial *material, const VkVertexInputAttributeDescription *attribs, size_t n_attribs) {
+static void createPipeline(struct AVkMaterial *material, const VkVertexInputAttributeDescription *attribs, uint32_t n_attribs) {
 	VkPipelineShaderStageCreateInfo shader_stages[2] = {0};
 	shader_stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	shader_stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -424,7 +518,7 @@ static void createPipeline(struct AVkMaterial *material, const VkVertexInputAttr
 
 	VkViewport viewport = {
 		.x = 0, .y = 0,
-		.width = a_app_state->width, .height = a_app_state->height,
+		.width = (float)a_app_state->width, .height = (float)a_app_state->height,
 		.minDepth = 0.f, .maxDepth = 1.f
 	};
 	VkRect2D scissor = {
@@ -481,6 +575,7 @@ static void createPipeline(struct AVkMaterial *material, const VkVertexInputAttr
 }
 
 static void createPipelines() {
+		/*
 	{
 		VkVertexInputAttributeDescription attribs[] = {
 			{.binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct BSPModelVertex, vertex)},
@@ -490,6 +585,7 @@ static void createPipelines() {
 		};
 		createPipeline(&g.materials[MShader_Unknown], attribs, COUNTOF(attribs));
 	}
+	*/
 
 	{
 		VkVertexInputAttributeDescription attribs[] = {
@@ -506,6 +602,69 @@ static void createShaders() {
 	createShader(&g.materials[MShader_Unknown], "unknown.vert.spv", "unknown.frag.spv");
 	createShader(&g.materials[MShader_LightmappedGeneric], "lightmapped.vert.spv", "lightmapped.frag.spv");
 }
+
+/*
+static void rayCreateLayouts() {
+  VkDescriptorSetLayoutBinding bindings[] = {{
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+		}, {
+			.binding = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+		}, {
+			.binding = 2,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+		},
+	};
+
+	VkDescriptorSetLayoutCreateInfo dslci = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = COUNTOF(bindings), .pBindings = bindings, };
+
+	AVK_CHECK_RESULT(vkCreateDescriptorSetLayout(a_vk.dev, &dslci, NULL, &g.rtx.desc_layout));
+
+	VkPushConstantRange push_const = {0};
+	push_const.offset = 0;
+	push_const.size = sizeof(float);
+	push_const.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+
+	VkPipelineLayoutCreateInfo plci = {0};
+	plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	plci.setLayoutCount = 1;
+	plci.pSetLayouts = &g.rtx.desc_layout;
+	plci.pushConstantRangeCount = 1;
+	plci.pPushConstantRanges = &push_const;
+	AVK_CHECK_RESULT(vkCreatePipelineLayout(a_vk.dev, &plci, NULL, &g.rtx.pipeline_layout));
+
+	VkDescriptorPoolSize pools[] = {
+			{.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1},
+			{.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount = 1},
+			{.type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, .descriptorCount = 1},
+	};
+
+	VkDescriptorPoolCreateInfo dpci = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.maxSets = 1, .poolSizeCount = COUNTOF(pools), .pPoolSizes = pools,
+	};
+	AVK_CHECK_RESULT(vkCreateDescriptorPool(a_vk.dev, &dpci, NULL, &g.rtx.descriptor_pool));
+
+	VkDescriptorSetAllocateInfo dsai = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.descriptorPool = g.rtx.descriptor_pool,
+		.descriptorSetCount = 1,
+		.pSetLayouts = &g.rtx.desc_layout,
+	};
+	AVK_CHECK_RESULT(vkAllocateDescriptorSets(a_vk.dev, &dsai, &g.rtx.desc_set));
+
+	g.rtx.modules.raygen = loadShaderFromFile("ray.rgen.spv");
+	g.rtx.modules.raymiss = loadShaderFromFile("ray.rmiss.spv");
+	g.rtx.modules.rayclosesthit = loadShaderFromFile("ray.rchit.spv");
+}
+*/
 
 RStagingMemory renderGetStagingBuffer(size_t size) {
 	// TODO staging allocation strategy?
@@ -562,8 +721,8 @@ RTexture renderTextureCreateAndUpload(RTextureUploadParams params) {
 	struct AllocatedMemory mem = allocateDeviceMemory(DMC_Image, memreq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	AVK_CHECK_RESULT(vkBindImageMemory(a_vk.dev, image, mem.devmem, mem.offset));
 
-	// 5. Create/get cmdbuf for transitions
 	{
+		// 5. Create/get cmdbuf for transitions
 		VkCommandBufferBeginInfo beginfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
 		beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 		AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmd_primary, &beginfo));
@@ -651,11 +810,43 @@ RTexture renderTextureCreateAndUpload(RTextureUploadParams params) {
 	ivci.subresourceRange.layerCount = 1;
 	AVK_CHECK_RESULT(vkCreateImageView(a_vk.dev, &ivci, NULL, &imview));
 
+	VkDescriptorSet set = NULL;
+	{
+			struct DescriptorKasha* descriptors = NULL;
+			uint32_t binding;
+			switch (params.kind) {
+			case RTexKind_Lightmap:
+					descriptors = g.descriptors[Descriptors_Lightmaps];
+					binding = DescriptorBinding_Lightmap; break;
+			case RTexKind_Material0:
+					descriptors = g.descriptors[Descriptors_Textures];
+					binding = DescriptorBinding_BaseMaterialTexture; break;
+			default:
+					ATTO_ASSERT(!"Unexpected texture kind");
+			}
+			ATTO_ASSERT(descriptors->count > descriptors->next_free);
+			set = descriptors->descriptors[descriptors->next_free++];
+			VkDescriptorImageInfo dii_tex = {
+				.imageView = imview,
+				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			};
+			VkWriteDescriptorSet wds[] = { {
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.dstSet = set,
+				.dstBinding = binding,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				.pImageInfo = &dii_tex,
+			}};
+			vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
+	}
+
 	return (RTexture){
 		params.width,
-			 params.height,
-			 params.format,
-			 image, imview,
+		params.height,
+		params.format,
+		image, imview, set,
 	};
 }
 
@@ -681,37 +872,6 @@ static void createStagingBuffer() {
 	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, g.staging.buffer, g.staging.devmem, 0));
 
 	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, g.staging.devmem, 0, bci.size, 0, &g.staging.mapped));
-}
-
-int renderInit() {
-	VkSamplerCreateInfo sci = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
-	sci.magFilter = VK_FILTER_LINEAR;
-	sci.minFilter = VK_FILTER_LINEAR;
-	sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	sci.anisotropyEnable = VK_FALSE;
-	sci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-	sci.unnormalizedCoordinates = VK_FALSE;
-	sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	sci.minLod = 0.f;
-	sci.maxLod = 16.;
-	AVK_CHECK_RESULT(vkCreateSampler(a_vk.dev, &sci, NULL, &g.default_sampler));
-
-	createStagingBuffer();
-	createDesriptorSets();
-	createShaders();
-
-	createCommandPool();
-
-	VkFenceCreateInfo fci = {0};
-	fci.flags = 0;
-	fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	AVK_CHECK_RESULT(vkCreateFence(a_vk.dev, &fci, NULL, &g.fence));
-
-	g.done = aVkCreateSemaphore();
-
-	return 1;
 }
 
 static VkFormat findSupportedImageFormat(const VkFormat *candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
@@ -850,7 +1010,11 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 	assert(gb);
 
 	if (gb->size == 0) {
-		*gb = createGiantBuffer(HEAP_SIZE, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+			*gb = createGiantBuffer(HEAP_SIZE, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+#if RTX
+					| VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+#endif
+		);
 	}
 
 	memcpy((uint8_t*)gb->mapped + gb->offset, data, size);
@@ -862,20 +1026,267 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 	gb->offset += ((size + (align - 1)) / align) * align;
 }
 
-void renderBegin() {
+static VkBuffer createDeviceLocalBuffer(size_t size, VkBufferUsageFlags usage) {
+	VkBuffer ret;
+	VkBufferCreateInfo bci = {0};
+	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bci.size = size;
+	bci.usage = usage;
+	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &ret));
+
+	VkMemoryRequirements memreq;
+	vkGetBufferMemoryRequirements(a_vk.dev, ret, &memreq);
+	aAppDebugPrintf("%s: memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", __FUNCTION__, memreq.memoryTypeBits, memreq.alignment, memreq.size);
+	struct AllocatedMemory mem = allocateDeviceMemory(DMC_Buffer, memreq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, ret, mem.devmem, mem.offset));
+	return ret;
+}
+
+#if RTX
+// 
+struct Buffer {
+	VkBuffer buffer;
+	VkDeviceMemory devmem;
+	void *data;
+	size_t size;
+};
+
+static struct Buffer createBuffer(size_t size, VkBufferUsageFlags usage) {
+	struct Buffer ret = {.size = size};
+	VkBufferCreateInfo bci = {0};
+	bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bci.size = size;
+	bci.usage = usage;
+	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	AVK_CHECK_RESULT(vkCreateBuffer(a_vk.dev, &bci, NULL, &ret.buffer));
+
+	VkMemoryRequirements memreq;
+	vkGetBufferMemoryRequirements(a_vk.dev, ret.buffer, &memreq);
+	aAppDebugPrintf("memreq: memoryTypeBits=0x%x alignment=%zu size=%zu", memreq.memoryTypeBits, memreq.alignment, memreq.size);
+
+	VkMemoryAllocateInfo mai={0};
+	mai.allocationSize = memreq.size;
+	mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	mai.memoryTypeIndex = aVkFindMemoryWithType(memreq.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	AVK_CHECK_RESULT(vkAllocateMemory(a_vk.dev, &mai, NULL, &ret.devmem));
+	AVK_CHECK_RESULT(vkBindBufferMemory(a_vk.dev, ret.buffer, ret.devmem, 0));
+
+	AVK_CHECK_RESULT(vkMapMemory(a_vk.dev, ret.devmem, 0, bci.size, 0, &ret.data));
+	//vkUnmapMemory(a_vk.dev, g.devmem);
+	return ret;
+}
+
+static void destroyBuffer(struct Buffer *buf) {
+	vkUnmapMemory(a_vk.dev, buf->devmem);
+	vkDestroyBuffer(a_vk.dev, buf->buffer, NULL);
+	vkFreeMemory(a_vk.dev, buf->devmem, NULL);
+	*buf = (struct Buffer){0};
+}
+
+struct Accel {
+		struct Buffer buffer;
+		VkAccelerationStructureKHR handle;
+};
+
+VkDeviceAddress getBufferDeviceAddress(VkBuffer buffer) {
+	const VkBufferDeviceAddressInfo bdai = {.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = buffer};
+	return vkGetBufferDeviceAddress(a_vk.dev, &bdai);
+}
+
+struct Accel createAccelerationStructure(const VkAccelerationStructureGeometryKHR* geoms, const uint32_t* max_prim_counts, const VkAccelerationStructureBuildRangeInfoKHR** build_ranges, uint32_t n_geoms, VkAccelerationStructureTypeKHR type) {
+		struct Accel accel;
+		VkAccelerationStructureBuildGeometryInfoKHR build_info = {
+			.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+			.type = type,
+			.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+			.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+			.geometryCount = n_geoms,
+			.pGeometries = geoms,
+		};
+
+		VkAccelerationStructureBuildSizesInfoKHR build_size = {
+			.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
+		AVK_DEV_FUNC(vkGetAccelerationStructureBuildSizesKHR)(
+				a_vk.dev, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &build_info, max_prim_counts, &build_size);
+
+		aAppDebugPrintf(
+				"AS build size: %d, scratch size: %d", build_size.accelerationStructureSize, build_size.buildScratchSize);
+
+		accel.buffer = createBuffer(build_size.accelerationStructureSize,
+				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+		struct Buffer scratch_buffer = createBuffer(build_size.buildScratchSize,
+				VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+
+		const VkAccelerationStructureCreateInfoKHR asci = {
+			.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
+			.buffer = accel.buffer.buffer,
+			.size = accel.buffer.size,
+			.type = type,
+		};
+		AVK_CHECK_RESULT(AVK_DEV_FUNC(vkCreateAccelerationStructureKHR)(a_vk.dev, &asci, NULL, &accel.handle));
+
+		build_info.dstAccelerationStructure = accel.handle;
+		build_info.scratchData.deviceAddress = getBufferDeviceAddress(scratch_buffer.buffer);
+
+		VkCommandBufferBeginInfo beginfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+		beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmd_primary, &beginfo));
+		AVK_DEV_FUNC(vkCmdBuildAccelerationStructuresKHR)(g.cmd_primary, 1, &build_info, build_ranges);
+		AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmd_primary));
+
+		VkSubmitInfo subinfo = {
+			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+			.commandBufferCount = 1,
+			.pCommandBuffers = &g.cmd_primary,
+		};
+		AVK_CHECK_RESULT(vkQueueSubmit(a_vk.main_queue, 1, &subinfo, NULL));
+		AVK_CHECK_RESULT(vkQueueWaitIdle(a_vk.main_queue));
+
+		destroyBuffer(&scratch_buffer);
+
+		return accel;
+}
+
+VkDeviceAddress getASAddress(VkAccelerationStructureKHR as) {
+	VkAccelerationStructureDeviceAddressInfoKHR asdai = {
+		.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
+		.accelerationStructure = as,
+	};
+	return AVK_DEV_FUNC(vkGetAccelerationStructureDeviceAddressKHR)(a_vk.dev, &asdai);
+}
+
+void renderLoadModelBlas(struct BSPModel* model) {
+	const struct BSPDrawSet* draws = &model->detailed;
+
+	VkAccelerationStructureGeometryKHR *geom = malloc(draws->draws_count * sizeof(VkAccelerationStructureGeometryKHR)); // TODO zero allocations
+	VkAccelerationStructureBuildRangeInfoKHR *build_ranges = malloc(draws->draws_count * sizeof(VkAccelerationStructureBuildRangeInfoKHR)); // TODO zero alloc
+	VkAccelerationStructureBuildRangeInfoKHR **build_ranges_ptrs = malloc(draws->draws_count * sizeof(void*)); // TODO zero alloc
+	uint32_t *max_prim_counts = malloc(draws->draws_count * sizeof(uint32_t)); // TODO zero alloc
+
+	const VkDeviceAddress vtx_addr = getBufferDeviceAddress(g.buffers[0].buffer); // FIXME real buffer
+	const VkDeviceAddress idx_addr = getBufferDeviceAddress(g.buffers[0].buffer); // FIXME real buffer
+
+	for (int i = 0; i < draws->draws_count; ++i) {
+			const struct BSPDraw* draw = draws->draws + i;
+			geom[i] = (VkAccelerationStructureGeometryKHR){
+				.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+				.flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
+				.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR,
+				.geometry.triangles =
+					(VkAccelerationStructureGeometryTrianglesDataKHR){
+						.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
+						.indexType = VK_INDEX_TYPE_UINT16,
+						.indexData.deviceAddress = idx_addr + draw->start * sizeof(uint16_t),
+						.maxVertex = draw->count,
+						.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
+						.vertexStride = sizeof(struct BSPModelVertex),
+						.vertexData.deviceAddress = vtx_addr + draw->vbo_offset,
+					},
+			};
+
+			max_prim_counts[i] = draw->count / 3;
+			build_ranges[i] = (VkAccelerationStructureBuildRangeInfoKHR){
+					.primitiveCount = max_prim_counts[i],
+			};
+			build_ranges_ptrs[i] = build_ranges + i;
+	}
+
+	// FIXME what about buffer allocation
+	model->vk.blas = createAccelerationStructure(
+		geom, max_prim_counts, build_ranges_ptrs, draws->draws_count, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR).handle;
+
+	free(geom);
+	free(max_prim_counts);
+	free(build_ranges);
+	free(build_ranges_ptrs);
+
+	// FIXME it is not correct to have per-map tlas at all
+	const VkAccelerationStructureInstanceKHR inst[] = {{
+		.transform = (VkTransformMatrixKHR){1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0}, // FIXME real map translation matrix
+		.instanceCustomIndex = 0,
+		.mask = 0xff,
+		.instanceShaderBindingTableRecordOffset = 0,
+		.flags = 0,
+		.accelerationStructureReference = getASAddress(model->vk.blas),
+	},
+	};
+
+	struct Buffer tl_geom_buffer = createBuffer(sizeof(inst),
+		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+			VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+	memcpy(tl_geom_buffer.data, &inst, sizeof(inst));
+
+	const VkAccelerationStructureGeometryKHR tl_geom[] = {
+		{
+			.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+			//.flags = VK_GEOMETRY_OPAQUE_BIT,
+			.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
+			.geometry.instances =
+				(VkAccelerationStructureGeometryInstancesDataKHR){
+					.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
+					.data.deviceAddress = getBufferDeviceAddress(tl_geom_buffer.buffer),
+					.arrayOfPointers = VK_FALSE,
+				},
+		},
+	};
+
+	const uint32_t tl_max_prim_counts[COUNTOF(tl_geom)] = {COUNTOF(inst)};
+	const VkAccelerationStructureBuildRangeInfoKHR tl_build_range = {
+			.primitiveCount = COUNTOF(inst),
+	};
+	const VkAccelerationStructureBuildRangeInfoKHR *tl_build_ranges[] = {&tl_build_range};
+	model->vk.tlas = createAccelerationStructure(
+			tl_geom, tl_max_prim_counts, tl_build_ranges, COUNTOF(tl_geom), VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR).handle;
+}
+#endif //ifdef RTX
+
+void renderBegin(const struct Camera* camera) {
 	aVkAcquireNextImage();
+
+	{
+			VkCommandBufferBeginInfo beginfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+			beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+			AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmd_primary, &beginfo));
+	}
+
+	{
+			// Vulkan has Y pointing down, and z should end up in (0, 1)
+			const struct AMat4f vk_proj_fixup = {
+				aVec4f(1, 0, 0, 0),
+				aVec4f(0, -1, 0, 0),
+				aVec4f(0, 0, .5, 0),
+				aVec4f(0, 0, .5, 1)
+			};
+
+			struct Ubo ubo = {
+					.projection = aMat4fMul(vk_proj_fixup, camera->projection),
+					.model_view = camera->view,
+			};
+			vkCmdUpdateBuffer(g.cmd_primary, g.ubo, 0, sizeof(ubo), &ubo);
+
+			VkMemoryBarrier mem_barrier = {
+					.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+					.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+					.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+			};
+			vkCmdPipelineBarrier(g.cmd_primary, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT // | Accel build???
+					, VK_DEPENDENCY_DEVICE_GROUP_BIT, 1, &mem_barrier, 0, NULL, 0, NULL);
+	}
 
 	VkCommandBufferInheritanceInfo inherit = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO };
 	inherit.framebuffer = g.framebuffers[a_vk.swapchain.current_frame_image_index];
 	inherit.renderPass = g.render_pass;
 	inherit.subpass = 0;
-	VkCommandBufferBeginInfo beginfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-	beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-	beginfo.pInheritanceInfo = &inherit;
+	VkCommandBufferBeginInfo mat_beginfo = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+			.pInheritanceInfo = &inherit,
+	};
 
 	for (int i = 0; i < (int)COUNTOF(g.cmd_materials); ++i) {
 		VkCommandBuffer cb = g.cmd_materials[i];
-		AVK_CHECK_RESULT(vkBeginCommandBuffer(cb, &beginfo));
+		AVK_CHECK_RESULT(vkBeginCommandBuffer(cb, &mat_beginfo));
 
 		struct AVkMaterial *m = g.materials + i;
 		if (m->pipeline) {
@@ -883,26 +1294,22 @@ void renderBegin() {
 			const VkDeviceSize offset = 0;
 			vkCmdBindVertexBuffers(cb, 0, 1, &g.buffers[0].buffer, &offset);
 			vkCmdBindIndexBuffer(cb, g.buffers[0].buffer, 0, VK_INDEX_TYPE_UINT16);
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 0, 1, &g.descriptors[Descriptors_Global]->descriptors[0], 0, NULL);
 		}
 	}
-
-	g.next_free_set = 0;
 }
 
-void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
+void renderModelDraw(const RDrawParams *params, struct BSPModel *model) {
 	if (!model->detailed.draws_count) return;
 
-	// Vulkan has Y pointing down, and z should end up in (0, 1)
-	const struct AMat4f vk_fixup = {
-		aVec4f(1, 0, 0, 0),
-		aVec4f(0, -1, 0, 0),
-		aVec4f(0, 0, .5, 0),
-		aVec4f(0, 0, .5, 1)
-	};
-	const struct AMat4f mvp = aMat4fMul(vk_fixup, aMat4fMul(params->camera->view_projection,
-			aMat4fTranslation(params->translation)));
+	// FIXME aMat4fTranslation(params->translation)));
 
 	int seen_material[MShader_COUNT] = {0};
+
+#if RTX
+	if (!model->vk.blas)
+		renderLoadModelBlas(model);
+#endif
 
 	for (int i = 0; i < model->detailed.draws_count; ++i) {
 		const struct BSPDraw* draw = model->detailed.draws + i;
@@ -914,61 +1321,40 @@ void renderModelDraw(const RDrawParams *params, const struct BSPModel *model) {
 		if (!m->pipeline)
 			continue;
 
-		// FIXME why
+		// FIXME figure out why we don't have a texture, and what to do
 		if (mat_index == MShader_LightmappedGeneric && !draw->material->base_texture.texture)
 			continue;
 
 		if (!seen_material[mat_index]) {
-			if (g.next_free_set >= MAX_DESC_SETS) {
-				aAppDebugPrintf("FIXME ran out of descriptor sets");
-				break;
-			}
-
-			vkCmdPushConstants(cb, m->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mvp), &mvp);
 			seen_material[mat_index] = 1;
+
+#if RTX // FIXME this should be done differently: allocate ds once for tlas (const), bind once per renderBegin (?)
+	const VkWriteDescriptorSetAccelerationStructureKHR wdsas = {
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+		.accelerationStructureCount = 1,
+		.pAccelerationStructures = model->vk.tlas,
+	};
+#endif
+
+#if RTX
+		{
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+			.dstSet = set,
+			.dstBinding = 2,
+			.dstArrayElement = 0,
+			.pNext = &wdsas,
+		},
+#endif
+
+			// TODO we should update lightmap desc set only once per model+cmdbuf (?)
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 1, 1, &model->lightmap.descriptor, 0, NULL);
+			if (draw->material->base_texture.texture)
+				vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 2, 1, &draw->material->base_texture.texture->texture.descriptor, 0, NULL);
 		}
 
-		VkDescriptorSet set = g.desc_sets[g.next_free_set];
-		g.next_free_set++;
-
-		// FIXME proper binding of textures to slots depending on material
-		if (mat_index != MShader_Unknown) {
-			VkDescriptorImageInfo dii_tex = {
-				.imageView = draw->material->base_texture.texture->texture.vkImageView,
-				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			};
-			VkDescriptorImageInfo dii_lm = {
-				.imageView = model->lightmap.vkImageView,
-				.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			};
-
-			// TODO: sort by textures to decrease amount of descriptor updates
-			VkWriteDescriptorSet wds[] = {
-				{
-					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-					.dstSet = set,
-					.dstBinding = 1,
-					.dstArrayElement = 0,
-					.descriptorCount = 1,
-					.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-					.pImageInfo = &dii_tex,
-				},
-				{
-					.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-					.dstSet = set,
-					.dstBinding = 0,
-					.dstArrayElement = 0,
-					.descriptorCount = 1,
-					.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-					.pImageInfo = &dii_lm,
-				},
-			};
-			vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
-
-			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 0, 1, &set, 0, NULL);
-		}
-
-		const VkDeviceSize offset = draw->vbo_offset + model->vbo.offset / sizeof(struct BSPModelVertex);
+		const int32_t offset = draw->vbo_offset + model->vbo.offset / sizeof(struct BSPModelVertex);
 		vkCmdDrawIndexed(cb, draw->count, 1, draw->start + model->ibo.offset/sizeof(uint16_t), offset, 0);
 	}
 }
@@ -979,11 +1365,6 @@ void renderEnd(const struct Camera *camera) {
 	for (int i = 0; i < (int)COUNTOF(g.cmd_materials); ++i) {
 		AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmd_materials[i]));
 	}
-
-	VkCommandBufferBeginInfo beginfo = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-	beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-	AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmd_primary, &beginfo));
 
 	VkClearValue clear_value[2] = {
 		{.color = {{0., 0., 0., 0.}}},
@@ -1030,8 +1411,90 @@ void renderEnd(const struct Camera *camera) {
 	AVK_CHECK_RESULT(vkResetFences(a_vk.dev, 1, &g.fence));
 }
 
+int renderInit() {
+	aVkInitInstance();
+	aVkCreateSurface();
+
+#if RTX
+	VkPhysicalDeviceBufferDeviceAddressFeaturesEXT pdbdaf = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_EXT,
+		.bufferDeviceAddress = VK_TRUE,
+	};
+	VkPhysicalDeviceAccelerationStructureFeaturesKHR pdasf = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+		.accelerationStructure = VK_TRUE,
+		// not supported by nv .accelerationStructureHostCommands = VK_TRUE,
+		.pNext = &pdbdaf,
+	};
+	VkPhysicalDeviceRayTracingPipelineFeaturesKHR pdrtf = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+		.rayTracingPipeline = VK_TRUE,
+		.pNext = &pdasf,
+	};
+	const void* create_info = &pdrtf;
+#else
+	const void* create_info = NULL;
+#endif
+
+	aVkInitDevice(create_info, NULL, NULL);
+
+	aVkPokePresentModes();
+
+	VkSamplerCreateInfo sci = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	sci.magFilter = VK_FILTER_LINEAR;
+	sci.minFilter = VK_FILTER_LINEAR;
+	sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	sci.anisotropyEnable = VK_FALSE;
+	sci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	sci.unnormalizedCoordinates = VK_FALSE;
+	sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	sci.minLod = 0.f;
+	sci.maxLod = 16.;
+	AVK_CHECK_RESULT(vkCreateSampler(a_vk.dev, &sci, NULL, &g.default_sampler));
+
+	createStagingBuffer();
+	createDesriptorSets();
+	createShaders();
+
+	renderResize(16, 16);
+
+	createCommandPool();
+
+	{
+			g.ubo = createDeviceLocalBuffer(sizeof(struct Ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+			VkDescriptorBufferInfo dbi = {
+				.buffer = g.ubo,
+				.offset = 0,
+				.range = VK_WHOLE_SIZE
+			};
+			VkWriteDescriptorSet wds[] = { {
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.dstSet = g.descriptors[Descriptors_Global]->descriptors[0],
+				.dstBinding = DescriptorBinding_Ubo,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.pBufferInfo = &dbi,
+			} };
+			vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
+	}
+
+	VkFenceCreateInfo fci = {0};
+	fci.flags = 0;
+	fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	AVK_CHECK_RESULT(vkCreateFence(a_vk.dev, &fci, NULL, &g.fence));
+
+	g.done = aVkCreateSemaphore();
+
+	return 1;
+}
+
 void renderDestroy() {
 	vkDeviceWaitIdle(a_vk.dev);
+
+	vkDestroyBuffer(a_vk.dev, g.ubo, NULL);
 
 	vkUnmapMemory(a_vk.dev, g.staging.devmem);
 	vkDestroyBuffer(a_vk.dev, g.staging.buffer, NULL);
@@ -1052,9 +1515,17 @@ void renderDestroy() {
 		vkDestroyShaderModule(a_vk.dev, m->module_vertex, NULL);
 	}
 
-	vkDestroyDescriptorSetLayout(a_vk.dev, g.descset_layout, NULL);
+	for (int i = 0; i < (int)COUNTOF(g.descriptors); ++i) {
+			vkDestroyDescriptorSetLayout(a_vk.dev, g.descriptors[i]->layout, NULL);
+			free(g.descriptors[i]);
+	}
 
 	vkDestroyRenderPass(a_vk.dev, g.render_pass, NULL);
 	aVkDestroySemaphore(g.done);
 	vkDestroyFence(a_vk.dev, g.fence, NULL);
+}
+
+void renderResize(int w, int h) {
+	aVkCreateSwapchain(w, h);
+	renderVkSwapchainCreated(a_vk.surface_width, a_vk.surface_height);
 }

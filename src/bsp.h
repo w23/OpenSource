@@ -58,6 +58,13 @@ struct BSPModel {
 	int landmarks_count;
 
 	struct AVec3f player_start;
+
+	// FIXME better api
+	struct {
+			void *blas;
+			// FIXME it is not correct to have per-map tlas at all
+			void* tlas;
+	} vk;
 };
 
 struct ICollection;

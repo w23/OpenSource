@@ -367,6 +367,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 		.offset = 0,
 	};
 	RTextureUploadParams upload;
+	upload.kind = RTexKind_Lightmap;
 	upload.width = atlas_context.width;
 	upload.height = atlas_context.height;
 	upload.format = RTexFormat_RGB565;

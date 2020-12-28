@@ -8,8 +8,8 @@ void cameraRecompute(struct Camera *cam) {
 			y = aVec3fCross(z, x);
 	cam->axes = aMat3fv(x, y, z);
 	cam->orientation = aMat3fTranspose(cam->axes);
-	cam->view_projection = aMat4fMul(cam->projection,
-		aMat4f3(cam->orientation, aVec3fMulMat(cam->orientation, aVec3fNeg(cam->pos))));
+	cam->view = aMat4f3(cam->orientation, aVec3fMulMat(cam->orientation, aVec3fNeg(cam->pos)));
+	cam->view_projection = aMat4fMul(cam->projection, cam->view);
 }
 
 void cameraProjection(struct Camera *cam, float znear, float zfar, float horizfov, float aspect) {

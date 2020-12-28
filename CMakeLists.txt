@@ -73,7 +73,7 @@ add_shaders(TARGET vk_shaders FILES
 
 add_executable(OpenSource ${EXE_SUBSYSTEM} ${SOURCES} ${HEADERS})
 
-target_link_libraries(OpenSource atto m)
+target_link_libraries(OpenSource atto)#  m)
 set_target_properties(OpenSource PROPERTIES
 	C_STANDARD 99
 	C_STANDARD_REQUIRED TRUE
