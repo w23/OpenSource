@@ -81,7 +81,7 @@ set_target_properties(OpenSource PROPERTIES
 if(MSVC)
     add_compile_definitions(OpenSource _CRT_SECURE_NO_WARNINGS)
 endif()
-target_include_directories(OpenSource PRIVATE src/khronos)
+# TODO GL-only target_include_directories(OpenSource PRIVATE src/khronos)
 target_compile_options(OpenSource PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>
 	$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Werror> #-pedantic>

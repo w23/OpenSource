@@ -19,7 +19,7 @@
 
 #define AVK_VK_VERSION VK_MAKE_VERSION(1, 2, 0)
 #else
-#define AVK_VK_VERSION VK_MAKE_VERSION(1, 0, 0)
+#define AVK_VK_VERSION VK_MAKE_VERSION(1, 1, 0)
 #endif
 
 #define ATTO_VK_IMPLEMENT
@@ -1300,6 +1300,7 @@ void renderBegin(const struct Camera* camera) {
 }
 
 void renderModelDraw(const RDrawParams *params, struct BSPModel *model) {
+	(void)params;
 	if (!model->detailed.draws_count) return;
 
 	// FIXME aMat4fTranslation(params->translation)));
@@ -1349,10 +1350,11 @@ void renderModelDraw(const RDrawParams *params, struct BSPModel *model) {
 #endif
 
 			// TODO we should update lightmap desc set only once per model+cmdbuf (?)
-			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 1, 1, &model->lightmap.descriptor, 0, NULL);
-			if (draw->material->base_texture.texture)
-				vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 2, 1, &draw->material->base_texture.texture->texture.descriptor, 0, NULL);
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 1, 1, (const VkDescriptorSet*)&model->lightmap.descriptor, 0, NULL);
 		}
+
+		if (draw->material->base_texture.texture)
+			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 2, 1, (const VkDescriptorSet*)&draw->material->base_texture.texture->texture.descriptor, 0, NULL);
 
 		const int32_t offset = draw->vbo_offset + model->vbo.offset / sizeof(struct BSPModelVertex);
 		vkCmdDrawIndexed(cb, draw->count, 1, draw->start + model->ibo.offset/sizeof(uint16_t), offset, 0);
