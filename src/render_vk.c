@@ -1220,7 +1220,7 @@ static void renderLoadModelBlas(struct BSPModel* model) {
 		.instanceCustomIndex = 0,
 		.mask = 0xff,
 		.instanceShaderBindingTableRecordOffset = 0,
-		.flags = 0,
+		.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
 		.accelerationStructureReference = getASAddress(model->vk.blas),
 	},
 	};
