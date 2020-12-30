@@ -62,8 +62,6 @@ struct BSPModel {
 	// FIXME better api
 	struct {
 			void *blas;
-			// FIXME it is not correct to have per-map tlas at all
-			void* tlas;
 	} vk;
 };
 

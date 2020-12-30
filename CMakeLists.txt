@@ -56,7 +56,7 @@ function(add_shaders)
 		add_custom_command(
 			OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv
 			COMMAND glslc
-			${CMAKE_SOURCE_DIR}/assets/${SHADER} -o ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv
+			${CMAKE_SOURCE_DIR}/assets/${SHADER} --target-env=vulkan1.2 -o ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}${SHADER}.spv
 			MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/assets/${SHADER}
 			COMMENT "Building ${SHADER}"
 		)
@@ -73,7 +73,8 @@ add_shaders(TARGET vk_shaders FILES
 
 add_executable(OpenSource ${EXE_SUBSYSTEM} ${SOURCES} ${HEADERS})
 
-target_link_libraries(OpenSource atto)#  m)
+target_link_libraries(OpenSource atto)
+add_dependencies(OpenSource vk_shaders)
 set_target_properties(OpenSource PROPERTIES
 	C_STANDARD 99
 	C_STANDARD_REQUIRED TRUE
@@ -83,6 +84,6 @@ if(MSVC)
 endif()
 # TODO GL-only target_include_directories(OpenSource PRIVATE src/khronos)
 target_compile_options(OpenSource PRIVATE
-  $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>
+  $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX -wd4221 -wd4200>
 	$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Werror> #-pedantic>
 )

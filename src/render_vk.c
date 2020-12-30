@@ -6,7 +6,7 @@
 
 #include "atto/app.h"
 
-#define RTX 0
+#define RTX 1
 
 #if RTX
 #define ATTO_VK_INSTANCE_EXTENSIONS \
@@ -14,8 +14,10 @@
 
 #define ATTO_VK_DEVICE_EXTENSIONS \
 		VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME, \
-		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, \
+		VK_KHR_RAY_QUERY_EXTENSION_NAME, \
 		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME, \
+
+		//VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME, \
 
 #define AVK_VK_VERSION VK_MAKE_VERSION(1, 2, 0)
 #else
@@ -117,14 +119,14 @@ typedef enum {
 } DeviceMemoryClass;
 
 struct GiantBuffer {
-	size_t size;
+	uint32_t size;
 	VkDeviceMemory devmem;
 	VkBuffer buffer;
 	void *mapped;
-	size_t offset;
+	uint32_t offset;
 };
 
-static struct GiantBuffer createGiantBuffer(size_t size, VkBufferUsageFlags usage) {
+static struct GiantBuffer createGiantBuffer(uint32_t size, VkBufferUsageFlags usage) {
 	struct GiantBuffer gb;
 	gb.size = size;
 	gb.offset = 0;
@@ -166,6 +168,20 @@ enum {
 		Descriptors_COUNT
 };
 
+#if RTX
+struct Buffer {
+	VkBuffer buffer;
+	VkDeviceMemory devmem;
+	void *data;
+	size_t size;
+};
+
+struct Accel {
+	struct Buffer buffer;
+	VkAccelerationStructureKHR handle;
+};
+#endif
+
 static struct {
 	VkFence fence;
 	VkSemaphore done;
@@ -205,25 +221,24 @@ static struct {
 	VkCommandBuffer cmd_primary;
 	VkCommandBuffer cmd_materials[MShader_COUNT];
 
-	/*
 #if RTX
 	struct {
-			VkPipeline ray_pipeline;
+			struct Accel tlas;
+			// VkPipeline ray_pipeline;
 
-			struct {
-				VkShaderModule raygen;
-				VkShaderModule raymiss;
-				VkShaderModule rayclosesthit;
-			} modules;
+			//struct {
+			//	VkShaderModule raygen;
+			//	VkShaderModule raymiss;
+			//	VkShaderModule rayclosesthit;
+			//} modules;
 
-			VkDescriptorSetLayout desc_layout;
-			VkDescriptorPool descriptor_pool;
-			VkDescriptorSet desc_set;
+			//VkDescriptorSetLayout desc_layout;
+			//VkDescriptorPool descriptor_pool;
+			//VkDescriptorSet desc_set;
 
-			struct Buffer sbt_buf, aabb_buf, tri_buf, tl_geom_buffer;
+			//struct Buffer sbt_buf, aabb_buf, tri_buf, tl_geom_buffer;
 	} rtx;
 #endif
-*/
 } g;
 
 enum {
@@ -407,7 +422,7 @@ static void createDesriptorSets() {
 					.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
 		#if RTX
 				}, {
-					.binding = 3, // TLAS for rays
+					.binding = 1, // TLAS for rays
 					.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
 					.descriptorCount = 1,
 					.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -813,7 +828,7 @@ RTexture renderTextureCreateAndUpload(RTextureUploadParams params) {
 	VkDescriptorSet set = NULL;
 	{
 			struct DescriptorKasha* descriptors = NULL;
-			uint32_t binding;
+			uint32_t binding = 0;
 			switch (params.kind) {
 			case RTexKind_Lightmap:
 					descriptors = g.descriptors[Descriptors_Lightmaps];
@@ -1018,10 +1033,10 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 	}
 
 	memcpy((uint8_t*)gb->mapped + gb->offset, data, size);
-	buffer->index = gb - g.buffers;
+	buffer->index = (uint32_t)(gb - g.buffers);
 	buffer->offset = gb->offset;
 
-	const size_t align = sizeof(struct BSPModelVertex);
+	const uint32_t align = sizeof(struct BSPModelVertex);
 	//gb->offset += (size + (align - 1)) & ~(align - 1);
 	gb->offset += ((size + (align - 1)) / align) * align;
 }
@@ -1044,13 +1059,6 @@ static VkBuffer createDeviceLocalBuffer(size_t size, VkBufferUsageFlags usage) {
 }
 
 #if RTX
-// 
-struct Buffer {
-	VkBuffer buffer;
-	VkDeviceMemory devmem;
-	void *data;
-	size_t size;
-};
 
 static struct Buffer createBuffer(size_t size, VkBufferUsageFlags usage) {
 	struct Buffer ret = {.size = size};
@@ -1084,17 +1092,12 @@ static void destroyBuffer(struct Buffer *buf) {
 	*buf = (struct Buffer){0};
 }
 
-struct Accel {
-		struct Buffer buffer;
-		VkAccelerationStructureKHR handle;
-};
-
 VkDeviceAddress getBufferDeviceAddress(VkBuffer buffer) {
 	const VkBufferDeviceAddressInfo bdai = {.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = buffer};
 	return vkGetBufferDeviceAddress(a_vk.dev, &bdai);
 }
 
-struct Accel createAccelerationStructure(const VkAccelerationStructureGeometryKHR* geoms, const uint32_t* max_prim_counts, const VkAccelerationStructureBuildRangeInfoKHR** build_ranges, uint32_t n_geoms, VkAccelerationStructureTypeKHR type) {
+static struct Accel createAccelerationStructure(const VkAccelerationStructureGeometryKHR* geoms, const uint32_t* max_prim_counts, const VkAccelerationStructureBuildRangeInfoKHR** build_ranges, uint32_t n_geoms, VkAccelerationStructureTypeKHR type) {
 		struct Accel accel;
 		VkAccelerationStructureBuildGeometryInfoKHR build_info = {
 			.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
@@ -1129,26 +1132,36 @@ struct Accel createAccelerationStructure(const VkAccelerationStructureGeometryKH
 		build_info.dstAccelerationStructure = accel.handle;
 		build_info.scratchData.deviceAddress = getBufferDeviceAddress(scratch_buffer.buffer);
 
-		VkCommandBufferBeginInfo beginfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-		beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-		AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmd_primary, &beginfo));
+		//VkCommandBufferBeginInfo beginfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+		//beginfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		//AVK_CHECK_RESULT(vkBeginCommandBuffer(g.cmd_primary, &beginfo));
 		AVK_DEV_FUNC(vkCmdBuildAccelerationStructuresKHR)(g.cmd_primary, 1, &build_info, build_ranges);
-		AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmd_primary));
+		//AVK_CHECK_RESULT(vkEndCommandBuffer(g.cmd_primary));
 
-		VkSubmitInfo subinfo = {
-			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-			.commandBufferCount = 1,
-			.pCommandBuffers = &g.cmd_primary,
-		};
-		AVK_CHECK_RESULT(vkQueueSubmit(a_vk.main_queue, 1, &subinfo, NULL));
-		AVK_CHECK_RESULT(vkQueueWaitIdle(a_vk.main_queue));
+	VkMemoryBarrier mem_barrier = {
+			.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+			.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+	};
+	vkCmdPipelineBarrier(g.cmd_primary,
+			VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+			VK_DEPENDENCY_DEVICE_GROUP_BIT, 1, &mem_barrier, 0, NULL, 0, NULL);
 
-		destroyBuffer(&scratch_buffer);
+		//VkSubmitInfo subinfo = {
+		//	.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		//	.commandBufferCount = 1,
+		//	.pCommandBuffers = &g.cmd_primary,
+		//};
+		//AVK_CHECK_RESULT(vkQueueSubmit(a_vk.main_queue, 1, &subinfo, NULL));
+		//AVK_CHECK_RESULT(vkQueueWaitIdle(a_vk.main_queue));
+
+		// FIXME do it later? destroyBuffer(&scratch_buffer);
 
 		return accel;
 }
 
-VkDeviceAddress getASAddress(VkAccelerationStructureKHR as) {
+static VkDeviceAddress getASAddress(VkAccelerationStructureKHR as) {
 	VkAccelerationStructureDeviceAddressInfoKHR asdai = {
 		.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
 		.accelerationStructure = as,
@@ -1156,7 +1169,7 @@ VkDeviceAddress getASAddress(VkAccelerationStructureKHR as) {
 	return AVK_DEV_FUNC(vkGetAccelerationStructureDeviceAddressKHR)(a_vk.dev, &asdai);
 }
 
-void renderLoadModelBlas(struct BSPModel* model) {
+static void renderLoadModelBlas(struct BSPModel* model) {
 	const struct BSPDrawSet* draws = &model->detailed;
 
 	VkAccelerationStructureGeometryKHR *geom = malloc(draws->draws_count * sizeof(VkAccelerationStructureGeometryKHR)); // TODO zero allocations
@@ -1177,11 +1190,11 @@ void renderLoadModelBlas(struct BSPModel* model) {
 					(VkAccelerationStructureGeometryTrianglesDataKHR){
 						.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
 						.indexType = VK_INDEX_TYPE_UINT16,
-						.indexData.deviceAddress = idx_addr + draw->start * sizeof(uint16_t),
+						.indexData.deviceAddress = idx_addr + model->ibo.offset + draw->start * sizeof(uint16_t),
 						.maxVertex = draw->count,
 						.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
 						.vertexStride = sizeof(struct BSPModelVertex),
-						.vertexData.deviceAddress = vtx_addr + draw->vbo_offset,
+						.vertexData.deviceAddress = vtx_addr + draw->vbo_offset * sizeof(struct BSPModelVertex) + model->vbo.offset,
 					},
 			};
 
@@ -1236,10 +1249,46 @@ void renderLoadModelBlas(struct BSPModel* model) {
 			.primitiveCount = COUNTOF(inst),
 	};
 	const VkAccelerationStructureBuildRangeInfoKHR *tl_build_ranges[] = {&tl_build_range};
-	model->vk.tlas = createAccelerationStructure(
-			tl_geom, tl_max_prim_counts, tl_build_ranges, COUNTOF(tl_geom), VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR).handle;
+	g.rtx.tlas = createAccelerationStructure(
+			tl_geom, tl_max_prim_counts, tl_build_ranges, COUNTOF(tl_geom), VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
 }
 #endif //ifdef RTX
+
+	static void rebindGlobalDescriptor() {
+			VkDescriptorBufferInfo dbi = {
+				.buffer = g.ubo,
+				.offset = 0,
+				.range = VK_WHOLE_SIZE
+			};
+#if RTX
+			const VkWriteDescriptorSetAccelerationStructureKHR wdsas = {
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+				.accelerationStructureCount = 1,
+				.pAccelerationStructures = &g.rtx.tlas.handle,
+			};
+#endif
+			VkWriteDescriptorSet wds[] = { {
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.dstSet = g.descriptors[Descriptors_Global]->descriptors[0],
+				.dstBinding = DescriptorBinding_Ubo,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.pBufferInfo = &dbi,
+#if RTX
+			}, {
+				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+				.descriptorCount = 1,
+				.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+				.dstSet = g.descriptors[Descriptors_Global]->descriptors[0],
+				.dstBinding = 1,
+				.dstArrayElement = 0,
+				.pNext = &wdsas,
+			},
+#endif
+		};
+		vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
+	}
 
 void renderBegin(const struct Camera* camera) {
 	aVkAcquireNextImage();
@@ -1280,8 +1329,8 @@ void renderBegin(const struct Camera* camera) {
 	inherit.subpass = 0;
 	VkCommandBufferBeginInfo mat_beginfo = {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
-			.pInheritanceInfo = &inherit,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+		.pInheritanceInfo = &inherit,
 	};
 
 	for (int i = 0; i < (int)COUNTOF(g.cmd_materials); ++i) {
@@ -1294,6 +1343,10 @@ void renderBegin(const struct Camera* camera) {
 			const VkDeviceSize offset = 0;
 			vkCmdBindVertexBuffers(cb, 0, 1, &g.buffers[0].buffer, &offset);
 			vkCmdBindIndexBuffer(cb, g.buffers[0].buffer, 0, VK_INDEX_TYPE_UINT16);
+
+#if RTX
+			if (g.rtx.tlas.handle)
+#endif
 			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 0, 1, &g.descriptors[Descriptors_Global]->descriptors[0], 0, NULL);
 		}
 	}
@@ -1308,8 +1361,20 @@ void renderModelDraw(const RDrawParams *params, struct BSPModel *model) {
 	int seen_material[MShader_COUNT] = {0};
 
 #if RTX
-	if (!model->vk.blas)
-		renderLoadModelBlas(model);
+	if (!model->vk.blas) {
+			renderLoadModelBlas(model);
+			// FIXME this should really be done on model load?
+			rebindGlobalDescriptor();
+
+			// HACK: as we're updating TLAS only once here, we need to (re)bind global descriptor here too
+			for (int i = 0; i < (int)COUNTOF(g.cmd_materials); ++i) {
+					VkCommandBuffer cb = g.cmd_materials[i];
+					struct AVkMaterial* m = g.materials + i;
+					if (m->pipeline) {
+							vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 0, 1, &g.descriptors[Descriptors_Global]->descriptors[0], 0, NULL);
+					}
+			}
+	}
 #endif
 
 	for (int i = 0; i < model->detailed.draws_count; ++i) {
@@ -1329,25 +1394,6 @@ void renderModelDraw(const RDrawParams *params, struct BSPModel *model) {
 		if (!seen_material[mat_index]) {
 			seen_material[mat_index] = 1;
 
-#if RTX // FIXME this should be done differently: allocate ds once for tlas (const), bind once per renderBegin (?)
-	const VkWriteDescriptorSetAccelerationStructureKHR wdsas = {
-		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
-		.accelerationStructureCount = 1,
-		.pAccelerationStructures = model->vk.tlas,
-	};
-#endif
-
-#if RTX
-		{
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.descriptorCount = 1,
-			.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
-			.dstSet = set,
-			.dstBinding = 2,
-			.dstArrayElement = 0,
-			.pNext = &wdsas,
-		},
-#endif
 
 			// TODO we should update lightmap desc set only once per model+cmdbuf (?)
 			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 1, 1, (const VkDescriptorSet*)&model->lightmap.descriptor, 0, NULL);
@@ -1370,7 +1416,7 @@ void renderEnd(const struct Camera *camera) {
 
 	VkClearValue clear_value[2] = {
 		{.color = {{0., 0., 0., 0.}}},
-		{.depthStencil = {1., 0.}}
+		{.depthStencil = {1., 0}}
 	};
 	VkRenderPassBeginInfo rpbi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
 	rpbi.renderPass = g.render_pass;
@@ -1428,12 +1474,17 @@ int renderInit() {
 		// not supported by nv .accelerationStructureHostCommands = VK_TRUE,
 		.pNext = &pdbdaf,
 	};
-	VkPhysicalDeviceRayTracingPipelineFeaturesKHR pdrtf = {
-		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
-		.rayTracingPipeline = VK_TRUE,
+	//VkPhysicalDeviceRayTracingPipelineFeaturesKHR pdrtf = {
+	//	.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+	//	.rayTracingPipeline = VK_TRUE,
+	//	.pNext = &pdasf,
+	//};
+	VkPhysicalDeviceRayQueryFeaturesKHR pdrqf = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+		.rayQuery = VK_TRUE,
 		.pNext = &pdasf,
 	};
-	const void* create_info = &pdrtf;
+	const void* create_info = &pdrqf;
 #else
 	const void* create_info = NULL;
 #endif
@@ -1464,24 +1515,10 @@ int renderInit() {
 
 	createCommandPool();
 
-	{
-			g.ubo = createDeviceLocalBuffer(sizeof(struct Ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-			VkDescriptorBufferInfo dbi = {
-				.buffer = g.ubo,
-				.offset = 0,
-				.range = VK_WHOLE_SIZE
-			};
-			VkWriteDescriptorSet wds[] = { {
-				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-				.dstSet = g.descriptors[Descriptors_Global]->descriptors[0],
-				.dstBinding = DescriptorBinding_Ubo,
-				.dstArrayElement = 0,
-				.descriptorCount = 1,
-				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				.pBufferInfo = &dbi,
-			} };
-			vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
-	}
+	g.ubo = createDeviceLocalBuffer(sizeof(struct Ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+#if !RTX
+		rebindGlobalDescriptor();
+#endif
 
 	VkFenceCreateInfo fci = {0};
 	fci.flags = 0;
