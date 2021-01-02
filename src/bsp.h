@@ -8,11 +8,12 @@ struct AABB { struct AVec3f min, max; };
 
 struct BSPModelVertex {
 	struct AVec3f vertex;
+	float padding1_;
 	//struct AVec3f normal;
 	struct AVec2f lightmap_uv;
 	struct AVec2f tex_uv;
 	struct { uint8_t r, g, b; } average_color;
-	uint8_t padding_;
+	uint8_t padding2_;
 };
 
 struct BSPDraw {

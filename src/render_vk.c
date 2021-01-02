@@ -30,7 +30,7 @@
 #undef NDEBUG
 #include <assert.h>
 
-#define MAX_DESC_SETS 1024 // TODO how many textures can we have?
+#define MAX_DESC_SETS (1024*2) // TODO how many textures can we have?
 #define MAX_HEAPS 16
 #define MAX_LEVELS 128
 #define HEAP_SIZE (64*1024*1024)
@@ -236,7 +236,8 @@ enum {
 
 enum {
 		DescriptorBinding_Ubo = 0,
-		DescriptorBinding_Lightmap,
+		DescriptorBinding_VertexData = 1,
+		DescriptorBinding_Lightmap = 1,
 		DescriptorBinding_BaseMaterialTexture,
 };
 
@@ -386,6 +387,9 @@ static void createDesriptorSets() {
 		}, {
 			.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 			.descriptorCount = 1,
+		}, {
+			.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.descriptorCount = 1,
 #if RTX
 		}, {
 			.type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
@@ -400,9 +404,14 @@ static void createDesriptorSets() {
 	AVK_CHECK_RESULT(vkCreateDescriptorPool(a_vk.dev, &dpci, NULL, &g.descriptor_pool));
 
 	{
-			VkDescriptorSetLayoutBinding bindings[] = { {
+			VkDescriptorSetLayoutBinding bindings[] = {{
 					.binding = DescriptorBinding_Ubo,
 					.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+					.descriptorCount = 1,
+					.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+			}, {
+					.binding = DescriptorBinding_VertexData,
+					.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 					.descriptorCount = 1,
 					.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
 		#if RTX
@@ -500,15 +509,15 @@ static void createPipeline(struct AVkMaterial *material, const VkVertexInputAttr
 	shader_stages[1].module = material->module_fragment;
 	shader_stages[1].pName = "main";
 
-	VkVertexInputBindingDescription vibd = {0};
-	vibd.binding = 0;
-	vibd.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-	vibd.stride = sizeof(struct BSPModelVertex);
+	/* VkVertexInputBindingDescription vibd = {0}; */
+	/* vibd.binding = 0; */
+	/* vibd.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; */
+	/* vibd.stride = sizeof(struct BSPModelVertex); */
 
 	VkPipelineVertexInputStateCreateInfo vertex_input = {0};
 	vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertex_input.vertexBindingDescriptionCount = 1;
-	vertex_input.pVertexBindingDescriptions = &vibd;
+	/* vertex_input.vertexBindingDescriptionCount = 1; */
+	/* vertex_input.pVertexBindingDescriptions = &vibd; */
 	vertex_input.vertexAttributeDescriptionCount = n_attribs;
 	vertex_input.pVertexAttributeDescriptions = attribs;
 
@@ -588,13 +597,15 @@ static void createPipelines() {
 	*/
 
 	{
+		/*
 		VkVertexInputAttributeDescription attribs[] = {
 			{.binding = 0, .location = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct BSPModelVertex, vertex)},
 			{.binding = 0, .location = 1, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, lightmap_uv)},
 			{.binding = 0, .location = 2, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(struct BSPModelVertex, tex_uv)},
 			//{.binding = 0, .location = 3, .format = VK_FORMAT_R8G8B8A8_UNORM, .offset = offsetof(struct BSPModelVertex, average_color)},
 		};
-		createPipeline(&g.materials[MShader_LightmappedGeneric], attribs, COUNTOF(attribs));
+		*/
+		createPipeline(&g.materials[MShader_LightmappedGeneric], NULL, 0);// attribs, COUNTOF(attribs));
 	}
 }
 
@@ -1010,7 +1021,9 @@ void renderBufferCreate(RBuffer *buffer, RBufferType type, int size, const void 
 	assert(gb);
 
 	if (gb->size == 0) {
-			*gb = createGiantBuffer(HEAP_SIZE, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+			*gb = createGiantBuffer(HEAP_SIZE, VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+					| VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+					//| VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
 #if RTX
 					| VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
 #endif
@@ -1241,6 +1254,37 @@ void renderLoadModelBlas(struct BSPModel* model) {
 }
 #endif //ifdef RTX
 
+static void updateGlobalDescriptor() {
+	VkDescriptorBufferInfo dbi_ubo = {
+		.buffer = g.ubo,
+		.offset = 0,
+		.range = VK_WHOLE_SIZE
+	};
+	VkDescriptorBufferInfo dbi_vbo = {
+		.buffer = g.buffers[0].buffer, // FIXME don't hardcode this buffer
+		.offset = 0,
+		.range = VK_WHOLE_SIZE
+	};
+	VkWriteDescriptorSet wds[] = {{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = g.descriptors[Descriptors_Global]->descriptors[0],
+		.dstBinding = DescriptorBinding_Ubo,
+		.dstArrayElement = 0,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		.pBufferInfo = &dbi_ubo,
+	}, {
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = g.descriptors[Descriptors_Global]->descriptors[0],
+		.dstBinding = DescriptorBinding_VertexData,
+		.dstArrayElement = 0,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		.pBufferInfo = &dbi_vbo,
+	}};
+	vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
+}
+
 void renderBegin(const struct Camera* camera) {
 	aVkAcquireNextImage();
 
@@ -1274,6 +1318,9 @@ void renderBegin(const struct Camera* camera) {
 					, VK_DEPENDENCY_DEVICE_GROUP_BIT, 1, &mem_barrier, 0, NULL, 0, NULL);
 	}
 
+	// FIXME do this only once after vertex buffer is created
+	updateGlobalDescriptor();
+
 	VkCommandBufferInheritanceInfo inherit = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO };
 	inherit.framebuffer = g.framebuffers[a_vk.swapchain.current_frame_image_index];
 	inherit.renderPass = g.render_pass;
@@ -1291,8 +1338,8 @@ void renderBegin(const struct Camera* camera) {
 		struct AVkMaterial *m = g.materials + i;
 		if (m->pipeline) {
 			vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline);
-			const VkDeviceSize offset = 0;
-			vkCmdBindVertexBuffers(cb, 0, 1, &g.buffers[0].buffer, &offset);
+			//const VkDeviceSize offset = 0;
+			//vkCmdBindVertexBuffers(cb, 0, 1, &g.buffers[0].buffer, &offset);
 			vkCmdBindIndexBuffer(cb, g.buffers[0].buffer, 0, VK_INDEX_TYPE_UINT16);
 			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 0, 1, &g.descriptors[Descriptors_Global]->descriptors[0], 0, NULL);
 		}
@@ -1464,24 +1511,7 @@ int renderInit() {
 
 	createCommandPool();
 
-	{
-			g.ubo = createDeviceLocalBuffer(sizeof(struct Ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-			VkDescriptorBufferInfo dbi = {
-				.buffer = g.ubo,
-				.offset = 0,
-				.range = VK_WHOLE_SIZE
-			};
-			VkWriteDescriptorSet wds[] = { {
-				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-				.dstSet = g.descriptors[Descriptors_Global]->descriptors[0],
-				.dstBinding = DescriptorBinding_Ubo,
-				.dstArrayElement = 0,
-				.descriptorCount = 1,
-				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				.pBufferInfo = &dbi,
-			} };
-			vkUpdateDescriptorSets(a_vk.dev, COUNTOF(wds), wds, 0, NULL);
-	}
+	g.ubo = createDeviceLocalBuffer(sizeof(struct Ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
 
 	VkFenceCreateInfo fci = {0};
 	fci.flags = 0;
