@@ -457,7 +457,7 @@ static void createShader(struct AVkMaterial *material, const char *vertex, const
 
 	VkPushConstantRange push_const = {0};
 	push_const.offset = 0;
-	push_const.size = sizeof(AMat4f);
+	push_const.size = sizeof(AVec3f);
 	push_const.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
 	VkDescriptorSetLayout descriptor_layouts[] = {
@@ -1350,8 +1350,6 @@ void renderModelDraw(const RDrawParams *params, struct BSPModel *model) {
 	(void)params;
 	if (!model->detailed.draws_count) return;
 
-	// FIXME aMat4fTranslation(params->translation)));
-
 	int seen_material[MShader_COUNT] = {0};
 
 #if RTX
@@ -1398,6 +1396,8 @@ void renderModelDraw(const RDrawParams *params, struct BSPModel *model) {
 
 			// TODO we should update lightmap desc set only once per model+cmdbuf (?)
 			vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m->pipeline_layout, 1, 1, (const VkDescriptorSet*)&model->lightmap.descriptor, 0, NULL);
+			vkCmdPushConstants(cb, m->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(AVec3f), &params->translation);
+
 		}
 
 		if (draw->material->base_texture.texture)

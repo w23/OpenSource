@@ -9,16 +9,13 @@ layout(binding=0, set=0) uniform UBO {
 	mat4 projection;
 } ubo;
 
-/*
-layout(binding=0, set=1) uniform UBO {
-	vec4 translation;
-} model_ubo;
-*/
+layout(push_constant) uniform G {
+	vec3 translation;
+};
 
 struct BSPModelVertex {
 	vec4 vertex;
 	vec4 uvs_lm_tex;
-	//vec2 tex_uv;
 	uint average_color;
 };
 
@@ -27,7 +24,7 @@ layout(binding=1, set=0, scalar) readonly buffer VertexBuffer {
 } buf;
 
 void main() {
-	vec3 vertex = buf.vertices[gl_VertexIndex].vertex.xyz;
+	vec3 vertex = buf.vertices[gl_VertexIndex].vertex.xyz + translation.xyz;
 	v_lightmap_uv = buf.vertices[gl_VertexIndex].uvs_lm_tex.xy;
 	v_tex_uv = buf.vertices[gl_VertexIndex].uvs_lm_tex.zw;
 
