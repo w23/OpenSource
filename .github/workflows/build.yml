@@ -44,5 +44,6 @@ jobs:
         # Identify the release as a prerelease. Defaults to false
         prerelease: true # optional
         # Newline-delimited list of path globs for asset files to upload
+        # TODO prepare proper zip with useful things
         files: |
-            *
+            ${{ runner.workspace }}/build/Release/OpenSource.exe
