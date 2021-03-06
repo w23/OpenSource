@@ -38,7 +38,7 @@
 #define RENDER_ERRORCHECK
 //#define RENDER_GL_TRACE
 
-#define RENDER_GL_PROFILE_FUNC profileEvent
+//#define RENDER_GL_PROFILE_FUNC profileEvent
 
 #ifndef RENDER_ASSERT
 #define RENDER_ASSERT(cond) \

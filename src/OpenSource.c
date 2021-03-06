@@ -4,7 +4,7 @@
 #include "mempools.h"
 #include "common.h"
 #include "texture.h"
-#include "profiler.h"
+//#include "profiler.h"
 #include "camera.h"
 #include "vmfparser.h"
 
@@ -345,9 +345,9 @@ static void opensrcPaint(ATimeUs timestamp, float dt) {
 
 	renderEnd(&g.camera);
 
-	if (profilerFrame(&stack_temp)) {
-		PRINTF("Total triangles: %d", triangles);
-	}
+	// if (profilerFrame(&stack_temp)) {
+	// 	PRINTF("Total triangles: %d", triangles);
+	// }
 }
 
 static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
@@ -788,15 +788,15 @@ static Arg g_args[] = {
 };
 
 void attoAppInit(struct AAppProctable *proctable) {
-	profilerInit();
-	//aGLInit();
+	//profilerInit();
+
 	g.collection_chain = NULL;
 	g.patches = NULL;
-	g_cfg.maps_limit = 1;
 	g.maps_count = 0;
 	g.selected_map = NULL;
 	g.R = 0;
 
+	g_cfg.maps_limit = 1;
 	g_cfg.steam_basedir = getDefaultSteamBaseDir();
 	PRINTF("Default platform steam basedir = %s", g_cfg.steam_basedir);
 
