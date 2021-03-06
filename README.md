@@ -28,7 +28,7 @@ If you wish, you could check out the *old* branch for the 5 years old version th
   - Reading materials from pakfile lumps
   - Packing textures with ETC1 on Raspberry Pi (packer is very naive and probably broken)
 
-## Streaming (OH HOLD)
+## Streaming (ON HOLD)
 Development was done almost entirely live.
 
 Stream links:
