@@ -1,0 +1,52 @@
+name: CMake release build
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+    - name: Apt update
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt update
+    - name: Install dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt install libxfixes-dev mesa-common-dev libgl1-mesa-dev
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+    - name: Create build dir
+      run: cmake -E make_directory ${{ runner.workspace }}/build
+    - name: Configure
+      shell: bash
+      working-directory: ${{ runner.workspace }}/build
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=Release
+    - name: Build
+      working-directory: ${{ runner.workspace }}/build
+      run: cmake --build . --config Release
+    - name: List assets
+      if: matrix.os == 'windows-latest'
+      run: dir ${{ runner.workspace }}/build/Release
+    - name: GH Release
+      if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v0.1.5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        # Note-worthy description of changes in release
+        #body: # optional
+        # Path to load note-worthy description of changes in release from
+        #body_path: # optional
+        # Gives the release a custom name. Defaults to tag name
+        #name: # optional
+        # Creates a draft release. Defaults to false
+        draft: true # optional
+        # Identify the release as a prerelease. Defaults to false
+        prerelease: true # optional
+        # Newline-delimited list of path globs for asset files to upload
+        # TODO prepare proper zip with useful things
+        files: |
+            ${{ runner.workspace }}/build/Release/OpenSource.exe
