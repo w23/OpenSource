@@ -363,6 +363,7 @@ static void opensrcKeyPress(ATimeUs timestamp, AKey key, int pressed) {
 		if (a_app_state->grabbed)
 			aAppGrabInput(0);
 		else
+			// TODO graceful termination
 			aAppTerminate(0);
 		break;
 	case AK_W: g.forward += pressed?1:-1; break;
@@ -664,7 +665,7 @@ void argsPrintUsage(const Arg* args, int nargs, char const* prog) {
 	const Arg* in = NULL;
 	for (int i = 0; i < nargs; ++i) {
 		const Arg* arg = args + i;
-		if (arg) {
+		if (arg->arg) {
 			PRINTF("\t-%s: %s", arg->arg, arg->desc);
 		} else {
 			if (!in)
@@ -675,7 +676,6 @@ void argsPrintUsage(const Arg* args, int nargs, char const* prog) {
 	if (in)
 		PRINTF("\tfree arguments: %s", in->desc);
 }
-
 
 int argsParse(const Arg* args, int nargs, int argc, char const* const* argv) {
 	const Arg* in = NULL;
@@ -718,7 +718,7 @@ int argsParse(const Arg* args, int nargs, int argc, char const* const* argv) {
 		}
 
 		if (handler->func(arg, handler->user_ptr) == 0) {
-			PRINTF("Error handling option -%s with argument '%s'", handler->arg, arg);
+			PRINTF("Error handling %s%s with argument '%s'", handler->arg ? "option -" : "free option", handler->arg ? handler->arg : "", arg);
 			return 0;
 		}
 	}
@@ -779,12 +779,12 @@ int argAddMap(const char *str, void *unused) {
 
 static Arg g_args[] = {
 	{"s", "Override steam basedir", argStoreString, (void*)&g_cfg.steam_basedir},
-	{"c", "Read config file", argReadConfigFile, NULL},
+	{"m", "Add map name to list of maps to load", argAddMap, NULL},
 	{"p", "Add VPK file to list of files to load assets from", argAddVpkToCollection, NULL},
 	{"d", "Add directory to list of files to load assets from", argAddDirToCollection, NULL},
 	{"n", "Specify a limit of number of maps to load", argStoreInt, &g_cfg.maps_limit},
 	// TODO -h
-	{NULL, "Add map name to list of maps to load", argAddMap, NULL},
+	{NULL, "Game configuration file to load", argReadConfigFile, NULL},
 };
 
 void attoAppInit(struct AAppProctable *proctable) {
