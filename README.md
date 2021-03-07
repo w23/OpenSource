@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/w23/OpenSource.png)](https://travis-ci.org/w23/OpenSource) [![Build status](https://ci.appveyor.com/api/projects/status/rgu44jqi1kt2jpw9?svg=true)](https://ci.appveyor.com/project/w23/opensource)
+[![Github build status](https://github.com/w23/OpenSource/actions/workflows/build.yml/badge.svg)](https://github.com/w23/OpenSource/actions/workflows/build.yml) [![Build Status](https://travis-ci.org/w23/OpenSource.png)](https://travis-ci.org/w23/OpenSource) [![Build status](https://ci.appveyor.com/api/projects/status/rgu44jqi1kt2jpw9?svg=true)](https://ci.appveyor.com/project/w23/opensource)
 
 OpenSource
 ==========
