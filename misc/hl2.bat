@@ -1,1 +1,1 @@
-OpenSource.exe -c hl2.cfg
+OpenSource.exe hl2.cfg
