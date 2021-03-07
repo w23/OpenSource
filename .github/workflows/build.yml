@@ -23,15 +23,15 @@ jobs:
     - name: Configure
       shell: bash
       working-directory: ${{ runner.workspace }}/build
-      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=Release
+      run: cmake ${{ github.workspace }} -DCMAKE_BUILD_TYPE=Release
     - name: Build
       working-directory: ${{ runner.workspace }}/build
       run: cmake --build . --config Release
     - name: prepare release archive
-      if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/v')
+      if: matrix.os == 'windows-latest' # && startsWith(github.ref, 'refs/tags/v')
       run: |
         cmake -E make_directory ${{ runner.workspace }}/OpenSource-windows
-        cmake -E copy $GITHUB_WORKSPACE/misc/hl1.cfg $GITHUB_WORKSPACE/misc/hl2.cfg $GITHUB_WORKSPACE/misc/hl2eps.cfg $GITHUB_WORKSPACE/misc/hl1.bat $GITHUB_WORKSPACE/misc/hl2.bat $GITHUB_WORKSPACE/misc/hl2eps.bat ${{ runner.workspace }}/build/Release/OpenSource.exe $GITHUB_WORKSPACE/README.md ${{ runner.workspace }}/OpenSource-windows
+        cmake -E copy ${{ github.workspace }}/misc/hl1.cfg ${{ github.workspace }}/misc/hl2.cfg ${{ github.workspace }}/misc/hl2eps.cfg ${{ github.workspace }}/misc/hl1.bat ${{ github.workspace }}/misc/hl2.bat ${{ github.workspace }}/misc/hl2eps.bat ${{ runner.workspace }}/build/Release/OpenSource.exe ${{ github.workspace }}/README.md ${{ runner.workspace }}/OpenSource-windows
         powershell Compress-Archive ${{ runner.workspace }}/OpenSource-windows/* ${{ runner.workspace }}/OpenSource-windows.zip
     - name: GH Release
       if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/v')
