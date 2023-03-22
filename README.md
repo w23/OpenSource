@@ -55,7 +55,10 @@ Additional options:
 - `-p` -- add a custom VPK file to load resources from
 - `-d` -- add a custom directory to load resources from
 - `-n` -- specify a limit to number of maps to load
-Note that you can use these arguments to load games without cfg file (but landmark patching functionality is only supported in cfg files).
+
+Notes:
+- Arguments order matters: options only apply to what follows them. E.g. `./OpenSource hl1.cfg -s <custom_steam_path>` will not use `<custom_steam_path>` for loading resources for `hl1.cfg`, but `./OpenSource -s <custom_steam_path> hl1.cfg` will.
+- cfg files are not strictly necessary, it is possible to load maps only using arguments. However, landmark patching functionality is only supported via cfg files.
 
 ## Streaming (ON HOLD)
 Development was done almost entirely live.
@@ -63,7 +66,5 @@ Development was done almost entirely live.
 Stream links:
 - [Twitch/ProvodGL](https://twitch.tv/provodgl)
 - [YouTube](https://www.youtube.com/c/IvanAvdeev/live)
-- [Goodgame.ru/w23](https://goodgame.ru/channel/w23/)
-- [Peka2](http://peka2.tv/w23)
 
 You can also check out [previous streams recordings](https://www.youtube.com/playlist?list=PLP0z1CQXyu5DjL_3-7lukQmKGYq2LhxKA) and [stuff planned for next streams](https://github.com/w23/OpenSource/projects/1).
