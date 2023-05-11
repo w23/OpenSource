@@ -8,6 +8,11 @@
 #endif
 
 enum {
+	VBSP_LightmapPage_Width = 256,
+	VBSP_LightmapPage_Height = 128
+};
+
+enum {
 	VBSP_Lump_Entity = 0,
 	VBSP_Lump_Plane = 1,
 	VBSP_Lump_TexData = 2,
@@ -35,14 +40,25 @@ enum {
 	VBSP_Lump_TexDataStringData = 43,
 	VBSP_Lump_TexDataStringTable = 44,
 
+	VBSP_Lump_XBE_LightMapPages = 51,
+	VBSP_Lump_XBE_LightMapPagesInfos = 52,
+
 	VBSP_Lump_LightMapHDR = 53,
 
+	VBSP_Lump_XBE_PakFile = 57,
 	VBSP_Lump_FaceHDR = 58,
 
 	VBSP_Lump_COUNT = 64
 };
 
 #pragma pack(1)
+struct VBSPLightmapColor {
+	uint8_t r, g, b;
+	int8_t exponent;
+};
+struct VBSPLightmapPageColor {
+	uint8_t b, g, r, a;
+};
 struct VBSPLumpHeader {
 	uint32_t file_offset;
 	uint32_t size;
@@ -99,10 +115,6 @@ struct VBSPLumpFace {
 	uint16_t first_primitive;
 	uint32_t lightmap_smoothing_group;
 };
-struct VBSPLumpLightMap {
-	uint8_t r, g, b;
-	int8_t exponent;
-};
 struct VBSPLumpLeaf {
 	uint32_t contents;
 	uint16_t cluster;
@@ -154,6 +166,17 @@ struct VBSPLumpDispInfo {
 struct VBSPLumpDispVert {
 	float x, y, z, dist, alpha;
 };
+struct VBSPLumpLightmapPage {
+	uint8_t data[VBSP_LightmapPage_Width * VBSP_LightmapPage_Height];
+	struct VBSPLightmapPageColor palette[256];
+};
+struct VBSPLumpLightmapPageInfo {
+	uint8_t page;
+	uint8_t offset_s;
+	uint8_t offset_t;
+	uint8_t padding;
+	struct VBSPLightmapColor color;
+};
 #pragma pack()
 
 enum VBSPSurfaceFlags {
@@ -163,5 +186,9 @@ enum VBSPSurfaceFlags {
 	VBSP_Surface_NoDraw = 0x0080,
 	VBSP_Surface_NoLight = 0x0400
 };
+
+// pre-calculated mask for XBE lighmaps 
+#define LIGHTMAP_MASK_U 0x00005555	// w = 256
+#define LIGHTMAP_MASK_V 0x00002AAA	// h = 128
 
 #endif /* ifndef VBSP_H__INCLUDED */
