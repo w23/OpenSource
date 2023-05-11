@@ -239,7 +239,7 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 	const int lm_height = vface->lightmap_size[1] + 1;
 	const unsigned lightmap_size = lm_width * lm_height;
 
-	if (lumps->lightmap_pages.n > 0) {
+	if (lumps->version == 19 && lumps->lightmap_pages.n > 0) {
 		/* palette XBE lightmaps */
 		const int lm_page = lumps->lightmap_pages_infos.p[vface->lightmap_offset].page;
 		FACE_CHECK(lm_page < (int)lumps->lightmap_pages.n);
