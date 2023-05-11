@@ -32,12 +32,6 @@ struct AnyLump {
 	uint32_t n;
 };
 
-/*
-		
-	VBSP_Lump_XBE_PakFile = 57,
-	VBSP_Lump_FaceHDR = 58,
-*/
-
 struct Lumps {
 	uint32_t version;
 #define LIST_LUMPS \
@@ -146,7 +140,7 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 		struct Face *face, unsigned index) {
 	const struct Lumps * const lumps = ctx->lumps;
 #define FACE_CHECK(cond) \
-	if (!(cond)) { __debugbreak(); PRINTF("F%u: check failed: (%s)", index, #cond); return FacePreload_Inconsistent; }
+	if (!(cond)) { PRINTF("F%u: check failed: (%s)", index, #cond); return FacePreload_Inconsistent; }
 	FACE_CHECK(index < lumps->faces.n);
 
 	const struct VBSPLumpFace * const vface = lumps->faces.p + index;

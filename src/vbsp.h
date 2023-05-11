@@ -187,8 +187,4 @@ enum VBSPSurfaceFlags {
 	VBSP_Surface_NoLight = 0x0400
 };
 
-// pre-calculated mask for XBE lighmaps 
-#define LIGHTMAP_MASK_U 0x00005555	// w = 256
-#define LIGHTMAP_MASK_V 0x00002AAA	// h = 128
-
 #endif /* ifndef VBSP_H__INCLUDED */
