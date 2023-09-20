@@ -26,13 +26,19 @@ jobs:
     - name: Build
       working-directory: ${{ runner.workspace }}/build
       run: cmake --build . --config Release
-    - name: prepare release archive
-      if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/v')
+    - name: Prepare release archive
+      if: matrix.os == 'windows-latest'
       run: |
-        cmake -E make_directory ${{ runner.workspace }}/OpenSource-windows
-        cmake -E copy ${{ github.workspace }}/misc/hl1.cfg ${{ github.workspace }}/misc/hl2.cfg ${{ github.workspace }}/misc/hl2eps.cfg ${{ github.workspace }}/misc/hl1.bat ${{ github.workspace }}/misc/hl2.bat ${{ github.workspace }}/misc/hl2eps.bat ${{ runner.workspace }}/build/Release/OpenSource.exe ${{ github.workspace }}/README.md ${{ runner.workspace }}/OpenSource-windows
-        powershell Compress-Archive ${{ runner.workspace }}/OpenSource-windows/* ${{ runner.workspace }}/OpenSource-windows.zip
-    - name: GH Release
+        cmake -E make_directory ${{ runner.workspace }}/OpenSource-win64
+        cmake -E copy ${{ github.workspace }}/misc/hl1.cfg ${{ github.workspace }}/misc/hl2.cfg ${{ github.workspace }}/misc/hl2eps.cfg ${{ github.workspace }}/misc/hl1.bat ${{ github.workspace }}/misc/hl2.bat ${{ github.workspace }}/misc/hl2eps.bat ${{ runner.workspace }}/build/Release/OpenSource.exe ${{ github.workspace }}/README.md ${{ runner.workspace }}/OpenSource-win64
+        powershell Compress-Archive ${{ runner.workspace }}/OpenSource-win64/* ${{ runner.workspace }}/OpenSource-win64.zip
+    - name: Upload artifacts
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v3
+      with:
+        name: Windows amd64
+        path: ${{ runner.workspace }}/OpenSource-win64.zip
+    - name: Make GitHub release if tagged
       if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v0.1.5
       env:
@@ -50,4 +56,4 @@ jobs:
         prerelease: true # optional
         # Newline-delimited list of path globs for asset files to upload
         # TODO prepare proper zip with useful things
-        files: ${{ runner.workspace }}/OpenSource-windows.zip
+        files: ${{ runner.workspace }}/OpenSource-win64.zip
