@@ -30,7 +30,7 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         cmake -E make_directory ${{ runner.workspace }}/OpenSource-win64
-        cmake -E copy ${{ github.workspace }}/misc/hl1.cfg ${{ github.workspace }}/misc/hl2.cfg ${{ github.workspace }}/misc/hl2eps.cfg ${{ github.workspace }}/misc/hl1.bat ${{ github.workspace }}/misc/hl2.bat ${{ github.workspace }}/misc/hl2eps.bat ${{ runner.workspace }}/build/Release/OpenSource.exe ${{ github.workspace }}/README.md ${{ runner.workspace }}/OpenSource-win64
+        cmake -E copy ${{ github.workspace }}/misc/*.cfg ${{ github.workspace }}/misc/*.bat ${{ runner.workspace }}/build/Release/OpenSource.exe ${{ github.workspace }}/README.md ${{ runner.workspace }}/OpenSource-win64
         powershell Compress-Archive ${{ runner.workspace }}/OpenSource-win64/* ${{ runner.workspace }}/OpenSource-win64.zip
     - name: Upload artifacts
       if: matrix.os == 'windows-latest'
