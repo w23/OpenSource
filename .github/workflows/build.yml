@@ -36,8 +36,8 @@ jobs:
       if: matrix.os == 'windows-latest'
       uses: actions/upload-artifact@v3
       with:
-        name: Windows amd64
-        path: ${{ runner.workspace }}/OpenSource-win64.zip
+        name: OpenSource-win64
+        path: ${{ runner.workspace }}/OpenSource-win64
     - name: Make GitHub release if tagged
       if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v0.1.5
