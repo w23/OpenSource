@@ -125,9 +125,12 @@ static VMFAction materialParserCallback(VMFState *state, VMFEntryType entry, con
 			} else {
 				ctx->shader = kv->key;
 				if (strncasecmp("unlitgeneric", kv->key.str, kv->key.length) == 0
+					|| strncasecmp("SDK_UnlitGeneric", kv->key.str, kv->key.length) == 0
 					|| strncasecmp("sky", kv->key.str, kv->key.length) == 0)
 					ctx->mat->shader = MShader_UnlitGeneric;
 				else if (strncasecmp("lightmappedgeneric", kv->key.str, kv->key.length) == 0
+					|| strncasecmp("SDK_LightmappedGeneric", kv->key.str, kv->key.length) == 0
+					|| strncasecmp("sdk_worldvertextransition", kv->key.str, kv->key.length) == 0
 					|| strncasecmp("worldvertextransition", kv->key.str, kv->key.length) == 0)
 					ctx->mat->shader = MShader_LightmappedGeneric;
 				else

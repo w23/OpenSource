@@ -16,7 +16,7 @@
 #endif
 
 static char persistent_data[128*1024*1024];
-static char temp_data[128*1024*1024];
+static char temp_data[256*1024*1024];
 
 static struct Stack stack_temp = {
 	.storage = temp_data,
