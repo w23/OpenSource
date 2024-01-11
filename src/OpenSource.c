@@ -3,7 +3,7 @@
 #include "collection.h"
 #include "mempools.h"
 #include "common.h"
-#include "texture.h"
+#include "log.h"
 //#include "profiler.h"
 #include "camera.h"
 #include "vmfparser.h"
@@ -502,6 +502,7 @@ static VMFAction configLandmarkCallback(VMFState *state, VMFEntryType entry, con
 		state->callback = configPatchCallback;
 		break;
 	default:
+		PRINTF("%s: Unexpected entry %d", __FUNCTION__, entry);
 		return VMFAction_SemanticError;
 	}
 
@@ -518,12 +519,15 @@ static VMFAction configMapCallback(VMFState *state, VMFEntryType entry, const VM
 		} else if (strncasecmp("offset", kv->key.str, kv->key.length) == 0) {
 			cfg->map_offset = kv->value;
 		} else {
+			PRINTF("%s: Unexpected key \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(kv->key));
 			return VMFAction_SemanticError;
 		}
 		break;
 	case VMFEntryType_SectionClose:
-		if (cfg->map_name.length < 1)
+		if (cfg->map_name.length < 1) {
+			PRINTF("%s: Invalid map name \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(cfg->map_name));
 			return VMFAction_SemanticError;
+		}
 		Map *m = opensrcAllocMap(cfg->map_name);
 		if (m && cfg->map_offset.length >= 5) {
 			float x, y, z;
@@ -538,6 +542,7 @@ static VMFAction configMapCallback(VMFState *state, VMFEntryType entry, const VM
 		state->callback = configReadCallback;
 		break;
 	default:
+		PRINTF("%s: Unexpected entry %d", __FUNCTION__, entry);
 		return VMFAction_SemanticError;
 	}
 
@@ -549,14 +554,17 @@ static VMFAction configPatchCallback(VMFState *state, VMFEntryType entry, const 
 
 	switch (entry) {
 	case VMFEntryType_SectionOpen:
-		if (kv->key.length < 1)
+		if (kv->key.length < 1) {
+			PRINTF("%s: Unexpected section \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(kv->key));
 			return VMFAction_SemanticError;
+		}
 		cfg->map_name = kv->key;
 		state->callback = configLandmarkCallback;
 		break;
 	case VMFEntryType_SectionClose:
 		return VMFAction_Exit;
 	default:
+		PRINTF("%s: Unexpected entry %d", __FUNCTION__, entry);
 		return VMFAction_SemanticError;
 	}
 
@@ -586,8 +594,10 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 		} else if (strncasecmp("z_far", kv->key.str, kv->key.length) == 0) {
 			// FIXME null-terminate
 			g.R = (float)atof(kv->value.str);
-		} else
+		} else {
+			PRINTF("%s: Unexpected key \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(kv->key));
 			return VMFAction_SemanticError;
+		}
 		break;
 	case VMFEntryType_SectionOpen:
 		if (strncasecmp("patch_landmarks", kv->key.str, kv->key.length) == 0)
@@ -595,10 +605,13 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 		else if (strncasecmp("map", kv->key.str, kv->key.length) == 0) {
 			cfg->map_name.length = cfg->map_offset.length = 0;
 			state->callback = configMapCallback;
-		} else
+		} else {
+			PRINTF("%s: Unexpected section \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(kv->key));
 			return VMFAction_SemanticError;
+		}
 		break;
 	default:
+		PRINTF("%s: Unexpected entry %d", __FUNCTION__, entry);
 		return VMFAction_SemanticError;
 	}
 
@@ -789,6 +802,8 @@ static Arg g_args[] = {
 
 void attoAppInit(struct AAppProctable *proctable) {
 	//profilerInit();
+
+	logOpen("OpenSource.log");
 
 	g.collection_chain = NULL;
 	g.patches = NULL;

@@ -1,5 +1,6 @@
 #pragma once
 #include "common.h"
+#include "log.h"
 #include <stddef.h>
 
 typedef struct Stack {

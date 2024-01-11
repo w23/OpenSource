@@ -11,18 +11,19 @@ add_subdirectory(src/atto)
 
 set(SOURCES
 	src/OpenSource.c
-	src/bsp.c
 	src/atlas.c
-	src/filemap.c
+	src/bsp.c
+	src/cache.c
 	src/camera.c
 	src/collection.c
-	src/vmfparser.c
-	src/material.c
-	src/texture.c
-	src/cache.c
 	src/dxt.c
-	src/render.c
+	src/filemap.c
+	src/log.c
+	src/material.c
 	src/profiler.c
+	src/render.c
+	src/texture.c
+	src/vmfparser.c
 )
 
 set(HEADERS
@@ -37,6 +38,7 @@ set(HEADERS
 	src/etcpack.h
 	src/filemap.h
 	src/libc.h
+	src/log.h
 	src/material.h
 	src/mempools.h
 	src/profiler.h

@@ -1,5 +1,6 @@
 #include "filemap.h"
 #include "common.h"
+#include "log.h"
 
 #ifndef _WIN32
 #include <sys/types.h>
