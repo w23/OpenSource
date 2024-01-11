@@ -502,7 +502,7 @@ static VMFAction configLandmarkCallback(VMFState *state, VMFEntryType entry, con
 		state->callback = configPatchCallback;
 		break;
 	default:
-		PRINTF("%s: Unexpected entry %d", __FUNCTION__, entry);
+		PRINTF("%s: Unexpected entry %d", __func__, entry);
 		return VMFAction_SemanticError;
 	}
 
@@ -519,13 +519,13 @@ static VMFAction configMapCallback(VMFState *state, VMFEntryType entry, const VM
 		} else if (strncasecmp("offset", kv->key.str, kv->key.length) == 0) {
 			cfg->map_offset = kv->value;
 		} else {
-			PRINTF("%s: Unexpected key \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(kv->key));
+			PRINTF("%s: Unexpected key \"" PRI_SV "\"", __func__, PRI_SVV(kv->key));
 			return VMFAction_SemanticError;
 		}
 		break;
 	case VMFEntryType_SectionClose:
 		if (cfg->map_name.length < 1) {
-			PRINTF("%s: Invalid map name \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(cfg->map_name));
+			PRINTF("%s: Invalid map name \"" PRI_SV "\"", __func__, PRI_SVV(cfg->map_name));
 			return VMFAction_SemanticError;
 		}
 		Map *m = opensrcAllocMap(cfg->map_name);
@@ -542,7 +542,7 @@ static VMFAction configMapCallback(VMFState *state, VMFEntryType entry, const VM
 		state->callback = configReadCallback;
 		break;
 	default:
-		PRINTF("%s: Unexpected entry %d", __FUNCTION__, entry);
+		PRINTF("%s: Unexpected entry %d", __func__, entry);
 		return VMFAction_SemanticError;
 	}
 
@@ -555,7 +555,7 @@ static VMFAction configPatchCallback(VMFState *state, VMFEntryType entry, const 
 	switch (entry) {
 	case VMFEntryType_SectionOpen:
 		if (kv->key.length < 1) {
-			PRINTF("%s: Unexpected section \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(kv->key));
+			PRINTF("%s: Unexpected section \"" PRI_SV "\"", __func__, PRI_SVV(kv->key));
 			return VMFAction_SemanticError;
 		}
 		cfg->map_name = kv->key;
@@ -564,7 +564,7 @@ static VMFAction configPatchCallback(VMFState *state, VMFEntryType entry, const 
 	case VMFEntryType_SectionClose:
 		return VMFAction_Exit;
 	default:
-		PRINTF("%s: Unexpected entry %d", __FUNCTION__, entry);
+		PRINTF("%s: Unexpected entry %d", __func__, entry);
 		return VMFAction_SemanticError;
 	}
 
@@ -595,7 +595,7 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 			// FIXME null-terminate
 			g.R = (float)atof(kv->value.str);
 		} else {
-			PRINTF("%s: Unexpected key \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(kv->key));
+			PRINTF("%s: Unexpected key \"" PRI_SV "\"", __func__, PRI_SVV(kv->key));
 			return VMFAction_SemanticError;
 		}
 		break;
@@ -606,12 +606,12 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 			cfg->map_name.length = cfg->map_offset.length = 0;
 			state->callback = configMapCallback;
 		} else {
-			PRINTF("%s: Unexpected section \"" PRI_SV "\"", __FUNCTION__, PRI_SVV(kv->key));
+			PRINTF("%s: Unexpected section \"" PRI_SV "\"", __func__, PRI_SVV(kv->key));
 			return VMFAction_SemanticError;
 		}
 		break;
 	default:
-		PRINTF("%s: Unexpected entry %d", __FUNCTION__, entry);
+		PRINTF("%s: Unexpected entry %d", __func__, entry);
 		return VMFAction_SemanticError;
 	}
 
