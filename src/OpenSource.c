@@ -596,7 +596,8 @@ static VMFAction configReadCallback(VMFState *state, VMFEntryType entry, const V
 			g.R = (float)atof(kv->value.str);
 		} else {
 			PRINTF("%s: Unexpected key \"" PRI_SV "\"", __func__, PRI_SVV(kv->key));
-			return VMFAction_SemanticError;
+			// TODO return VMFAction_SemanticError;
+			return VMFAction_Exit;
 		}
 		break;
 	case VMFEntryType_SectionOpen:
@@ -642,6 +643,9 @@ static int configReadFile(const char *cfgfile) {
 	};
 
 	aFileClose(&file);
+
+	// TODO remove
+	PRINTF("Parsing config file \"%s\" (%d):\n```\n%.*s\n```", cfgfile, pstate.data.length, pstate.data.length, pstate.data.str);
 
 	int result = VMFResult_Success == vmfParse(&pstate);
 
