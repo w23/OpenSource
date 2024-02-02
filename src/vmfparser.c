@@ -1,5 +1,5 @@
 #include "vmfparser.h"
-#include "libc.h"
+#include "log.h"
 
 typedef enum {
 	VMFTokenType_End,
