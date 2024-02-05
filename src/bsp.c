@@ -43,7 +43,7 @@ struct Lumps {
 	BSPLUMP(Node, struct VBSPLumpNode, nodes); \
 	BSPLUMP(TexInfo, struct VBSPLumpTexInfo, texinfos); \
 	BSPLUMP(Face, struct VBSPLumpFace, faces); \
-	BSPLUMP(LightMap, struct VBSPLumpLightMap, lightmaps); \
+	BSPLUMP(LightMap, struct VBSPLightmapColor, lightmaps); \
 	\
 	BSPLUMP(Leaf, struct VBSPLumpLeaf, leaves); \
 	\
@@ -58,13 +58,17 @@ struct Lumps {
 	BSPLUMP(DispVerts, struct VBSPLumpDispVert, dispverts); \
 	\
 	BSPLUMP(PakFile, uint8_t, pakfile); \
+	BSPLUMP(XBE_PakFile, uint8_t, xbe_pakfile); \
 	\
 	BSPLUMP(TexDataStringData, char, texdatastringdata); \
 	BSPLUMP(TexDataStringTable, int32_t, texdatastringtable); \
 	\
+	BSPLUMP(XBE_LightMapPages, struct VBSPLumpLightmapPage, lightmap_pages); \
+	BSPLUMP(XBE_LightMapPagesInfos, struct VBSPLumpLightmapPageInfo, lightmap_pages_infos); \
+	\
 	BSPLUMP(FaceHDR, struct VBSPLumpFace, faces_hdr); \
 	\
-	BSPLUMP(LightMapHDR, struct VBSPLumpLightMap, lightmaps_hdr); \
+	BSPLUMP(LightMapHDR, struct VBSPLightmapColor, lightmaps_hdr); \
 
 
 #define BSPLUMP(name,type,field) struct{const type *p;uint32_t n;} field
@@ -79,12 +83,14 @@ struct Face {
 	int vertices;
 	int indices;
 	int width, height;
-	const struct VBSPLumpLightMap *samples;
+	int lm_page;
+	uint32_t lm_offset;
+	const struct VBSPLightmapColor* samples;
 	const struct VBSPLumpTexInfo *texinfo;
 	const struct VBSPLumpTexData *texdata;
 	const struct VBSPLumpDispInfo *dispinfo;
-	int dispquadvtx[4]; // filled only when displaced
 	int dispstartvtx;
+	int dispquadvtx[4]; // filled only when displaced
 	const Material *material;
 
 	/* filled as a result of atlas allocation */
@@ -191,14 +197,6 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 	FACE_CHECK(vface->num_edges > 2);
 	FACE_CHECK(vface->first_edge < lumps->surfedges.n && lumps->surfedges.n - vface->first_edge >= (unsigned)vface->num_edges);
 
-	FACE_CHECK(vface->lightmap_offset % sizeof(struct VBSPLumpLightMap) == 0);
-
-	const int lm_width = vface->lightmap_size[0] + 1;
-	const int lm_height = vface->lightmap_size[1] + 1;
-	const unsigned lightmap_size = lm_width * lm_height;
-	const unsigned sample_offset = vface->lightmap_offset / sizeof(struct VBSPLumpLightMap);
-	FACE_CHECK(sample_offset < lumps->lightmaps.n && lumps->lightmaps.n - sample_offset >= lightmap_size);
-
 	const int32_t *surfedges = lumps->surfedges.p + vface->first_edge;
 	unsigned int prev_end = 0xffffffffu;
 	for (int i = 0; i < vface->num_edges; ++i) {
@@ -237,11 +235,42 @@ static enum FacePreload bspFacePreloadMetadata(struct LoadModelContext *ctx,
 		prev_end = vend;
 	}
 
-	face->width = lm_width;
-	face->height = lm_height;
-	face->samples = lumps->lightmaps.p + sample_offset;
-	if (lm_width > ctx->lightmap.max_width) ctx->lightmap.max_width = lm_width;
-	if (lm_height > ctx->lightmap.max_height) ctx->lightmap.max_height = lm_height;
+	const int lm_width = vface->lightmap_size[0] + 1;
+	const int lm_height = vface->lightmap_size[1] + 1;
+	const unsigned lightmap_size = lm_width * lm_height;
+
+	if (lumps->version == 19 && lumps->lightmap_pages.n > 0) {
+		/* palette XBE lightmaps */
+		const int lm_page = lumps->lightmap_pages_infos.p[vface->lightmap_offset].page;
+		FACE_CHECK(lm_page < (int)lumps->lightmap_pages.n);
+
+		const uint8_t cord_x = lumps->lightmap_pages_infos.p[vface->lightmap_offset].offset_s;
+		const uint8_t cord_y = lumps->lightmap_pages_infos.p[vface->lightmap_offset].offset_t;
+		FACE_CHECK(cord_x < VBSP_LightmapPage_Width);
+		FACE_CHECK(cord_y < VBSP_LightmapPage_Height);
+		const uint32_t lm_offset = cord_x + cord_y * VBSP_LightmapPage_Width;
+
+		face->width = lm_width;
+		face->height = lm_height;
+		face->samples = NULL;
+		face->lm_page = lm_page;
+		face->lm_offset = lm_offset;
+		ctx->lightmap.max_width = VBSP_LightmapPage_Width;
+		ctx->lightmap.max_height = VBSP_LightmapPage_Height;
+	} else {
+		/* PC lightmaps */
+		FACE_CHECK(vface->lightmap_offset % sizeof(struct VBSPLightmapColor) == 0);
+
+		const uint32_t sample_offset = vface->lightmap_offset / sizeof(struct VBSPLightmapColor);
+		FACE_CHECK(sample_offset < lumps->lightmaps.n&& lumps->lightmaps.n - sample_offset >= lightmap_size);
+		face->width = lm_width;
+		face->height = lm_height;
+		face->samples = lumps->lightmaps.p;
+		face->lm_page = -1;
+		face->lm_offset = sample_offset;
+		if (lm_width > ctx->lightmap.max_width) ctx->lightmap.max_width = lm_width;
+		if (lm_height > ctx->lightmap.max_height) ctx->lightmap.max_height = lm_height;
+	}
 
 	ctx->lightmap.pixels += lightmap_size;
 	ctx->vertices += face->vertices;
@@ -341,19 +370,35 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 		const struct Face *const face = ctx->faces + i;
 		ASSERT((unsigned)face->atlas_x + face->width <= atlas_context.width);
 		ASSERT((unsigned)face->atlas_y + face->height <= atlas_context.height);
-		for (int y = 0; y < face->height; ++y) {
-			for (int x = 0; x < face->width; ++x) {
-				const struct VBSPLumpLightMap *const pixel = face->samples + x + (int)(y * face->width);
-
-				const unsigned int
-					r = scaleLightmapColor(pixel->r, pixel->exponent),
-					g = scaleLightmapColor(pixel->g, pixel->exponent),
-					b = scaleLightmapColor(pixel->b, pixel->exponent);
-
-				pixels[face->atlas_x + x + (face->atlas_y + y) * atlas_context.width]
-					= (uint16_t)(((r&0xf8) << 8) | ((g&0xfc) << 3) | (b >> 3));
-			} /* for x */
-		} /* for y */
+		if (face->lm_page == -1) {
+			/* PC lightmaps */
+		    const struct VBSPLightmapColor* samples = face->samples + face->lm_offset;
+		    for (int y = 0; y < face->height; ++y) {
+		    	for (int x = 0; x < face->width; ++x) {
+		    		const struct VBSPLightmapColor* const pixel = samples + x + (int)(y * face->width);
+		  	 	 
+		    		const unsigned int
+		    			r = scaleLightmapColor(pixel->r, pixel->exponent),
+		    			g = scaleLightmapColor(pixel->g, pixel->exponent),
+		    			b = scaleLightmapColor(pixel->b, pixel->exponent);
+		  	 	 
+		    		pixels[face->atlas_x + x + (face->atlas_y + y) * atlas_context.width]
+		    			= (uint16_t)(((r&0xf8) << 8) | ((g&0xfc) << 3) | (b >> 3));
+		    	} /* for x */
+		    } /* for y */
+		} else {
+			/* palette XBE lightmaps */
+			const struct VBSPLumpLightmapPage* const page = &ctx->lumps->lightmap_pages.p[face->lm_page];
+			for (int y = 0; y < face->height; ++y) {
+		    	for (int x = 0; x < face->width; ++x) {
+					const uint32_t offset = face->lm_offset + (x + y * face->width);
+					const struct VBSPLightmapPageColor* const pixel = &page->palette[page->data[offset]];
+			 		 
+					pixels[face->atlas_x + x + (face->atlas_y + y) * atlas_context.width]
+						= (uint16_t)(((pixel->r & 0xf8) << 8) | ((pixel->g & 0xfc) << 3) | (pixel->b >> 3));
+			    }
+			}
+		}
 	} /* fot all visible faces */
 
 	RTextureUploadParams upload;
@@ -370,7 +415,7 @@ static enum BSPLoadResult bspLoadModelLightmaps(struct LoadModelContext *ctx) {
 
 	/* pixels buffer is not needed anymore */
 	stackFreeUpToPosition(ctx->tmp, pixels);
-
+		
 	return BSPLoadResult_Success;
 }
 
@@ -1020,6 +1065,9 @@ enum BSPLoadResult bspLoadWorldspawn(BSPLoadModelContext context) {
 
 	if (lumps.lightmaps.n == 0) {
 		memcpy(&lumps.lightmaps, &lumps.lightmaps_hdr, sizeof(lumps.lightmaps));
+	}
+
+	if (lumps.faces.n == 0) {
 		memcpy(&lumps.faces, &lumps.faces_hdr, sizeof(lumps.faces));
 	}
 
